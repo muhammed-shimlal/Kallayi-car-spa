@@ -24,6 +24,10 @@ class UserViewSet(viewsets.ModelViewSet):
         elif hasattr(user, 'customer'):
             data['role'] = 'CUSTOMER'
             data['customer_id'] = user.customer.id
+        elif user.is_superuser:
+            data['role'] = 'ADMIN'
+        elif user.is_staff:
+             data['role'] = 'MANAGER'
         else:
             data['role'] = 'UNKNOWN'
             

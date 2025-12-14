@@ -20,16 +20,25 @@ class GeneralExpense(models.Model):
     """
     Tracks operational overhead like Rent, Utilities, Maintenance, etc.
     """
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending Approval'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+    ]
+    
     category = models.ForeignKey(ExpenseCategory, on_delete=models.SET_NULL, null=True, related_name='expenses')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField(blank=True)
     date = models.DateField()
     receipt_image = models.ImageField(upload_to='receipts/', null=True, blank=True)
-    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='expenses_recorded')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='expenses_approved')
+    approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.category} - {self.amount} ({self.date})"
+        return f"{self.category} - {self.amount} ({self.date}) [{self.status}]"
 
 class ChemicalInventory(models.Model):
     name = models.CharField(max_length=100)

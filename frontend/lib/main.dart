@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart'; // Ensure this is needed or remove
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/service_menu_screen.dart';
@@ -12,7 +13,13 @@ import 'screens/signup_screen.dart';
 import 'providers/user_provider.dart';
 import 'providers/auth_provider.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Stripe with publishable key
+  // TODO: Replace with your actual Stripe publishable key
+  Stripe.publishableKey = "pk_test_51...YOUR_PUBLISHABLE_KEY";
+  
   runApp(
     MultiProvider(
       providers: [
@@ -33,10 +40,18 @@ class KallayiCarSpaApp extends StatelessWidget {
       title: 'Kallayi Car Spa',
       theme: AppTheme.lightTheme,
       debugShowCheckedModeBanner: false,
-      home: Consumer<AuthProvider>(
-        builder: (context, auth, _) {
-          if (auth.isAuthenticated) {
-            return const HomeScreen();
+      home: Consumer2<AuthProvider, UserProvider>(
+        builder: (context, auth, user, _) {
+          if (auth.isAuthenticated && user.role != null) {
+            // Route based on role
+            final role = user.role?.toUpperCase();
+            if (role == 'MANAGER' || role == 'ADMIN') {
+              return const ManagerDashboard();
+            } else if (role == 'DRIVER' || role == 'TECHNICIAN' || role == 'WASHER') {
+              return const DriverDashboard();
+            } else {
+              return const HomeScreen();
+            }
           } else {
             return const FutureBuilderWrapper();
           }

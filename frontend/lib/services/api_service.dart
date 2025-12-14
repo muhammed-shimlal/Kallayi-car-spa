@@ -69,7 +69,7 @@ class ApiService {
 
   // User Profile
   Future<Map<String, dynamic>> getUserProfile(String token) async {
-    final url = Uri.parse('$baseUrl/api/users/me/');
+    final url = Uri.parse('$baseUrl/api/core/users/me/');
     final headers = await _getHeaders(overrideToken: token);
     
     final response = await http.get(url, headers: headers);
@@ -539,6 +539,28 @@ class ApiService {
       throw Exception('GET $endpoint failed: ${response.statusCode}');
     }
   }
+
+  // POST generic
+  Future<dynamic> post(String endpoint, {Map<String, dynamic>? body}) async {
+    final url = Uri.parse('$baseUrl$endpoint');
+    final headers = await _getHeaders();
+    
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: body != null ? jsonEncode(body) : null,
+    );
+    
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.body.isNotEmpty) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } else {
+      throw Exception('POST $endpoint failed: ${response.statusCode}');
+    }
+  }
+
 
   // --- FLEET MANAGEMENT ---
   

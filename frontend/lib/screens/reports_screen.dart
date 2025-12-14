@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../services/api_service.dart';
 import '../theme.dart';
 import '../widgets/neumorphic_container.dart';
@@ -193,45 +194,117 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildTrendChart() {
-    if (_monthlyTrends == null || _monthlyTrends!.isEmpty) return const Text("No trend data available.");
-
-    // Simple Bar Chart Implementation using Row of Columns
-    // Find max value to normalization
-    double maxVal = 100;
-    for (var m in _monthlyTrends!) {
-      if (m['income'] > maxVal) maxVal = m['income'].toDouble();
-      if (m['expense'] > maxVal) maxVal = m['expense'].toDouble();
+    if (_monthlyTrends == null || _monthlyTrends!.isEmpty) {
+      return const Text("No trend data available.");
     }
 
-    return SizedBox(
-      height: 200,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _monthlyTrends!.length,
-        separatorBuilder: (c, i) => const SizedBox(width: 16),
-        itemBuilder: (context, index) {
-          final item = _monthlyTrends![index];
-          final incomeH = (item['income'] / maxVal) * 140; // max height 140
-          final expenseH = (item['expense'] / maxVal) * 140;
-
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-               Row(
-                 crossAxisAlignment: CrossAxisAlignment.end,
-                 children: [
-                   _bar(expenseH, Colors.redAccent),
-                   const SizedBox(width: 4),
-                   _bar(incomeH, Colors.green),
-                 ],
-               ),
-               const SizedBox(height: 8),
-               Text(item['month'], style: GoogleFonts.poppins(fontSize: 12)),
-            ],
-          );
-        },
+    return NeumorphicContainer(
+      padding: const EdgeInsets.all(16),
+      child: SizedBox(
+        height: 250,
+        child: BarChart(
+          BarChartData(
+            alignment: BarChartAlignment.spaceAround,
+            maxY: _getMaxValue() * 1.2, // Add 20% padding
+            barTouchData: BarTouchData(
+              enabled: true,
+              touchTooltipData: BarTouchTooltipData(
+                getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                  final month = _monthlyTrends![groupIndex]['month'];
+                  final value = rod.toY.toInt();
+                  final label = rodIndex == 0 ? 'Expense' : 'Income';
+                  return BarTooltipItem(
+                    '$month\n$label: ₹$value',
+                    GoogleFonts.poppins(color: Colors.white, fontSize: 12),
+                  );
+                },
+              ),
+            ),
+            titlesData: FlTitlesData(
+              show: true,
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  getTitlesWidget: (value, meta) {
+                    if (value.toInt() >= 0 && value.toInt() < _monthlyTrends!.length) {
+                      final month = _monthlyTrends![value.toInt()]['month'];
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          month,
+                          style: GoogleFonts.poppins(fontSize: 10, color: AppTheme.textGrey),
+                        ),
+                      );
+                    }
+                    return const SizedBox();
+                  },
+                ),
+              ),
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 50,
+                  getTitlesWidget: (value, meta) {
+                    return Text(
+                      '₹${(value / 1000).toStringAsFixed(0)}k',
+                      style: GoogleFonts.poppins(fontSize: 10, color: AppTheme.textGrey),
+                    );
+                  },
+                ),
+              ),
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            gridData: const FlGridData(show: true, drawVerticalLine: false),
+            borderData: FlBorderData(show: false),
+            barGroups: _buildBarGroups(),
+          ),
+        ),
       ),
     );
+  }
+
+  double _getMaxValue() {
+    double max = 100;
+    for (var item in _monthlyTrends!) {
+      final income = (item['income'] ?? 0).toDouble();
+      final expense = (item['expense'] ?? 0).toDouble();
+      if (income > max) max = income;
+      if (expense > max) max = expense;
+    }
+    return max;
+  }
+
+  List<BarChartGroupData> _buildBarGroups() {
+    return List.generate(_monthlyTrends!.length, (index) {
+      final item = _monthlyTrends![index];
+      final expense = (item['expense'] ?? 0).toDouble();
+      final income = (item['income'] ?? 0).toDouble();
+
+      return BarChartGroupData(
+        x: index,
+        barRods: [
+          BarChartRodData(
+            toY: expense,
+            color: Colors.redAccent,
+            width: 12,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(4),
+              topRight: Radius.circular(4),
+            ),
+          ),
+          BarChartRodData(
+            toY: income,
+            color: Colors.green,
+            width: 12,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(4),
+              topRight: Radius.circular(4),
+            ),
+          ),
+        ],
+      );
+    });
   }
 
   Widget _bar(double height, Color color) {

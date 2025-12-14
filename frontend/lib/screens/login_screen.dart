@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/user_provider.dart';
+import '../services/api_service.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -18,16 +20,36 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     setState(() => _isLoading = true);
     try {
-      await Provider.of<AuthProvider>(context, listen: false)
-          .login(_usernameController.text, _passwordController.text);
+      // Step 1: Authenticate via AuthProvider
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      await authProvider.login(_usernameController.text, _passwordController.text);
       
-      // Navigation is handled by auth state change in main.dart or we can push here
-      // But typically with Provider auth flow, wrapper handles it.
-      // However, if we want explicit navigation:
+      // Step 2: Fetch user profile and role via API
+      final ApiService apiService = ApiService();
+      final profileData = await apiService.getUserProfile(authProvider.token ?? '');
+      
+      // Step 3: Update UserProvider with user data including role
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      await userProvider.login(
+        profileData['id'] ?? 0,
+        profileData['username'] ?? _usernameController.text,
+        profileData['role'] ?? 'CUSTOMER',
+        authProvider.token ?? '',
+      );
+      
+      // Step 4: Get the user's role for routing
+      final role = userProvider.role?.toUpperCase();
+      
       if (mounted) {
-         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        // Route based on role
+        if (role == 'MANAGER' || role == 'ADMIN') {
+          Navigator.of(context).pushReplacementNamed('/manager');
+        } else if (role == 'DRIVER' || role == 'TECHNICIAN' || role == 'WASHER') {
+          Navigator.of(context).pushReplacementNamed('/driver');
+        } else {
+          // Default to customer home screen
+          Navigator.of(context).pushReplacementNamed('/home');
+        }
       }
       
     } catch (e) {

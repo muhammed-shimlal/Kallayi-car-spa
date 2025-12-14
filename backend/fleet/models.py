@@ -27,9 +27,15 @@ class ServiceVehicle(models.Model):
     model = models.CharField(max_length=50) # e.g. Transit Connect
     plate_number = models.CharField(max_length=20, unique=True)
     is_active = models.BooleanField(default=True)
+    last_service_odometer = models.IntegerField(default=0, help_text="Odometer reading at last service")
+    service_interval_km = models.IntegerField(default=5000, help_text="Service due every X kilometers")
     
     def __str__(self):
         return f"{self.make} {self.model} ({self.plate_number})"
+    
+    def needs_service(self, current_odometer):
+        """Check if vehicle needs service based on odometer"""
+        return (current_odometer - self.last_service_odometer) >= self.service_interval_km
 
 class VehicleAssignment(models.Model):
     vehicle = models.ForeignKey(ServiceVehicle, on_delete=models.CASCADE)

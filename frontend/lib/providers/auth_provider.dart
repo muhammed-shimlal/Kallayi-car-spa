@@ -9,6 +9,7 @@ class AuthProvider with ChangeNotifier {
   final _storage = const FlutterSecureStorage();
 
   bool get isAuthenticated => _isAuthenticated;
+  String? get token => _token;
 
   Future<void> checkAuthStatus() async {
     final token = await _storage.read(key: 'auth_token');

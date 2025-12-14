@@ -17,11 +17,12 @@ def award_points_for_booking(sender, instance, created, **kwargs):
         
         # Let's assume price is on ServicePackage.
         if instance.service_package:
-             points = int(instance.service_package.price * 0.1) # 10% points
+             points = int(float(instance.service_package.price) * 0.1) # 10% points
              # Update customer
              customer = instance.customer
              customer.loyalty_points += points
              customer.save()
+
 
 @receiver(post_save, sender=Review)
 def award_points_for_review(sender, instance, created, **kwargs):

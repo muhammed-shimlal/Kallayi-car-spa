@@ -9,6 +9,7 @@ import '../widgets/financial_card.dart';
 import '../widgets/expense_tile.dart';
 import '../widgets/neumorphic_container.dart';
 import 'reports_screen.dart';
+import 'expense_approval_screen.dart';
 
 class ManagerDashboard extends StatefulWidget {
   const ManagerDashboard({super.key});
@@ -84,7 +85,9 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+              _buildPendingApprovalsAlert(),
+              const SizedBox(height: 24),
               _buildFinancialGrid(currency, revenue, expenses, labor, netProfit),
               const SizedBox(height: 32),
               _buildRecentTransactionHeader(),
@@ -146,6 +149,48 @@ class _ManagerDashboardState extends State<ManagerDashboard> {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildPendingApprovalsAlert() {
+    // For now, always show the alert. In production, you'd check actual count from API
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (c) => const ExpenseApprovalScreen()));
+      },
+      child: NeumorphicContainer(
+        padding: const EdgeInsets.all(16),
+        color: Colors.orange.shade50,
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.orange,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.pending_actions, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Pending Approvals",
+                    style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textDark),
+                  ),
+                  Text(
+                    "Tap to review expense requests",
+                    style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textGrey),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textGrey),
+          ],
+        ),
+      ),
     );
   }
 

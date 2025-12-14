@@ -39,6 +39,26 @@ class GeneralExpenseViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(recorded_by=self.request.user)
+    
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        """Approve a pending expense"""
+        expense = self.get_object()
+        expense.status = 'APPROVED'
+        expense.approved_by = request.user
+        expense.approved_at = timezone.now()
+        expense.save()
+        return Response({'status': 'Expense approved'})
+    
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Reject a pending expense"""
+        expense = self.get_object()
+        expense.status = 'REJECTED'
+        expense.approved_by = request.user
+        expense.approved_at = timezone.now()
+        expense.save()
+        return Response({'status': 'Expense rejected'})
 
 class ExpenseCategoryViewSet(viewsets.ModelViewSet):
     queryset = ExpenseCategory.objects.all()
