@@ -7,9 +7,30 @@ from django.utils import timezone
 from .models import Invoice, ChemicalUsageLog, PayrollEntry
 from .serializers import InvoiceSerializer
 
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+try:
+    from weasyprint import HTML
+except (ImportError, OSError):
+    HTML = None
+
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
+
+    @action(detail=True, methods=['get'])
+    def download_pdf(self, request, pk=None):
+        if HTML is None:
+            return HttpResponse("PDF Generation not available (Missing GTK)", status=503)
+            
+        invoice = self.get_object()
+        html_string = render_to_string('finance/invoice_pdf.html', {'invoice': invoice})
+        
+        pdf_file = HTML(string=html_string).write_pdf()
+        
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="invoice_{invoice.id}.pdf"'
+        return response
 
 class DashboardViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminUser]

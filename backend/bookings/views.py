@@ -9,6 +9,7 @@ from datetime import timedelta, datetime, time
 from django.db.models import Q
 from django.contrib.auth.models import User
 from staff.models import StaffProfile
+from django.utils import timezone
 
 class IsAdminUserOrReadOnly(BasePermission):
     def has_permission(self, request, view):
@@ -51,8 +52,13 @@ class BookingViewSet(viewsets.ModelViewSet):
         slot_duration = 30 # Check every 30 mins
         
         available_slots = []
-        current_time = datetime.combine(target_date, time(start_hour, 0))
-        end_time = datetime.combine(target_date, time(end_hour, 0))
+        # Create naive datetimes first
+        naive_start = datetime.combine(target_date, time(start_hour, 0))
+        naive_end = datetime.combine(target_date, time(end_hour, 0))
+        
+        # Make them timezone-aware
+        current_time = timezone.make_aware(naive_start)
+        end_time = timezone.make_aware(naive_end)
         
         duration = timedelta(minutes=package.duration_minutes)
 
@@ -66,11 +72,11 @@ class BookingViewSet(viewsets.ModelViewSet):
             
             # Get IDs of busy techs
             busy_tech_ids = Booking.objects.filter(
-                technician__staff_app_profile__in=techs,
+                technician__staff_profile__in=techs,
                 status__in=['CONFIRMED', 'IN_PROGRESS'],
                 time_slot__lt=slot_end,
                 end_time__gt=slot_start
-            ).values_list('technician__staff_app_profile__id', flat=True)
+            ).values_list('technician__staff_profile__id', flat=True)
             
             # If count of busy techs < total techs, then slot is available
             if len(busy_tech_ids) < techs.count():

@@ -1,17 +1,32 @@
 from django.db import models
 from django.conf import settings
 from bookings.models import ServicePackage, Booking
+from django.utils import timezone
 
 class StaffProfile(models.Model):
     ROLE_CHOICES = [
-        ('WASHER', 'Washer'),
         ('MANAGER', 'Manager'),
+        ('TECHNICIAN', 'Technician'),
+        ('DRIVER', 'Driver'),
+        ('WASHER', 'Washer'),
         ('ADMIN', 'Owner/Admin'),
     ]
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staff_app_profile')
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staff_profile')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='WASHER')
+    phone_number = models.CharField(max_length=20, blank=True)
+    
+    # Financial details
     hourly_rate = models.DecimalField(max_digits=6, decimal_places=2, default=15.00)
+    base_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Percentage (0-100)")
+    joining_date = models.DateField(default=timezone.now)
+    
+    # Status & Location
     is_active = models.BooleanField(default=True)
+    is_online = models.BooleanField(default=False)
+    current_latitude = models.FloatField(null=True, blank=True)
+    current_longitude = models.FloatField(null=True, blank=True)
+    last_location_update = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.user.username} ({self.role})"

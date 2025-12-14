@@ -70,11 +70,14 @@ class WebhookViewSet(viewsets.ViewSet):
         # But in Prod MUST match
         
         try:
-             # In a real scenario use stripe.Webhook.construct_event
-             # event = stripe.Webhook.construct_event(payload, sig_header, settings.STRIPE_WEBHOOK_SECRET)
-             import json
-             event = json.loads(payload)
+             event = stripe.Webhook.construct_event(
+                 payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+             )
         except ValueError as e:
+            # Invalid payload
+            return Response(status=400)
+        except stripe.error.SignatureVerificationError as e:
+            # Invalid signature
             return Response(status=400)
             
         if event['type'] == 'payment_intent.succeeded':

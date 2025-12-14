@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Helvetica, sans-serif; padding: 20px; }
+        h1 { color: #333; }
+        .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
+        .details { margin-bottom: 30px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .total { text-align: right; margin-top: 20px; font-size: 1.2em; font-weight: bold; }
+        .footer { margin-top: 50px; font-size: 0.8em; color: #777; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>INVOICE #{{ invoice.id }}</h1>
+        <div>
+            <p><strong>Kallayi Car Spa</strong></p>
+            <p>123 Car Wash Lane</p>
+            <p>Kerala, India</p>
+        </div>
+    </div>
+
+    <div class="details">
+        <p><strong>Date:</strong> {{ invoice.created_at|date:"Y-m-d" }}</p>
+        <p><strong>Customer:</strong> {{ invoice.booking.customer.user.username }}</p>
+        <p><strong>Vehicle:</strong> {{ invoice.booking.vehicle.model }} ({{ invoice.booking.vehicle.plate_number }})</p>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Price</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ invoice.booking.service_package.name }} - {{ invoice.booking.service_package.description }}</td>
+                <td>₹{{ invoice.amount }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="total">
+        Total: ₹{{ invoice.amount }}
+    </div>
+
+    <div class="footer">
+        <p>Thank you for your business!</p>
+        <p>Payment Method: {{ invoice.payment_method }} | Status: {% if invoice.is_paid %}PAID{% else %}PENDING{% endif %}</p>
+    </div>
+</body>
+</html>

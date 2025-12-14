@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.contrib.auth.models import User
-from .models import StaffProfile
+from staff.models import StaffProfile
 from .serializers import UserSerializer, StaffProfileSerializer, StaffCreateSerializer
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -18,9 +18,9 @@ class UserViewSet(viewsets.ModelViewSet):
         data['is_staff_user'] = user.is_staff
         
         # Check Staff App Profile
-        if hasattr(user, 'staff_app_profile'):
-            data['role'] = user.staff_app_profile.role
-            data['staff_profile_id'] = user.staff_app_profile.id
+        if hasattr(user, 'staff_profile'):
+            data['role'] = user.staff_profile.role
+            data['staff_profile_id'] = user.staff_profile.id
         elif hasattr(user, 'customer'):
             data['role'] = 'CUSTOMER'
             data['customer_id'] = user.customer.id
