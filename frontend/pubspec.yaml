@@ -17,14 +17,36 @@ dependencies:
   geolocator: ^14.0.2
   shared_preferences: ^2.5.4
   flutter_secure_storage: ^9.0.0
+  image_picker: ^1.0.7
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.3.10
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/images/
+
+# Flutter Launcher Icons Configuration
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo.png"
+  adaptive_icon_background: "#1E3A5F"
+  adaptive_icon_foreground: "assets/images/logo.png"
+
+# Flutter Native Splash Configuration
+flutter_native_splash:
+  color: "#1E3A5F"
+  image: assets/images/logo.png
+  android: true
+  ios: true
+  android_12:
+    color: "#1E3A5F"
+    image: assets/images/logo.png
+

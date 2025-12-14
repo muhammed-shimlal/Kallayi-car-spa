@@ -3,3 +3,7 @@ djangorestframework
 psycopg2-binary
 weasyprint
 django-cors-headers
+Pillow
+python-decouple
+gunicorn
+whitenoise

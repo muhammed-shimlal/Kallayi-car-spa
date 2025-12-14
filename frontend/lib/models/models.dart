@@ -52,12 +52,14 @@ class ServicePackage {
   final String name;
   final double price;
   final String description;
+  final int durationMinutes;
 
   ServicePackage({
     required this.id,
     required this.name,
     required this.price,
     required this.description,
+    required this.durationMinutes,
   });
 
   factory ServicePackage.fromJson(Map<String, dynamic> json) {
@@ -66,6 +68,7 @@ class ServicePackage {
       name: json['name'],
       price: double.parse(json['price'].toString()),
       description: json['description'],
+      durationMinutes: json['duration_minutes'] ?? 60,
     );
   }
 }
@@ -106,4 +109,34 @@ class Booking {
       longitude: json['longitude'] ?? 0.0,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'customer': customerId,
+      'vehicle': vehicleId,
+      'time_slot': timeSlot.toIso8601String(),
+      'end_time': endTime?.toIso8601String(),
+      'status': status,
+      'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
+    };
+  }
+}
+
+class SubscriptionPlan {
+  final int id;
+  final String name;
+  final double price;
+  final String description;
+  final int intervalDays;
+
+  SubscriptionPlan({
+    required this.id,
+    required this.name,
+    required this.price,
+    required this.description,
+    required this.intervalDays,
+  });
 }

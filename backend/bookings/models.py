@@ -33,6 +33,7 @@ class Booking(models.Model):
     end_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     created_at = models.DateTimeField(auto_now_add=True)
+    points_redeemed = models.IntegerField(default=0)
 
     # Location details
     address = models.TextField(default="123 Main St, City")

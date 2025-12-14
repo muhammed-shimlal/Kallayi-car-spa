@@ -2,27 +2,55 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  static const Color backgroundPrimary = Color(0xFFF2F2F2);
-  static const Color surfaceCardLight = Color(0xFFFFFFFF);
-  static const Color surfaceCardDark = Color(0xFF121212);
-  static const Color textPrimaryOnLight = Color(0xFF1A1A1A);
-  static const Color textSecondaryOnLight = Color(0xFF888888);
-  static const Color textPrimaryOnDark = Color(0xFFFFFFFF);
-  static const Color accentActive = Color(0xFF000000);
-  static const Color accentInactive = Color(0xFFE0E0E0);
+  // Neumorphic Palette
+  static const Color backgroundLight = Color(0xFFE0E5EC); // Light Blue-Grey
+  static const Color primaryNavy = Color(0xFF2C3E50);     // Deep Navy
+  static const Color accentBlue = Color(0xFF4A90E2);      // Bright Blue
+  
+  static const Color shadowLight = Color(0xFFFFFFFF);     // Top-Left Shadow
+  static const Color shadowDark = Color(0xFFA3B1C6);      // Bottom-Right Shadow
+  
+  static const Color textDark = Color(0xFF2D3436);
+  static const Color textGrey = Color(0xFF636E72);
 
   static ThemeData get lightTheme {
     return ThemeData(
-      scaffoldBackgroundColor: backgroundPrimary,
-      primaryColor: accentActive,
+      scaffoldBackgroundColor: backgroundLight,
+      primaryColor: primaryNavy,
+      useMaterial3: true,
+      
+      // Typography
       textTheme: GoogleFonts.poppinsTextTheme().apply(
-        bodyColor: textPrimaryOnLight,
-        displayColor: textPrimaryOnLight,
+        bodyColor: textDark,
+        displayColor: textDark,
       ),
-      colorScheme: ColorScheme.light(
-        primary: accentActive,
-        surface: surfaceCardLight,
-        background: backgroundPrimary,
+
+      // App Bar
+      appBarTheme: const AppBarTheme(
+        backgroundColor: backgroundLight,
+        elevation: 0,
+        centerTitle: false,
+        iconTheme: IconThemeData(color: primaryNavy),
+        titleTextStyle: TextStyle(color: primaryNavy, fontSize: 22, fontWeight: FontWeight.w600),
+      ),
+      
+      // Buttons
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryNavy,
+          foregroundColor: Colors.white,
+          elevation: 10,
+          shadowColor: shadowDark,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      
+      // Floating Action Button
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: accentBlue,
+        foregroundColor: Colors.white,
+        elevation: 10,
       ),
     );
   }

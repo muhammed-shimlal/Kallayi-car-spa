@@ -85,6 +85,76 @@ class SubscriptionPlanViewSet(viewsets.ModelViewSet):
     serializer_class = SubscriptionPlanSerializer
     permission_classes = [IsAdminUserOrReadOnly]
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def purchase_plan(self, request, pk=None):
+        plan = self.get_object()
+        user = request.user
+        
+        try:
+            customer = Customer.objects.get(user=user)
+        except Customer.DoesNotExist:
+            return Response({'error': 'Customer profile not found'}, status=404)
+
+        # Create or Get Subscription
+        # NOTE: For MVP, we assume purchasing a plan immediately activates it OR upgrades pending payment.
+        # We will create an Invoice.
+        
+        sub, _ = MemberSubscription.objects.get_or_create(
+            customer=customer,
+            defaults={
+                'plan': plan,
+                'end_date': timezone.now().date() + timezone.timedelta(days=plan.interval_days),
+                'is_active': False # Pending payment
+            }
+        )
+        # Verify if existing sub needs update
+        if sub.plan != plan:
+             sub.plan = plan
+             sub.save()
+
+        # Create Invoice
+        from finance.models import Invoice, RevenueCategory
+        cat, _ = RevenueCategory.objects.get_or_create(name='Subscription')
+        
+        invoice = Invoice.objects.create(
+            subscription=sub,
+            amount=plan.price,
+            revenue_category=cat,
+            is_deferred=True,
+            is_paid=False 
+        )
+        
+        return Response({
+            'status': 'invoice_created',
+            'invoice_id': invoice.id,
+            'amount': invoice.amount,
+            'message': 'Please pay the invoice to activate subscription.'
+        })
+
+from .models import Review, Coupon
+from .serializers import ReviewSerializer, CouponSerializer
+
+class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    
+    def perform_create(self, serializer):
+        # Auto-link customer if possible, though customer field is required in model
+        # Just save normally for now or infer from request.user
+        if self.request.user.is_authenticated:
+            try:
+                customer = Customer.objects.get(user=self.request.user)
+                serializer.save(customer=customer)
+            except Customer.DoesNotExist:
+                serializer.save()
+        else:
+            serializer.save()
+
+class CouponViewSet(viewsets.ModelViewSet):
+    queryset = Coupon.objects.all()
+    serializer_class = CouponSerializer
+    permission_classes = [IsAdminUserOrReadOnly]
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_customer(request):

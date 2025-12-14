@@ -5,14 +5,18 @@ class NeumorphicContainer extends StatelessWidget {
   final Widget child;
   final double borderRadius;
   final EdgeInsets padding;
-  final Color color;
+  final Color? color;
+  final Gradient? gradient;
+  final bool isPressed;
 
   const NeumorphicContainer({
     super.key,
     required this.child,
-    this.borderRadius = 24.0,
-    this.padding = const EdgeInsets.all(16.0),
-    this.color = AppTheme.backgroundPrimary,
+    this.borderRadius = 20.0,
+    this.padding = const EdgeInsets.all(20.0),
+    this.color,
+    this.gradient,
+    this.isPressed = false,
   });
 
   @override
@@ -20,22 +24,23 @@ class NeumorphicContainer extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: color,
+        color: color ?? AppTheme.backgroundLight,
         borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.white,
-            offset: const Offset(-5, -5),
-            blurRadius: 10,
-            spreadRadius: 1,
-          ),
-          BoxShadow(
-            color: Colors.grey.shade400,
-            offset: const Offset(5, 5),
-            blurRadius: 10,
-            spreadRadius: 1,
-          ),
-        ],
+        gradient: gradient,
+        boxShadow: isPressed 
+          ? null // No shadow when pressed (or inset, but simple removal is safer)
+          : [
+            const BoxShadow(
+              color: AppTheme.shadowLight,
+              offset: Offset(-6, -6),
+              blurRadius: 12,
+            ),
+            const BoxShadow(
+              color: AppTheme.shadowDark,
+              offset: Offset(6, 6),
+              blurRadius: 12,
+            ),
+          ],
       ),
       child: child,
     );

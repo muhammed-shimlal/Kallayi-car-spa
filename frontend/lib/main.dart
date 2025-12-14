@@ -46,7 +46,7 @@ class KallayiCarSpaApp extends StatelessWidget {
         '/signup': (context) => const SignupScreen(),
         '/home': (context) => const HomeScreen(),
         '/services': (context) => const ServiceMenuScreen(),
-        '/booking': (context) => const BookingScreen(),
+        // BookingScreen requires arguments, so it's not a named route here
         '/manager': (context) => const ManagerDashboard(),
         '/driver': (context) => const DriverDashboard(),
       },

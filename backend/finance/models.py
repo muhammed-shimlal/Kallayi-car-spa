@@ -16,6 +16,21 @@ class ExpenseCategory(models.Model):
     def __str__(self):
         return self.name
 
+class GeneralExpense(models.Model):
+    """
+    Tracks operational overhead like Rent, Utilities, Maintenance, etc.
+    """
+    category = models.ForeignKey(ExpenseCategory, on_delete=models.SET_NULL, null=True, related_name='expenses')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.TextField(blank=True)
+    date = models.DateField()
+    receipt_image = models.ImageField(upload_to='receipts/', null=True, blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.category} - {self.amount} ({self.date})"
+
 class ChemicalInventory(models.Model):
     name = models.CharField(max_length=100)
     current_volume = models.DecimalField(max_digits=10, decimal_places=2, help_text="Current volume in UOM")
@@ -87,7 +102,8 @@ class Invoice(models.Model):
         ('ONLINE', 'Online'),
     ]
 
-    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='invoice')
+    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='invoice', null=True, blank=True)
+    subscription = models.ForeignKey('customers.MemberSubscription', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     revenue_category = models.ForeignKey(RevenueCategory, on_delete=models.SET_NULL, null=True, blank=True)
     is_deferred = models.BooleanField(default=False, help_text="If true, this income is amortized over time (e.g. Subs)")

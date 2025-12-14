@@ -41,3 +41,22 @@ class FleetAccount(models.Model):
     
     def __str__(self):
         return self.company_name
+
+class Review(models.Model):
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    booking = models.OneToOneField('bookings.Booking', on_delete=models.CASCADE, related_name='review')
+    rating = models.IntegerField(choices=[(i, i) for i in range(1, 6)])
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Review {self.id} - {self.rating} stars"
+
+class Coupon(models.Model):
+    code = models.CharField(max_length=20, unique=True)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2) # e.g. 10.00 for 10%
+    expiry_date = models.DateField()
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"{self.code} ({self.discount_percentage}%)"

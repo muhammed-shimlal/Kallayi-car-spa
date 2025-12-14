@@ -10,3 +10,15 @@ class TechnicianLocationSerializer(serializers.ModelSerializer):
     class Meta:
         model = TechnicianLocation
         fields = '__all__'
+
+from .models import ServiceVehicle, FleetLog
+
+class ServiceVehicleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceVehicle
+        fields = '__all__'
+
+class FleetLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FleetLog
+        fields = '__all__'

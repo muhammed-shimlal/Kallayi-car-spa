@@ -4,8 +4,9 @@ import '../widgets/neumorphic_container.dart';
 import '../services/api_service.dart';
 
 class InvoiceScreen extends StatefulWidget {
-  final int bookingId;
-  const InvoiceScreen({super.key, required this.bookingId});
+  final int? bookingId;
+  final int? invoiceId;
+  const InvoiceScreen({super.key, this.bookingId, this.invoiceId});
 
   @override
   State<InvoiceScreen> createState() => _InvoiceScreenState();
@@ -26,7 +27,13 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
         setState(() {
-          _invoiceFuture = _apiService.getInvoice(widget.bookingId);
+          if (widget.invoiceId != null) {
+            _invoiceFuture = _apiService.getInvoiceById(widget.invoiceId!);
+          } else if (widget.bookingId != null) {
+            _invoiceFuture = _apiService.getInvoice(widget.bookingId!);
+          } else {
+             _invoiceFuture = Future.error("No Invoice ID or Booking ID provided");
+          }
         });
       }
     });
