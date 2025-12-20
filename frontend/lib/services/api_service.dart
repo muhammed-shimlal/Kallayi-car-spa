@@ -80,6 +80,38 @@ class ApiService {
     }
   }
 
+  // Update Profile
+  Future<void> updateProfile(int userId, Map<String, dynamic> data) async {
+    // Note: Adjust endpoint if backend uses different logic for profile update
+    // Assuming /api/core/users/{id}/ or similar. 
+    // Or /api/customers/{id}/ if updating customer profile.
+    // Let's assume we update the User model via /api/core/users/{id}/
+    
+    // Actually, usually easier to have a specific 'update_profile' action or just PATCH to /me
+    // Since we don't have a /api/core/users/me/ update method verified, let's try patching user ID
+    
+    final url = Uri.parse('$baseUrl/api/core/users/$userId/');
+    final headers = await _getHeaders();
+    final response = await http.patch(url, headers: headers, body: jsonEncode(data));
+    
+    if (response.statusCode != 200) {
+       // Try updating customer profile if it failed or if we need to update phone (which might be on customer/staff profile)
+       // For now throw exception
+       throw Exception('Failed to update profile: ${response.statusCode} - ${response.body}');
+    }
+  }
+
+  // Add Vehicle
+  Future<void> addVehicle(Map<String, dynamic> vehicleData) async {
+    final url = Uri.parse('$baseUrl/api/vehicles/');
+    final headers = await _getHeaders();
+    final response = await http.post(url, headers: headers, body: jsonEncode(vehicleData));
+    
+    if (response.statusCode != 201) {
+      throw Exception('Failed to add vehicle: ${response.body}');
+    }
+  }
+
   // Get Vehicles
   Future<List<Vehicle>> getVehicles() async {
     final url = Uri.parse('$baseUrl/api/vehicles/');

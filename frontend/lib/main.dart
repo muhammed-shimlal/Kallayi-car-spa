@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart'; // Ensure this is needed or remove
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'theme.dart';
 import 'screens/home_screen.dart';
@@ -10,6 +10,13 @@ import 'screens/manager_dashboard.dart';
 import 'screens/driver_dashboard.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
+import 'screens/fill_profile_screen.dart';
+import 'screens/create_pin_screen.dart';
+import 'screens/fingerprint_screen.dart';
+import 'screens/forgot_password_screens.dart';
+import 'screens/splash_screen.dart';
+import 'screens/intro_screen.dart';
+import 'screens/auth_options_screen.dart';
 import 'providers/user_provider.dart';
 import 'providers/auth_provider.dart';
 
@@ -58,7 +65,17 @@ class KallayiCarSpaApp extends StatelessWidget {
         },
       ),
       routes: {
+        '/splash': (context) => const SplashScreen(),
+        '/intro': (context) => const IntroScreen(),
+        '/auth_options': (context) => const AuthOptionsScreen(),
+        '/login': (context) => const LoginScreen(),
         '/signup': (context) => const SignupScreen(),
+         '/fill_profile': (context) => const FillProfileScreen(),
+        '/create_pin': (context) => const CreatePinScreen(),
+        '/fingerprint_setup': (context) => const FingerprintScreen(),
+        '/forgot_password_method': (context) => const ForgotPasswordMethodScreen(),
+        '/otp_verification': (context) => const OtpVerificationScreen(),
+        '/create_new_password': (context) => const NewPasswordScreen(),
         '/home': (context) => const HomeScreen(),
         '/services': (context) => const ServiceMenuScreen(),
         // BookingScreen requires arguments, so it's not a named route here
@@ -86,6 +103,6 @@ class _FutureBuilderWrapperState extends State<FutureBuilderWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    return const LoginScreen();
+    return const SplashScreen();
   }
 }
