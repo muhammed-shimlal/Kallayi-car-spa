@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-obsidian: #050505;
+  --color-carbon: #141518;
+  --color-magenta: #FF2A6D;
+  --color-cyan: #01FFFF;
+  --color-tungsten: #8E939B;
+
+  --font-syncopate: var(--font-syncopate);
+  --font-jakarta: var(--font-jakarta);
+  --font-grotesk: var(--font-grotesk);
+}
+
+::-webkit-scrollbar {
+  display: none;
+}

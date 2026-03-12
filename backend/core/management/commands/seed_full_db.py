@@ -416,10 +416,12 @@ class Command(BaseCommand):
                 )
                 
                 # Create payroll entry
-                PayrollEntry.objects.create(
+                PayrollEntry.objects.update_or_create(
                     staff_user=driver,
                     date=date,
-                    base_wage=Decimal(hours_worked * 150),  # ₹150/hour
-                    commission_earned=Decimal(random.randint(200, 1000)),
-                    tips_earned=Decimal(random.randint(0, 500))
+                    defaults={
+                        'base_wage': Decimal(hours_worked * 150),
+                        'commission_earned': Decimal(random.randint(200, 1000)),
+                        'tips_earned': Decimal(random.randint(0, 500))
+                    }
                 )
