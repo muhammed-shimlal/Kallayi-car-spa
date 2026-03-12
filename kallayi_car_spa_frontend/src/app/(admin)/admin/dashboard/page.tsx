@@ -3,21 +3,22 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
-  LayoutDashboard, 
-  Wallet, 
-  Users, 
-  Receipt, 
-  TrendingUp, 
+  CarFront,
+  User,
   LogOut,
-  Activity,
-  AlertCircle
+  Search,
+  Filter,
+  ArrowUpRight,
+  Wallet,
+  Receipt,
+  Users,
+  MoreHorizontal
 } from "lucide-react";
 import { 
-  LineChart, 
-  Line, 
+  AreaChart, 
+  Area, 
   XAxis, 
   YAxis, 
-  CartesianGrid, 
   Tooltip, 
   ResponsiveContainer 
 } from "recharts";
@@ -35,13 +36,14 @@ export default function AdminDashboard() {
   const router = useRouter();
   
   const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<{ username: string; role: string } | null>(null);
+  const [user, setUser] = useState<{ first_name?: string; username: string; role: string } | null>(null);
   
   const [kpiData, setKpiData] = useState({
-    net_profit: 0,
-    total_revenue: 0,
-    general_expenses: 0,
-    labor_cost: 0
+    net_profit_today: 0,
+    revenue_today: 0,
+    general_expenses_today: 0,
+    labor_cost_today: 0,
+    chemical_cost_today: 0
   });
   
   const [chartData, setChartData] = useState<any[]>([]);
@@ -68,28 +70,39 @@ export default function AdminDashboard() {
         const meData = await meRes.json();
         setUser(meData);
 
-        // If not admin/manager, perhaps kick them out (optional logic here)
-
         // Fetch KPIs
         const kpiRes = await fetch("http://127.0.0.1:8001/api/finance/dashboard/kpi_summary/", { headers });
         if (kpiRes.ok) {
           const kpi = await kpiRes.json();
-          setKpiData(kpi);
+          // Fallback to older keys if API hasn't been updated to match the HTML script yet
+          setKpiData({
+            net_profit_today: kpi.net_profit_today || kpi.net_profit || 0,
+            revenue_today: kpi.revenue_today || kpi.total_revenue || 0,
+            general_expenses_today: kpi.general_expenses_today || kpi.general_expenses || 0,
+            labor_cost_today: kpi.labor_cost_today || kpi.labor_cost || 0,
+            chemical_cost_today: kpi.chemical_cost_today || 0
+          });
         }
 
         // Fetch Chart Data
         const chartRes = await fetch("http://127.0.0.1:8001/api/finance/dashboard/revenue_chart/", { headers });
         if (chartRes.ok) {
           const chart = await chartRes.json();
-          // Assuming chart returns [{ date: '2023-10-01', revenue: 1200 }, ...]
-          setChartData(chart);
+          // Format dates for display
+          const formattedChart = chart.map((d: any) => {
+             const dateObj = new Date(d.date);
+             return {
+                 ...d,
+                 displayDate: dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+             };
+          });
+          setChartData(formattedChart);
         }
 
         // Fetch Recent Bookings / Jobs
         const jobsRes = await fetch("http://127.0.0.1:8001/api/bookings/", { headers });
         if (jobsRes.ok) {
           const jobsData = await jobsRes.json();
-          // Only show top 5 recent jobs
           setRecentJobs(jobsData.results?.slice(0, 5) || jobsData.slice(0, 5) || []);
         }
 
@@ -113,290 +126,301 @@ export default function AdminDashboard() {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val || 0);
   };
 
-  // Badge Color logic based on generic status strings
   const getStatusBadge = (status: string) => {
     const s = status?.toUpperCase() || "";
-    if (s.includes("PROGRESS") || s.includes("ONGOING")) {
-      return "bg-magenta/20 text-magenta border-[0.5px] border-magenta/50";
-    }
-    if (s.includes("PENDING")) {
-      return "bg-orange-500/20 text-orange-400 border-[0.5px] border-orange-500/50";
-    }
     if (s.includes("COMPLETED") || s.includes("DONE")) {
-      return "bg-cyan/20 text-cyan border-[0.5px] border-cyan/50";
+      return <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">Success</span>;
     }
-    return "bg-white/10 text-tungsten border-[0.5px] border-white/20";
+    if (s.includes("PROGRESS") || s.includes("ONGOING")) {
+      return <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">In Progress</span>;
+    }
+    return <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold">Pending</span>;
   };
 
   return (
-    <div className="bg-obsidian min-h-screen text-white font-jakarta relative z-0">
-      {/* Background Ambience */}
-      <div className="fixed inset-0 z-0 opacity-10 pointer-events-none bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-magenta/20 via-obsidian to-obsidian" />
-      <div className="fixed inset-0 z-0 opacity-10 pointer-events-none bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-cyan/20 via-transparent to-transparent" />
-
-      {/* Top Navigation (Glass HUD) */}
-      <nav className="sticky top-0 bg-carbon/60 backdrop-blur-xl border-b border-white/10 px-8 py-4 z-50 flex justify-between items-center shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-        <div className="font-syncopate font-bold text-lg tracking-widest text-white flex items-center gap-3">
-          <Activity className="text-cyan w-5 h-5" />
-          KALLAYI <span className="text-magenta text-xs font-grotesk tracking-widest">ADMIN</span>
-        </div>
-        
-        <div className="flex items-center gap-6">
-          <div className="flex flex-col items-end">
-            <span className="font-grotesk text-[10px] text-tungsten uppercase tracking-widest">Logged In As</span>
-            <span className="font-syncopate text-sm font-bold text-white">
-              {isLoading ? "..." : user?.username || "ADMIN"}
-            </span>
+    <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
+      
+      {/* Navbar */}
+      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2 text-xl font-black tracking-tight text-gray-900">
+            <div className="bg-gray-900 text-white p-1.5 rounded-lg">
+              <CarFront className="w-5 h-5" />
+            </div>
+            Kallayi<span className="font-normal text-gray-500">Admin</span>
           </div>
-          <div className="h-8 w-px bg-white/10" />
-          <button 
-            onClick={handleLogout}
-            className="group flex items-center gap-2 text-tungsten hover:text-white transition-colors"
-          >
-            <span className="font-grotesk text-xs uppercase tracking-widest font-bold group-hover:text-magenta transition-colors">LogOut</span>
-            <LogOut className="w-5 h-5 group-hover:text-magenta transition-colors" />
+          
+          <div className="hidden lg:flex items-center gap-6 text-sm font-semibold text-gray-500 ml-8">
+            <a href="#" className="text-black">Overview</a>
+            <a href="#" className="hover:text-black transition">Finance</a>
+            <a href="#" className="hover:text-black transition">Bookings</a>
+            <a href="#" className="hover:text-black transition">Fleet</a>
+            <a href="#" className="hover:text-black transition">Staff</a>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-3 pr-4 border-r border-gray-200">
+            <div className="text-right">
+              <p className="text-sm font-bold text-gray-900">
+                {isLoading ? "Loading..." : (user?.first_name || user?.username || "Admin")}
+              </p>
+              <p className="text-xs text-gray-500">Administrator</p>
+            </div>
+            <div className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center text-gray-500">
+              <User className="w-5 h-5" />
+            </div>
+          </div>
+          <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition">
+            <LogOut className="w-5 h-5" />
           </button>
         </div>
       </nav>
 
-      <main className="p-8 max-w-[1600px] mx-auto relative z-10 space-y-8">
+      <main className="max-w-[1400px] mx-auto p-6 md:p-8">
         
-        {/* Header */}
-        <header>
-          <h1 className="font-syncopate text-3xl md:text-4xl font-bold tracking-widest text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-            COMMAND CENTER
-          </h1>
-          <p className="font-grotesk text-xs tracking-[0.2em] text-cyan uppercase mt-2 font-semibold">
-            System Overview & analytics
-          </p>
-        </header>
-
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Net Profit */}
-          <div className="bg-carbon/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 relative overflow-hidden group hover:bg-white/5 hover:border-cyan/30 transition-all duration-300">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan/10 blur-[50px] rounded-full group-hover:bg-cyan/20 transition-all" />
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="font-grotesk text-xs tracking-[0.2em] text-tungsten uppercase font-bold relative z-10">Net Profit</h3>
-              <div className="bg-cyan/10 p-2 rounded-xl text-cyan relative z-10 border border-cyan/20">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-            </div>
-            {isLoading ? <div className="h-10 w-32 bg-white/5 animate-pulse rounded-lg" /> : (
-              <div className="font-syncopate text-3xl font-bold text-white relative z-10">{formatCurrency(kpiData.net_profit)}</div>
-            )}
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
+            <p className="text-gray-500 text-sm mt-1">Monitor daily activities and financial health of your spa.</p>
           </div>
-
-          {/* Revenue */}
-          <div className="bg-carbon/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 relative overflow-hidden group hover:bg-white/5 hover:border-magenta/30 transition-all duration-300">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-magenta/10 blur-[50px] rounded-full group-hover:bg-magenta/20 transition-all" />
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="font-grotesk text-xs tracking-[0.2em] text-tungsten uppercase font-bold relative z-10">Revenue</h3>
-              <div className="bg-magenta/10 p-2 rounded-xl text-magenta relative z-10 border border-magenta/20">
-                <Wallet className="w-5 h-5" />
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Search now..." 
+                className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black w-64 transition"
+              />
             </div>
-            {isLoading ? <div className="h-10 w-32 bg-white/5 animate-pulse rounded-lg" /> : (
-              <div className="font-syncopate text-3xl font-bold text-white relative z-10">{formatCurrency(kpiData.total_revenue)}</div>
-            )}
-          </div>
-
-          {/* General Expenses */}
-          <div className="bg-carbon/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 relative overflow-hidden group hover:bg-white/5 hover:border-white/20 transition-all duration-300">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="font-grotesk text-xs tracking-[0.2em] text-tungsten uppercase font-bold relative z-10">General Expenses</h3>
-              <div className="bg-white/5 p-2 rounded-xl text-tungsten relative z-10 border border-white/10">
-                <Receipt className="w-5 h-5" />
-              </div>
-            </div>
-            {isLoading ? <div className="h-10 w-32 bg-white/5 animate-pulse rounded-lg" /> : (
-              <div className="font-syncopate text-3xl font-bold text-white relative z-10">{formatCurrency(kpiData.general_expenses)}</div>
-            )}
-          </div>
-
-          {/* Labor Cost */}
-          <div className="bg-carbon/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 relative overflow-hidden group hover:bg-white/5 hover:border-white/20 transition-all duration-300">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="font-grotesk text-xs tracking-[0.2em] text-tungsten uppercase font-bold relative z-10">Labor Cost</h3>
-              <div className="bg-white/5 p-2 rounded-xl text-tungsten relative z-10 border border-white/10">
-                <Users className="w-5 h-5" />
-              </div>
-            </div>
-            {isLoading ? <div className="h-10 w-32 bg-white/5 animate-pulse rounded-lg" /> : (
-              <div className="font-syncopate text-3xl font-bold text-white relative z-10">{formatCurrency(kpiData.labor_cost)}</div>
-            )}
+            <button className="bg-black text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 hover:bg-gray-800 transition">
+              <Filter className="w-4 h-4" /> Filter By
+            </button>
           </div>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        {/* KPI Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+            <p className="text-gray-500 text-sm font-semibold mb-2">Net Profit Today</p>
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-3xl font-black text-gray-900">
+                {isLoading ? "..." : formatCurrency(kpiData.net_profit_today)}
+              </h2>
+              <span className="text-xs font-bold text-green-500 bg-green-50 px-2 py-1 rounded-md flex items-center">
+                <ArrowUpRight className="w-3 h-3 mr-1" /> Today
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex justify-between items-center">
+            <div>
+              <p className="text-gray-500 text-sm font-semibold mb-1">Total Revenue</p>
+              <h3 className="text-2xl font-bold text-gray-900">
+                {isLoading ? "..." : formatCurrency(kpiData.revenue_today)}
+              </h3>
+            </div>
+            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100">
+              <Wallet className="w-5 h-5 text-gray-600" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex justify-between items-center">
+            <div>
+              <p className="text-gray-500 text-sm font-semibold mb-1">General Expenses</p>
+              <h3 className="text-2xl font-bold text-gray-900">
+                {isLoading ? "..." : formatCurrency(kpiData.general_expenses_today)}
+              </h3>
+            </div>
+            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100">
+              <Receipt className="w-5 h-5 text-gray-600" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex justify-between items-center">
+            <div>
+              <p className="text-gray-500 text-sm font-semibold mb-1">Labor Cost</p>
+              <h3 className="text-2xl font-bold text-gray-900">
+                {isLoading ? "..." : formatCurrency(kpiData.labor_cost_today)}
+              </h3>
+            </div>
+            <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center border border-green-100">
+              <Users className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content Areas */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Left Column (Spans 2/3) */}
-          <div className="xl:col-span-2 space-y-8">
+          <div className="lg:col-span-2 space-y-8">
             
-            {/* Revenue Chart */}
-            <div className="bg-carbon/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 relative">
-              <h3 className="font-grotesk text-xs tracking-[0.2em] text-tungsten uppercase font-bold mb-6">Revenue Trajectory</h3>
-              <div className="h-[300px] w-full">
+            {/* Chart Section */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-gray-900 text-lg">Transaction Activity</h3>
+                <div className="flex items-center gap-4 text-sm font-medium text-gray-500">
+                  <span className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-black"></div> Revenue
+                  </span>
+                </div>
+              </div>
+              <div className="h-64 w-full">
                 {isLoading ? (
-                  <div className="w-full h-full bg-white/5 animate-pulse rounded-xl" />
+                  <div className="w-full h-full bg-gray-100 animate-pulse rounded-xl" />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      {/* Removing grid lines for clean look */}
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#141518', borderColor: '#333', borderRadius: '12px', color: '#fff', fontFamily: 'var(--font-jakarta)' }}
-                        itemStyle={{ color: '#01FFFF', fontWeight: 'bold' }}
-                      />
+                    <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#000000" stopOpacity={0.1}/>
+                          <stop offset="95%" stopColor="#000000" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
                       <XAxis 
-                        dataKey="date" 
-                        stroke="#8E939B" 
-                        tick={{ fill: '#8E939B', fontSize: 12, fontFamily: 'var(--font-jakarta)' }}
-                        tickLine={false}
-                        axisLine={false}
+                        dataKey="displayDate" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#9CA3AF', fontSize: 12 }} 
+                        dy={10}
                       />
                       <YAxis 
-                        stroke="#8E939B" 
-                        tick={{ fill: '#8E939B', fontSize: 12, fontFamily: 'var(--font-jakarta)' }}
-                        tickLine={false}
-                        axisLine={false}
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: '#9CA3AF', fontSize: 12 }} 
                         tickFormatter={(val) => `₹${val}`}
                       />
-                      <Line 
-                        type="monotone" 
-                        dataKey="revenue" 
-                        stroke="#01FFFF" 
-                        strokeWidth={3}
-                        dot={{ fill: '#01FFFF', strokeWidth: 2, r: 4 }}
-                        activeDot={{ r: 6, fill: '#FF2A6D', stroke: '#FF2A6D' }}
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                        itemStyle={{ color: '#000', fontWeight: 'bold' }}
                       />
-                    </LineChart>
+                      <Area 
+                        type="monotone" 
+                        dataKey="value" // Adjust if your api uses "revenue" instead of "value"
+                        stroke="#000000" 
+                        strokeWidth={2}
+                        fillOpacity={1} 
+                        fill="url(#colorRevenue)" 
+                        activeDot={{ r: 6, fill: '#000', stroke: '#fff', strokeWidth: 2 }}
+                      />
+                    </AreaChart>
                   </ResponsiveContainer>
                 )}
               </div>
             </div>
 
             {/* Recent Bookings Table */}
-            <div className="bg-carbon/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 overflow-hidden relative">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                <h3 className="font-bold text-gray-900 text-lg">Recent Bookings</h3>
+                <button className="text-gray-400 hover:text-black transition">
+                  <MoreHorizontal className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
+                    <tr>
+                      <th className="py-3 px-6">ID</th>
+                      <th className="py-3 px-6">Vehicle / Package</th>
+                      <th className="py-3 px-6">Status</th>
+                      <th className="py-3 px-6">Tech</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+                    {isLoading ? (
+                      <tr><td colSpan={4} className="py-8 px-6 text-center text-gray-400 animate-pulse">Loading bookings...</td></tr>
+                    ) : recentJobs.length === 0 ? (
+                      <tr><td colSpan={4} className="py-8 px-6 text-center text-gray-400">No recent bookings found.</td></tr>
+                    ) : (
+                      recentJobs.map((b, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50 transition border-b border-gray-50 last:border-0">
+                          <td className="py-4 px-6 text-gray-500">#{b.id}</td>
+                          <td className="py-4 px-6">
+                            <p className="font-bold text-gray-900">{b.service_package_details?.name || b.package?.name || 'Wash'}</p>
+                            <p className="text-xs text-gray-500">{b.vehicle_info || b.vehicle?.model || 'Unknown'}</p>
+                          </td>
+                          <td className="py-4 px-6">
+                            {getStatusBadge(b.status)}
+                          </td>
+                          <td className="py-4 px-6 text-sm">
+                            {b.technician_name ? b.technician_name : <span className="text-gray-400">Unassigned</span>}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-8">
+            
+            {/* Chemical Cost Target */}
+            <div className="bg-[#1C1C1E] text-white rounded-2xl shadow-lg p-8 relative overflow-hidden">
+              <div className="absolute -right-10 -top-10 w-40 h-40 border-[20px] border-white/5 rounded-full"></div>
+              
+              <p className="text-gray-400 font-semibold text-sm mb-1 z-10 relative">Total Chemical Cost Today</p>
+              <h2 className="text-4xl font-black z-10 relative">
+                {isLoading ? "..." : formatCurrency(kpiData.chemical_cost_today)}
+              </h2>
+              
+              <div className="mt-8 z-10 relative">
+                <div className="flex justify-between text-xs font-bold text-gray-400 mb-2">
+                  <span>Usage Target</span>
+                  <span>Safe</span>
+                </div>
+                <div className="w-full bg-white/10 rounded-full h-2">
+                  <div className="bg-green-400 h-2 rounded-full" style={{ width: '35%' }}></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Staff Leaderboard */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="font-grotesk text-xs tracking-[0.2em] text-tungsten uppercase font-bold">Live Operations Hub</h3>
-                <button className="text-[10px] uppercase tracking-widest text-cyan border border-cyan/20 px-3 py-1.5 rounded-lg hover:bg-cyan/10 transition-colors font-bold">
-                  View All
+                <h3 className="font-bold text-gray-900 text-lg">Top Staff</h3>
+                <button className="text-gray-400 hover:text-black transition">
+                  <MoreHorizontal className="w-5 h-5" />
                 </button>
               </div>
               
-              <div className="overflow-x-auto">
-                {isLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map(i => <div key={i} className="h-12 w-full bg-white/5 animate-pulse rounded-lg" />)}
-                  </div>
-                ) : (
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-white/10">
-                        <th className="py-3 px-4 font-grotesk text-[10px] tracking-widest text-tungsten uppercase">Job ID</th>
-                        <th className="py-3 px-4 font-grotesk text-[10px] tracking-widest text-tungsten uppercase">Vehicle / Reg</th>
-                        <th className="py-3 px-4 font-grotesk text-[10px] tracking-widest text-tungsten uppercase">Package</th>
-                        <th className="py-3 px-4 font-grotesk text-[10px] tracking-widest text-tungsten uppercase">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentJobs.length > 0 ? recentJobs.map((job, idx) => (
-                        <tr key={idx} className="border-b border-white/5 hover:bg-white/5 transition-colors group">
-                          <td className="py-4 px-4 font-mono text-sm text-cyan">#{job.id || 'N/A'}</td>
-                          <td className="py-4 px-4">
-                            <div className="font-syncopate text-xs font-bold text-white">{job.vehicle?.model || 'Unknown Vehicle'}</div>
-                            <div className="text-[10px] text-tungsten uppercase mt-1">{job.vehicle?.license_plate || 'No Plate'}</div>
-                          </td>
-                          <td className="py-4 px-4 font-jakarta text-sm text-white">{job.package?.name || 'Standard Spa'}</td>
-                          <td className="py-4 px-4">
-                            <span className={`text-[10px] px-2.5 py-1 rounded-md font-bold uppercase tracking-widest font-grotesk ${getStatusBadge(job.status)}`}>
-                              {job.status || 'PENDING'}
-                            </span>
-                          </td>
-                        </tr>
-                      )) : (
-                        <tr>
-                          <td colSpan={4} className="py-8 text-center text-tungsten font-jakarta text-sm">
-                            No active operations found in the database.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-
-          </div>
-
-          {/* Right Column (Spans 1/3) */}
-          <div className="space-y-8">
-            {/* Top Staff / System Alerts */}
-            <div className="bg-carbon/40 backdrop-blur-md border border-white/5 rounded-3xl p-6 relative">
-              <h3 className="font-grotesk text-xs tracking-[0.2em] text-tungsten uppercase font-bold mb-6 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-magenta" />
-                System Alerts
-              </h3>
-              
-              <div className="space-y-4">
-                {isLoading ? (
-                  <div className="space-y-3">
-                    <div className="h-16 w-full bg-white/5 animate-pulse rounded-xl" />
-                    <div className="h-16 w-full bg-white/5 animate-pulse rounded-xl" />
-                  </div>
-                ) : (
-                  <>
-                    <div className="bg-obsidian border border-white/5 rounded-2xl p-4 flex gap-4 items-start relative overflow-hidden group cursor-pointer hover:border-white/20 transition-colors">
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-magenta/50" />
-                      <div className="w-10 h-10 rounded-full bg-magenta/10 flex items-center justify-center text-magenta font-syncopate font-bold text-xs flex-shrink-0">
-                        OP
-                      </div>
-                      <div>
-                        <div className="font-syncopate text-xs font-bold text-white mb-1">Queue Bottleneck</div>
-                        <div className="font-jakarta text-[11px] text-tungsten leading-relaxed">Washing bay 2 is experiencing delays. 3 jobs pending beyond estimated time.</div>
-                      </div>
-                    </div>
-
-                    <div className="bg-obsidian border border-white/5 rounded-2xl p-4 flex gap-4 items-start relative overflow-hidden group cursor-pointer hover:border-white/20 transition-colors">
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan/50" />
-                      <div className="w-10 h-10 rounded-full bg-cyan/10 flex items-center justify-center text-cyan font-syncopate font-bold text-xs flex-shrink-0">
-                        FI
-                      </div>
-                      <div>
-                        <div className="font-syncopate text-xs font-bold text-white mb-1">Target Reached</div>
-                        <div className="font-jakarta text-[11px] text-tungsten leading-relaxed">Daily revenue target of ₹50,000 exceeded by 12%.</div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-             {/* System Status */}
-             <div className="bg-gradient-to-br from-carbon to-obsidian border border-white/10 rounded-3xl p-6 relative overflow-hidden">
-                <h3 className="font-grotesk text-xs tracking-[0.2em] text-tungsten uppercase font-bold mb-4">Core Integrity</h3>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-[10px] font-grotesk uppercase tracking-widest text-cyan mb-1 font-bold">
-                      <span>Server Status</span>
-                      <span>99.9%</span>
-                    </div>
-                    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-cyan w-[99.9%] rounded-full shadow-[0_0_10px_rgba(1,255,255,0.8)]" />
+              <div className="space-y-5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">AM</div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-sm">Alexander Munle</p>
+                      <p className="text-xs text-gray-500">Sr. Detailer</p>
                     </div>
                   </div>
-                  <div>
-                    <div className="flex justify-between text-[10px] font-grotesk uppercase tracking-widest text-magenta mb-1 font-bold">
-                      <span>API Latency</span>
-                      <span>42ms</span>
-                    </div>
-                    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-magenta w-[15%] rounded-full shadow-[0_0_10px_rgba(255,42,109,0.8)]" />
-                    </div>
-                  </div>
+                  <span className="font-bold text-sm">₹2,386</span>
                 </div>
-             </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm">DR</div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-sm">Dianne Russell</p>
+                      <p className="text-xs text-gray-500">Washer</p>
+                    </div>
+                  </div>
+                  <span className="font-bold text-sm">₹2,142</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center font-bold text-sm">BS</div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-sm">Brooklyn Simmons</p>
+                      <p className="text-xs text-gray-500">Driver</p>
+                    </div>
+                  </div>
+                  <span className="font-bold text-sm">₹1,494</span>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
       </main>
