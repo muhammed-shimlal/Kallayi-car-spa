@@ -55,7 +55,7 @@ export default function LoginPage() {
       } else if (role === "WASHER" || role === "DRIVER" || role === "TECHNICIAN") {
         router.push("/staff/queue");
       } else {
-        router.push("/");
+        router.push("/customer/dashboard");
       }
     } catch (err: any) {
       setError(err.message || "An authentication error occurred.");

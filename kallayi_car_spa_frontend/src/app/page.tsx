@@ -2,11 +2,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Inter, Space_Grotesk } from 'next/font/google';
+import { useRouter } from 'next/navigation';
 
 const inter = Inter({ subsets: ['latin'] });
-const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['300', '700',] });
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['300', '700'] });
 
 export default function CustomerCinematicPage() {
+    const router = useRouter();
     const [activeBg, setActiveBg] = useState('bg-0');
     
     // Drag-to-scroll state for the film strip
@@ -14,6 +16,21 @@ export default function CustomerCinematicPage() {
     const [isDown, setIsDown] = useState(false);
     const [startX, setStartX] = useState(0);
     const [scrollLeft, setScrollLeft] = useState(0);
+
+    // --- LOGIC: Handle Button Clicks & Auth ---
+    const handleBookingClick = () => {
+        // Only run on the client side
+        if (typeof window !== 'undefined') {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                // User is logged in -> Send to the actual Customer Dashboard
+                router.push('/customer/dashboard');
+            } else {
+                // User is NOT logged in -> Send to Login Page
+                router.push('/login');
+            }
+        }
+    };
 
     // Magnetic Button Physics
     const handleMagneticMove = (e: React.MouseEvent<HTMLButtonElement | HTMLDivElement>) => {
@@ -111,7 +128,7 @@ export default function CustomerCinematicPage() {
                     z-index: 100; opacity: 0; animation: fadeDown 1.5s var(--ease-out) 0.5s forwards;
                     background: linear-gradient(to bottom, rgba(5,5,5,0.8) 0%, rgba(5,5,5,0) 100%);
                 }
-                .logo { font-size: 24px; font-weight: 700; letter-spacing: 0.2em; text-decoration: none; color: white; }
+                .logo { font-size: 24px; font-weight: 700; letter-spacing: 0.2em; text-decoration: none; color: white; cursor: pointer; }
                 .logo span { color: var(--accent-red); }
                 .menu-btn { display: flex; flex-direction: column; gap: 6px; cursor: pointer; padding: 20px; transition: transform 0.3s var(--ease-out); }
                 .menu-btn .line { width: 30px; height: 2px; background: var(--text-pure); transition: width 0.3s ease; }
@@ -229,11 +246,12 @@ export default function CustomerCinematicPage() {
 
             {/* --- NAVBAR --- */}
             <nav className="navbar">
-                <a href="#" className="logo font-display">KALLAYI<span>.</span></a>
+                <a onClick={handleBookingClick} className="logo font-display">KALLAYI<span>.</span></a>
                 <div 
                     className="menu-btn magnetic" 
                     onMouseMove={handleMagneticMove} 
                     onMouseLeave={handleMagneticLeave}
+                    onClick={() => router.push('/login')} // Easy way to hit login
                 >
                     <div className="line"></div>
                     <div className="line"></div>
@@ -249,6 +267,7 @@ export default function CustomerCinematicPage() {
                 <div className="hero-content">
                     <span className="hud-label uppercase">SYS. ONLINE // VEHICLE SPA</span>
                     <button 
+                        onClick={handleBookingClick} // Triggers routing logic
                         className="book-btn font-display magnetic"
                         onMouseMove={handleMagneticMove} 
                         onMouseLeave={handleMagneticLeave}
@@ -277,17 +296,17 @@ export default function CustomerCinematicPage() {
                 <div className="arsenal-content">
                     <span className="hud-label uppercase reveal-up">SYS. ARCHIVE // SELECT SERVICE</span>
                     <div className="services-list">
-                        <div className="service-item reveal-up" onMouseEnter={() => setActiveBg('bg-0')}>
+                        <div className="service-item reveal-up" onMouseEnter={() => setActiveBg('bg-0')} onClick={handleBookingClick}>
                             <span className="service-num font-display">01</span>
                             <h2 className="service-title font-display">CAR WASH</h2>
                             <span className="service-arrow font-display">→</span>
                         </div>
-                        <div className="service-item reveal-up" style={{ transitionDelay: '0.1s' }} onMouseEnter={() => setActiveBg('bg-1')}>
+                        <div className="service-item reveal-up" style={{ transitionDelay: '0.1s' }} onMouseEnter={() => setActiveBg('bg-1')} onClick={handleBookingClick}>
                             <span className="service-num font-display">02</span>
                             <h2 className="service-title font-display">DETAILING</h2>
                             <span className="service-arrow font-display">→</span>
                         </div>
-                        <div className="service-item reveal-up" style={{ transitionDelay: '0.2s' }} onMouseEnter={() => setActiveBg('bg-2')}>
+                        <div className="service-item reveal-up" style={{ transitionDelay: '0.2s' }} onMouseEnter={() => setActiveBg('bg-2')} onClick={handleBookingClick}>
                             <span className="service-num font-display">03</span>
                             <h2 className="service-title font-display">UNLIMITED</h2>
                             <span className="service-arrow font-display">→</span>
