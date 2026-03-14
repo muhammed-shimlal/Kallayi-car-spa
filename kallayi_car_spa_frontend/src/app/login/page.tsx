@@ -2,40 +2,69 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { EyeOff, Eye, Car, Lock, ShieldCheck, Loader2 } from "lucide-react";
+import { EyeOff, Eye, Lock, ShieldCheck, Loader2 } from "lucide-react";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { isValidPhoneNumber } from "react-phone-number-input";
+import { CinematicPhoneInput } from "@/components/ui/phone-input";
+
+const loginSchema = z.object({
+  phone: z.string({
+    required_error: "Phone number is required",
+  }).refine((val) => val && isValidPhoneNumber(val), {
+    message: "Invalid phone number",
+  }),
+  password: z.string().min(1, "Password is required"),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const {
+    control,
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      phone: "",
+      password: "",
+    },
+  });
+
+  const onSubmit = async (data: LoginFormValues) => {
     setError("");
     setIsLoading(true);
+
+    // Logs the E.164 phone number as requested for the backend
+    console.log("Attempting login with E.164 Identity:", data.phone);
 
     try {
       // 1. Authenticate with Django Backend API
       const authRes = await fetch("http://127.0.0.1:8001/api/api-token-auth/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: data.phone, password: data.password }),
       });
 
       if (!authRes.ok) {
-        throw new Error("Invalid username or password");
+        throw new Error("Invalid phone number or password");
       }
 
       const authData = await authRes.json();
       const token = authData.token;
 
-      // 1. Force save to Local Storage (This is what the Admin page looks for!)
-      localStorage.setItem('auth_token', token); 
+      // Force save to Local Storage (This is what the Admin page looks for!)
+      localStorage.setItem("auth_token", token);
 
-      // 2. You can also keep the cookie if you want, but localStorage is mandatory.
+      // Keep the cookie if you want, but localStorage is mandatory.
       document.cookie = `auth_token=${token}; path=/;`;
 
       // 2. Fetch User Profile
@@ -88,24 +117,24 @@ export default function LoginPage() {
         </div>
 
         {/* Login Form */}
-        <form onSubmit={handleLogin} className="space-y-6">
-          {/* Username Input */}
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* Phone Input */}
           <div className="space-y-2 relative group w-full">
-            <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Username</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Car className="h-5 w-5 text-tungsten group-focus-within:text-magenta transition-colors" />
-              </div>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 py-4 pl-12 pr-4 rounded-xl text-white font-mono focus:outline-none focus:border-magenta focus:ring-1 focus:ring-magenta transition-all placeholder:text-tungsten/40"
-                placeholder="Enter identification..."
-                required
-                disabled={isLoading}
-              />
-            </div>
+            <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Secure Phone ID</label>
+            <Controller
+              name="phone"
+              control={control}
+              render={({ field }) => (
+                <div className="relative">
+                  <CinematicPhoneInput
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.phone?.message}
+                    disabled={isLoading}
+                  />
+                </div>
+              )}
+            />
           </div>
 
           {/* Password Input */}
@@ -117,12 +146,10 @@ export default function LoginPage() {
               </div>
               <input
                 type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 py-4 pl-12 pr-12 rounded-xl text-white font-mono focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan transition-all placeholder:text-tungsten/40"
-                placeholder="Enter access code..."
-                required
+                {...register("password")}
                 disabled={isLoading}
+                className={`w-full bg-white/5 border ${errors.password ? 'border-[#E52323]' : 'border-white/10'} py-4 pl-12 pr-12 rounded-xl text-white font-mono focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan transition-all placeholder:text-tungsten/40`}
+                placeholder="Enter access code..."
               />
               <button
                 type="button"
@@ -133,10 +160,15 @@ export default function LoginPage() {
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
+            {errors.password && (
+              <p className="text-[10px] text-[#E52323] font-bold tracking-widest uppercase ml-1 mt-2">
+                {errors.password.message}
+              </p>
+            )}
           </div>
 
           {/* Error Message */}
-          <div className={`text-magenta font-mono text-xs text-center min-h-[16px] transition-opacity duration-300 font-semibold tracking-wide ${error ? 'opacity-100' : 'opacity-0'}`}>
+          <div className={`text-[#E52323] font-mono text-xs text-center min-h-[16px] transition-opacity duration-300 font-semibold tracking-wide ${error ? 'opacity-100' : 'opacity-0'}`}>
             {error && `> ERR: ${error}`}
           </div>
 
@@ -144,7 +176,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-magenta text-white font-syncopate font-bold py-4 rounded-xl hover:shadow-[0_0_30px_rgba(255,42,109,0.4)] hover:scale-[1.02] transition-all active:scale-95 flex justify-center items-center gap-2 mt-2 disabled:opacity-70 disabled:hover:scale-100 disabled:hover:shadow-none"
+            className="w-full bg-[#E52323] text-white font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(229,35,35,0.4)] hover:shadow-[0_0_30px_rgba(229,35,35,0.6)] hover:bg-red-700 hover:scale-[1.02] transition-all active:scale-95 flex justify-center items-center gap-2 mt-2 disabled:opacity-70 disabled:hover:scale-100 disabled:hover:shadow-none"
           >
             {isLoading ? (
               <>
