@@ -43,6 +43,7 @@ from customers.views import register_customer
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/bookings/', include('bookings.urls')),
     path('api/', include(router.urls)),
     path('api/core/', include('core.urls')),
     path('api/api-token-auth/', views.obtain_auth_token),

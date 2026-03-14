@@ -10,6 +10,11 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from staff.models import StaffProfile
 from django.utils import timezone
+from rest_framework.decorators import api_view, permission_classes
+from django.db import transaction
+import random
+from fleet.models import Vehicle
+from customers.models import Customer
 
 class IsAdminUserOrReadOnly(BasePermission):
     def has_permission(self, request, view):
@@ -147,3 +152,62 @@ class DriverBookingViewSet(viewsets.ReadOnlyModelViewSet):
             
             return Response({'status': 'success'})
         return Response({'status': 'invalid status'}, status=400)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def express_walkin(request):
+    user = request.user
+    
+    auth_roles = ['ADMIN', 'MANAGER', 'WASHER', 'TECHNICIAN', 'DRIVER']
+    
+    # Simple role check based on StaffProfile or request.user.is_staff
+    is_authorized = False
+    
+    if user.is_staff or user.is_superuser:
+        is_authorized = True
+    elif hasattr(user, 'staff_profile') and user.staff_profile.role in auth_roles:
+        is_authorized = True
+        
+    # Check if they have a role attribute sent by middleware or decoded token (like what the frontend stores)
+    if not is_authorized:
+        return Response({'error': 'Forbidden'}, status=403)
+        
+    phone = request.data.get('phone')
+    plate_number = request.data.get('plate_number')
+    package_id = request.data.get('package_id')
+    
+    if not phone or not plate_number or not package_id:
+        return Response({'error': 'Missing required fields'}, status=400)
+        
+    try:
+        package = ServicePackage.objects.get(id=package_id)
+    except ServicePackage.DoesNotExist:
+        return Response({'error': 'Invalid service package'}, status=400)
+        
+    # Customer Resolution
+    customer = Customer.objects.filter(phone_number=phone).first()
+    if not customer:
+        username = f"guest_{random.randint(100000, 999999)}"
+        new_user = User.objects.create(username=username)
+        customer = Customer.objects.create(user=new_user, phone_number=phone)
+        
+    # Vehicle Resolution (Note: instruction asked for ServiceVehicle, but Booking requires Vehicle)
+    vehicle, created = Vehicle.objects.get_or_create(
+        plate_number=plate_number, 
+        defaults={'owner': customer, 'model': 'Unknown Walk-In'}
+    )
+    
+    # Booking Creation
+    booking = Booking.objects.create(
+        customer=customer,
+        vehicle=vehicle,
+        service_package=package,
+        status='PENDING',
+        time_slot=timezone.now(),
+        address='Kallayi Car Spa - Main Hub'
+    )
+    
+    print(f"📱 MOCK SMS: Welcome to Kallayi! Track your car ({plate_number}) live: https://kallayi.com/track/{booking.id}")
+    
+    return Response({'status': 'success', 'booking_id': booking.id})

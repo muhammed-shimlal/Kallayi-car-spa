@@ -179,6 +179,12 @@ export default function AdminDashboard() {
                     <button onClick={() => setActiveTab('finance')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'finance' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><Wallet className="w-4 h-4" /> Finance Dept</button>
                     <button className="w-full flex items-center gap-4 px-4 py-4 rounded-xl text-[#8E939B] hover:text-white font-bold text-xs uppercase tracking-widest transition-all"><Car className="w-4 h-4" /> Fleet Mgmt</button>
                     <button className="w-full flex items-center gap-4 px-4 py-4 rounded-xl text-[#8E939B] hover:text-white font-bold text-xs uppercase tracking-widest transition-all"><Users className="w-4 h-4" /> Staff Ops</button>
+                    
+                    <div className="border-t border-white/10 my-4"></div>
+                    
+                    <button onClick={() => router.push('/staff/pos')} className="w-full flex justify-between items-center gap-4 px-4 py-4 rounded-xl text-white bg-[#E52323] hover:bg-red-700 shadow-[0_0_20px_rgba(229,35,35,0.4)] transition-all font-bold text-xs uppercase tracking-widest">
+                        Launch Express POS <ChevronRight className="w-4 h-4" />
+                    </button>
                 </nav>
                 <div className="p-6 border-t border-white/5">
                     <div className="flex items-center gap-4 mb-6">
