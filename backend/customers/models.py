@@ -16,6 +16,8 @@ class Customer(models.Model):
     phone_number = models.CharField(max_length=15, blank=True)
     address = models.TextField(blank=True)
     loyalty_points = models.IntegerField(default=0)
+    outstanding_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    credit_limit = models.DecimalField(max_digits=10, decimal_places=2, default=5000.00)
 
     def __str__(self):
         return self.user.username

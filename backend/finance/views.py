@@ -4,8 +4,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from django.db.models import Sum, F
 from django.utils import timezone
-from .models import Invoice, ChemicalUsageLog, PayrollEntry, GeneralExpense, ExpenseCategory
+from decimal import Decimal
+from .models import Invoice, ChemicalUsageLog, PayrollEntry, GeneralExpense, ExpenseCategory, KhataLedger
 from .serializers import InvoiceSerializer, GeneralExpenseSerializer, ExpenseCategorySerializer
+from customers.models import Customer
+from bookings.models import Booking
 
 from django.http import HttpResponse
 from django.template.loader import render_to_string
@@ -245,3 +248,122 @@ class ReportingViewSet(viewsets.ViewSet):
         response = HttpResponse(csv_data, content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="expenses_{start}_{end}.csv"'
         return response
+
+class KhataViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminUser]
+
+    def list(self, request):
+        """GET /api/finance/khata/"""
+        # Fetch customers with outstanding balance > 0
+        customers = Customer.objects.filter(outstanding_balance__gt=0)
+        data = []
+        for c in customers:
+            data.append({
+                'id': c.id,
+                'name': f"{c.user.first_name} {c.user.last_name}".strip() or c.user.username,
+                'phone_number': c.phone_number,
+                'outstanding_balance': float(c.outstanding_balance),
+                'credit_limit': float(c.credit_limit),
+            })
+        return Response(data)
+
+    def retrieve(self, request, pk=None):
+        """GET /api/finance/khata/<customer_id>/"""
+        try:
+            customer = Customer.objects.get(pk=pk)
+        except Customer.DoesNotExist:
+            return Response({'error': 'Customer not found'}, status=404)
+        
+        entries = KhataLedger.objects.filter(customer=customer).order_by('-created_at')
+        data = []
+        for entry in entries:
+            # Need description or formatted name for booking if exists
+            desc = entry.description
+            if entry.related_booking:
+                desc += f" (Booking #{entry.related_booking.id})"
+                
+            data.append({
+                'id': entry.id,
+                'amount': float(entry.amount),
+                'transaction_type': entry.transaction_type,
+                'description': desc,
+                'date': entry.created_at.strftime("%Y-%m-%d %H:%M"),
+            })
+        return Response(data)
+
+    @action(detail=False, methods=['post'])
+    def charge(self, request):
+        """POST /api/finance/khata/charge/"""
+        customer_id = request.data.get('customer_id')
+        amount = Decimal(str(request.data.get('amount', 0)))
+        description = request.data.get('description', 'Khata Charge')
+        booking_id = request.data.get('booking_id')
+
+        try:
+            customer = Customer.objects.get(pk=customer_id)
+        except Customer.DoesNotExist:
+            return Response({'error': 'Customer not found'}, status=404)
+
+        if customer.outstanding_balance + amount > customer.credit_limit:
+            return Response({'error': 'Credit limit exceeded'}, status=400)
+
+        booking = None
+        if booking_id:
+            try:
+                booking = Booking.objects.get(pk=booking_id)
+            except Booking.DoesNotExist:
+                pass
+
+        # Create Charge
+        KhataLedger.objects.create(
+            customer=customer,
+            amount=amount,
+            transaction_type='CHARGE',
+            description=description,
+            related_booking=booking
+        )
+
+        # Update Balance
+        customer.outstanding_balance += amount
+        customer.save()
+
+        # Mock SMS
+        print(f"[MOCK SMS] Your Kallayi Khata has been charged ₹{amount}. New Balance: ₹{customer.outstanding_balance}.")
+
+        return Response({'status': 'Charge successful', 'new_balance': float(customer.outstanding_balance)})
+
+    @action(detail=False, methods=['post'])
+    def settle(self, request):
+        """POST /api/finance/khata/settle/"""
+        customer_id = request.data.get('customer_id')
+        amount = Decimal(str(request.data.get('amount', 0)))
+        description = request.data.get('description', 'Cash Payment')
+
+        try:
+            customer = Customer.objects.get(pk=customer_id)
+        except Customer.DoesNotExist:
+            return Response({'error': 'Customer not found'}, status=404)
+
+        if amount <= 0:
+            return Response({'error': 'Amount must be greater than 0'}, status=400)
+
+        # Create Settlement
+        KhataLedger.objects.create(
+            customer=customer,
+            amount=amount,
+            transaction_type='SETTLEMENT',
+            description=description
+        )
+
+        # Update Balance dynamically
+        customer.outstanding_balance -= amount
+        # For simplicity, bounding it to zero if overpaid 
+        if customer.outstanding_balance < 0:
+            customer.outstanding_balance = Decimal('0.00')
+            
+        customer.save()
+
+        # Mock SMS
+        print(f"[MOCK SMS] Payment received! ₹{amount} has been credited to your Kallayi Khata. New Balance: ₹{customer.outstanding_balance}.")
+
+        return Response({'status': 'Settlement successful', 'new_balance': float(customer.outstanding_balance)})

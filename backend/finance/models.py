@@ -122,3 +122,22 @@ class Invoice(models.Model):
 
     def __str__(self):
         return f"Invoice #{self.id} - {self.booking}"
+
+class KhataLedger(models.Model):
+    """
+    Double-entry ledger for the Digital Khata (Credit) System
+    """
+    TRANSACTION_TYPES = [
+        ('CHARGE', 'Charge to Khata'),
+        ('SETTLEMENT', 'Settlement Payment'),
+    ]
+
+    customer = models.ForeignKey('customers.Customer', on_delete=models.CASCADE, related_name='khata_entries')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction_type = models.CharField(max_length=15, choices=TRANSACTION_TYPES)
+    description = models.CharField(max_length=255)
+    related_booking = models.ForeignKey(Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name='khata_charges')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.transaction_type} of ₹{self.amount} for {self.customer}"

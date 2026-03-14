@@ -28,6 +28,11 @@ export default function AdminDashboard() {
     const [recentBookings, setRecentBookings] = useState([]);
     const [expenses, setExpenses] = useState<any[]>([]);
     const [payrollData, setPayrollData] = useState<any[]>([]); // Using real API data
+    const [khataCustomers, setKhataCustomers] = useState<any[]>([]);
+    const [khataLedger, setKhataLedger] = useState<any[]>([]);
+    const [selectedKhataCustomer, setSelectedKhataCustomer] = useState<any | null>(null);
+    const [isKhataModalOpen, setIsKhataModalOpen] = useState(false);
+    const [khataPaymentAmount, setKhataPaymentAmount] = useState<string>('');
 
     // Mocked Data for Inventory
     const inventoryData = [ { id: 1, name: 'Ceramic Foam Wash', stock: '12 Liters', cost: '₹4,500', status: 'Healthy' }, { id: 2, name: 'Leather Conditioner', stock: '2 Liters', cost: '₹1,200', status: 'Low Stock' } ];
@@ -42,14 +47,15 @@ export default function AdminDashboard() {
         const API_BASE = 'http://127.0.0.1:8001/api';
 
         try {
-            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes] = await Promise.all([
+            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes] = await Promise.all([
                 fetch(`${API_BASE}/core/users/me/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/kpi_summary/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/bookings/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/expenses/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: HEADERS }),
-                fetch(`${API_BASE}/staff/daily-settlement/`, { headers: HEADERS })
+                fetch(`${API_BASE}/staff/daily-settlement/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/finance/khata/`, { headers: HEADERS })
             ]);
 
             if (userRes?.ok) { const user = await userRes.json(); setAdminName(user.first_name || user.username); }
@@ -62,6 +68,7 @@ export default function AdminDashboard() {
             if (expRes?.ok) { const e = await expRes.json(); setExpenses(e.results || e); }
             if (creditRes?.ok) { const creditData = await creditRes.json(); setCustomerCredits(creditData); }
             if (payrollRes?.ok) { const pd = await payrollRes.json(); setPayrollData(pd); }
+            if (khataRes?.ok) { const khataData = await khataRes.json(); setKhataCustomers(khataData); }
             
         } catch (error) { console.error("Fetch Error:", error); } finally { setIsLoading(false); }
     };
@@ -127,6 +134,36 @@ export default function AdminDashboard() {
         }
     };
     
+    const loadKhataLedger = async (customer: any) => {
+        setSelectedKhataCustomer(customer);
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/finance/khata/${customer.id}/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            if (res.ok) {
+                setKhataLedger(await res.json());
+            }
+        } catch(e) { console.error("Failed to load Khata ledger"); }
+    };
+
+    const handleKhataSettle = async () => {
+        if (!selectedKhataCustomer || !khataPaymentAmount) return;
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/finance/khata/settle/`, {
+                method: 'POST',
+                headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customer_id: selectedKhataCustomer.id, amount: khataPaymentAmount, description: "Admin Dashboard Settlement" })
+            });
+            if (res.ok) {
+                alert("Payment received successfully!");
+                setIsKhataModalOpen(false);
+                setKhataPaymentAmount('');
+                fetchDashboardData();
+                loadKhataLedger(selectedKhataCustomer);
+            } else {
+                alert("Failed to process payment");
+            }
+        } catch(e) { alert("Network error"); }
+    };
+
     // Settle End-of-Day Payout
     const settleWorkerPay = async (id: number) => {
         try {
@@ -265,6 +302,7 @@ export default function AdminDashboard() {
                             <button onClick={() => setFinanceSubTab('expenses')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'expenses' ? 'bg-[#FF2A6D]/10 text-[#FF2A6D]' : 'text-[#8E939B] hover:text-white'}`}>2. Expense Manager</button>
                             <button onClick={() => setFinanceSubTab('credit')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'credit' ? 'bg-purple-500/10 text-purple-400' : 'text-[#8E939B] hover:text-white'}`}>3. Customer Credit</button>
                             <button onClick={() => setFinanceSubTab('invoices')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400' : 'text-[#8E939B] hover:text-white'}`}>4. PDF Invoices</button>
+                            <button onClick={() => { setFinanceSubTab('khata'); setSelectedKhataCustomer(null); }} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'khata' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>5. Khata / Credit</button>
                         </div>
 
                         {financeSubTab === 'overview' && (
@@ -368,6 +406,86 @@ export default function AdminDashboard() {
                                 </table>
                             </div>
                         )}
+
+                        {financeSubTab === 'khata' && !selectedKhataCustomer && (
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                            <tr><th className="p-4 pl-6">Customer</th><th className="p-4">Phone Number</th><th className="p-4">Outstanding Balance</th><th className="p-4 text-right pr-6">Action</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {khataCustomers.length === 0 ? (
+                                                <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No active Khata balances.</td></tr>
+                                            ) : (
+                                                khataCustomers.map((c) => (
+                                                <tr key={c.id} className="hover:bg-white/5 cursor-pointer" onClick={() => loadKhataLedger(c)}>
+                                                    <td className="p-4 pl-6 font-bold text-white flex items-center gap-2">
+                                                        {c.name}
+                                                        {c.outstanding_balance >= c.credit_limit * 0.9 && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
+                                                    </td>
+                                                    <td className="p-4 text-[#8E939B] font-mono text-xs">{c.phone_number}</td>
+                                                    <td className="p-4 font-syncopate font-bold text-[#01FFFF]">₹{c.outstanding_balance}</td>
+                                                    <td className="p-4 text-right pr-6">
+                                                        <button onClick={(e) => { e.stopPropagation(); loadKhataLedger(c); }} className="text-[9px] bg-white/10 text-white border border-white/20 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-white hover:text-black transition">
+                                                            View Ledger <ChevronRight className="w-3 h-3"/>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            )))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {financeSubTab === 'khata' && selectedKhataCustomer && (
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="flex justify-between items-center mb-6">
+                                    <button onClick={() => setSelectedKhataCustomer(null)} className="text-[#8E939B] hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"><ChevronRight className="w-4 h-4 rotate-180"/> Back to Khata List</button>
+                                    <button onClick={() => { setKhataPaymentAmount(selectedKhataCustomer.outstanding_balance.toString()); setIsKhataModalOpen(true); }} className="flex items-center gap-2 bg-[#01FFFF] text-black px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white transition shadow-[0_0_20px_rgba(1,255,255,0.3)]">
+                                        <BadgeDollarSign className="w-4 h-4" /> Receive Payment
+                                    </button>
+                                </div>
+
+                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden">
+                                    <div className="p-6 border-b border-white/5 flex justify-between items-center bg-black/40">
+                                        <div>
+                                            <h4 className="font-bold text-lg text-white">{selectedKhataCustomer.name}'s Ledger</h4>
+                                            <p className="text-[#8E939B] text-xs font-mono">{selectedKhataCustomer.phone_number}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Current Balance</p>
+                                            <h2 className="text-2xl font-syncopate font-bold text-[#01FFFF]">₹{selectedKhataCustomer.outstanding_balance}</h2>
+                                        </div>
+                                    </div>
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-black/20 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                            <tr><th className="p-4 pl-6">Date</th><th className="p-4">Description</th><th className="p-4">Type</th><th className="p-4 text-right pr-6">Amount</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {khataLedger.length === 0 ? (
+                                                <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No ledger entries found.</td></tr>
+                                            ) : (
+                                                khataLedger.map((entry) => (
+                                                <tr key={entry.id} className="hover:bg-white/5">
+                                                    <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
+                                                    <td className="p-4 font-bold text-white">{entry.description}</td>
+                                                    <td className="p-4">
+                                                        <span className={`text-[9px] px-2 py-1 rounded-sm uppercase tracking-widest font-bold ${entry.transaction_type === 'CHARGE' ? 'bg-[#FF2A6D]/20 text-[#FF2A6D]' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                                            {entry.transaction_type}
+                                                        </span>
+                                                    </td>
+                                                    <td className={`p-4 text-right pr-6 font-syncopate font-bold ${entry.transaction_type === 'CHARGE' ? 'text-[#FF2A6D]' : 'text-emerald-400'}`}>
+                                                        {entry.transaction_type === 'CHARGE' ? '+' : '-'}₹{entry.amount}
+                                                    </td>
+                                                </tr>
+                                            )))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -458,6 +576,39 @@ export default function AdminDashboard() {
                 )}
                 
             </main>
+
+            {/* KHATA PAYMENT MODAL */}
+            {isKhataModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out]">
+                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">RECEIVE PAYMENT</h3>
+                            <button onClick={() => setIsKhataModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors"><PlusCircle className="w-6 h-6 rotate-45" /></button>
+                        </div>
+                        <p className="text-sm text-[#8E939B] mb-6">Record a partial or full settlement for <strong className="text-white">{selectedKhataCustomer?.name}</strong>.</p>
+                        
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Payment Amount (₹)</label>
+                                <input 
+                                    type="number" 
+                                    value={khataPaymentAmount}
+                                    onChange={(e) => setKhataPaymentAmount(e.target.value)}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                    placeholder="e.g. 500"
+                                />
+                            </div>
+                        </div>
+                        
+                        <button 
+                            onClick={handleKhataSettle}
+                            className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] justify-center hover:bg-white transition-all flex items-center gap-2"
+                        >
+                            <BadgeDollarSign className="w-5 h-5" /> CONFIRM SETTLEMENT
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <style dangerouslySetInnerHTML={{__html: `
                 .hide-scrollbar::-webkit-scrollbar { display: none; }
