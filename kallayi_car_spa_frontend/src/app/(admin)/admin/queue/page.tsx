@@ -4,9 +4,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { 
-    Activity, Car, Clock, Loader2, RefreshCw, 
+    Activity, Car, Clock, RefreshCw, 
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
-    AlertCircle, User, Wifi, WifiOff
+    AlertCircle, User, Wifi, WifiOff, LayoutDashboard
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -33,8 +33,6 @@ interface Column {
     borderColor: string;
     headerBg: string;
 }
-
-// ─── Column Config ────────────────────────────────────────────────────────────
 
 const COLUMNS: Column[] = [
     {
@@ -79,7 +77,7 @@ const COLUMNS: Column[] = [
 
 function ElapsedTimer({ since }: { since: string | null }) {
     const [elapsed, setElapsed] = useState('');
-    
+
     useEffect(() => {
         if (!since) return;
         const update = () => {
@@ -93,11 +91,11 @@ function ElapsedTimer({ since }: { since: string | null }) {
         const interval = setInterval(update, 30000);
         return () => clearInterval(interval);
     }, [since]);
-    
+
     if (!since) return null;
     const totalMins = Math.floor((Date.now() - new Date(since).getTime()) / 60000);
     const isLong = totalMins > 30;
-    
+
     return (
         <span className={`inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2 py-0.5 rounded-full border ${isLong ? 'text-[#FF2A6D] border-[#FF2A6D]/40 bg-[#FF2A6D]/10' : 'text-[#8E939B] border-white/10 bg-white/5'}`}>
             <Clock className="w-3 h-3" /> {elapsed}
@@ -117,9 +115,9 @@ function BookingCard({ card, index, col }: { card: BookingCard; index: number; c
                     {...provided.dragHandleProps}
                     className={`
                         bg-[#141518] border rounded-2xl p-4 select-none cursor-grab active:cursor-grabbing
-                        transition-all duration-200 group
-                        ${snapshot.isDragging 
-                            ? `${col.borderColor} ${col.glow} scale-105 rotate-1 opacity-95` 
+                        transition-all duration-200
+                        ${snapshot.isDragging
+                            ? `${col.borderColor} ${col.glow} scale-105 rotate-1 opacity-95`
                             : 'border-white/8 hover:border-white/20 hover:bg-white/5'}
                     `}
                 >
@@ -127,8 +125,10 @@ function BookingCard({ card, index, col }: { card: BookingCard; index: number; c
                     <div className={`font-syncopate font-black text-3xl tracking-[0.15em] mb-3 ${col.accent}`}>
                         {card.plate_number}
                     </div>
-                    
-                    {/* Vehicle & Service */}
+
+                    {/* Customer name — admin-specific extra info */}
+                    <div className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-2 font-bold">{card.customer_name}</div>
+
                     <div className="flex items-center gap-2 mb-2">
                         <Car className="w-3.5 h-3.5 text-[#8E939B] flex-shrink-0" />
                         <span className="text-white text-sm font-bold truncate">{card.vehicle_model}</span>
@@ -137,8 +137,7 @@ function BookingCard({ card, index, col }: { card: BookingCard; index: number; c
                         <Sparkles className="w-3.5 h-3.5 text-[#8E939B] flex-shrink-0" />
                         <span className="text-[#8E939B] text-xs truncate">{card.service_name}</span>
                     </div>
-                    
-                    {/* Footer Row */}
+
                     <div className="flex items-center justify-between pt-3 border-t border-white/5">
                         <div className="flex items-center gap-1.5">
                             {card.technician_name ? (
@@ -161,7 +160,7 @@ function BookingCard({ card, index, col }: { card: BookingCard; index: number; c
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function QueueBoard() {
+export default function AdminQueueBoard() {
     const router = useRouter();
     const [columns, setColumns] = useState<Record<string, BookingCard[]>>({
         WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
@@ -170,7 +169,6 @@ export default function QueueBoard() {
     const [isConnected, setIsConnected] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-    // ─── Fetch Queue Data ─────────────────────────────────────────────────────
     const fetchQueue = useCallback(async (silent = false) => {
         const token = localStorage.getItem('auth_token');
         if (!token) return router.push('/login');
@@ -180,27 +178,19 @@ export default function QueueBoard() {
             const res = await fetch('http://127.0.0.1:8001/api/bookings/live-queue/', {
                 headers: { 'Authorization': `Token ${token}` }
             });
-
             if (!res.ok) throw new Error('API error');
 
             const data: BookingCard[] = await res.json();
-            
-            // Distribute into columns
-            const newCols: Record<string, BookingCard[]> = {
-                WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
-            };
+            const newCols: Record<string, BookingCard[]> = { WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [] };
             data.forEach(card => {
-                // Map legacy statuses into our kanban columns
                 const colKey = newCols[card.status] !== undefined ? card.status : 'WAITING';
                 newCols[colKey].push(card);
             });
-            
             setColumns(newCols);
             setIsConnected(true);
             setLastUpdated(new Date());
-        } catch (err) {
+        } catch {
             setIsConnected(false);
-            console.error('Queue fetch failed:', err);
         } finally {
             setIsLoading(false);
         }
@@ -208,12 +198,10 @@ export default function QueueBoard() {
 
     useEffect(() => {
         fetchQueue();
-        // Poll every 30 seconds for live updates
         const interval = setInterval(() => fetchQueue(true), 30000);
         return () => clearInterval(interval);
     }, [fetchQueue]);
 
-    // ─── Drag End Handler ─────────────────────────────────────────────────────
     const onDragEnd = async (result: DropResult) => {
         const { source, destination, draggableId } = result;
         if (!destination) return;
@@ -223,15 +211,13 @@ export default function QueueBoard() {
         const sourceCol = source.droppableId;
         const destCol = destination.droppableId;
 
-        // 1. OPTIMISTIC UPDATE — instant UI response
+        // Optimistic update
         setColumns(prev => {
             const newCols = { ...prev };
             const sourceCards = [...newCols[sourceCol]];
             const destCards = sourceCol === destCol ? sourceCards : [...newCols[destCol]];
-            
             const [movedCard] = sourceCards.splice(source.index, 1);
             movedCard.status = destCol;
-            
             if (sourceCol === destCol) {
                 sourceCards.splice(destination.index, 0, movedCard);
                 newCols[sourceCol] = sourceCards;
@@ -243,23 +229,19 @@ export default function QueueBoard() {
             return newCols;
         });
 
-        // 2. SYNC to backend
+        // Backend sync
         try {
             const token = localStorage.getItem('auth_token');
             await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${bookingId}/`, {
                 method: 'PATCH',
-                headers: {
-                    'Authorization': `Token ${token}`,
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     new_status: destCol,
                     bay_assignment: destCol.startsWith('IN_BAY') ? destCol.replace('IN_BAY_', 'Bay ') : null,
                 }),
             });
-        } catch (err) {
-            console.error('Sync failed, reverting', err);
-            fetchQueue(); // Revert on failure
+        } catch {
+            fetchQueue(); // Revert on error
         }
     };
 
@@ -267,7 +249,7 @@ export default function QueueBoard() {
 
     return (
         <div className="min-h-screen bg-[#050505] text-white flex flex-col font-jakarta overflow-hidden">
-            
+
             {/* ── TOP BAR ───────────────────────────────────────────────────── */}
             <header className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-[#141518]/80 backdrop-blur-xl flex-shrink-0">
                 <div className="flex items-center gap-6">
@@ -275,32 +257,30 @@ export default function QueueBoard() {
                         onClick={() => router.push('/admin/dashboard')}
                         className="flex items-center gap-2 text-[#8E939B] hover:text-white transition-colors text-xs font-bold uppercase tracking-widest"
                     >
-                        <ChevronLeft className="w-4 h-4" /> Dashboard
+                        <ChevronLeft className="w-4 h-4" />
+                        <LayoutDashboard className="w-4 h-4" /> Admin Dashboard
                     </button>
                     <div className="w-px h-6 bg-white/10" />
                     <div>
                         <h1 className="font-syncopate font-black text-lg tracking-widest">
                             LIVE QUEUE<span className="text-[#FF2A6D]">.</span>
                         </h1>
-                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.3em]">Bay Management Board</p>
+                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.3em]">Admin Bay Control Board</p>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-4">
-                    {/* Live vehicle count */}
                     <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-full flex items-center gap-2">
                         <Car className="w-4 h-4 text-[#01FFFF]" />
                         <span className="font-bold text-sm">{totalActive}</span>
-                        <span className="text-[10px] text-[#8E939B] uppercase tracking-widest">Vehicles</span>
+                        <span className="text-[10px] text-[#8E939B] uppercase tracking-widest">Vehicles Active</span>
                     </div>
-                    
-                    {/* Connection Status */}
+
                     <div className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-full border ${isConnected ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : 'border-red-500/30 text-red-400 bg-red-500/10'}`}>
                         {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
                         {isConnected ? 'Live' : 'Offline'}
                     </div>
 
-                    {/* Manual Refresh */}
                     <button
                         onClick={() => fetchQueue()}
                         className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-full text-[#8E939B] hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
@@ -329,7 +309,6 @@ export default function QueueBoard() {
                                     key={col.id}
                                     className={`flex flex-col flex-shrink-0 w-80 xl:w-96 bg-[#0C0D0F] border ${col.borderColor} rounded-3xl overflow-hidden ${col.glow}`}
                                 >
-                                    {/* Column Header */}
                                     <div className={`${col.headerBg} border-b ${col.borderColor} p-5 flex-shrink-0`}>
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
@@ -344,16 +323,12 @@ export default function QueueBoard() {
                                         </div>
                                     </div>
 
-                                    {/* Droppable Card Area */}
                                     <Droppable droppableId={col.id}>
                                         {(provided, snapshot) => (
                                             <div
                                                 ref={provided.innerRef}
                                                 {...provided.droppableProps}
-                                                className={`
-                                                    flex-1 p-4 space-y-3 overflow-y-auto min-h-32 transition-colors duration-200
-                                                    ${snapshot.isDraggingOver ? `${col.headerBg}` : ''}
-                                                `}
+                                                className={`flex-1 p-4 space-y-3 overflow-y-auto transition-colors duration-200 ${snapshot.isDraggingOver ? col.headerBg : ''}`}
                                                 style={{ minHeight: '200px' }}
                                             >
                                                 {cards.length === 0 && !snapshot.isDraggingOver && (
@@ -376,10 +351,9 @@ export default function QueueBoard() {
                 </DragDropContext>
             )}
 
-            {/* ── FOOTER BAR ───────────────────────────────────────────────── */}
             <footer className="flex items-center justify-between px-8 py-3 border-t border-white/5 bg-[#141518]/80 backdrop-blur-xl flex-shrink-0">
                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">
-                    Drag cards between columns to move vehicles through the wash cycle
+                    Admin Control — Drag cards to update bay assignments in real time
                 </p>
                 {lastUpdated && (
                     <p className="text-[10px] text-[#8E939B] font-mono">
@@ -389,7 +363,6 @@ export default function QueueBoard() {
             </footer>
 
             <style dangerouslySetInnerHTML={{ __html: `
-                @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
                 .font-syncopate { font-family: 'Syncopate', sans-serif; }
             `}} />
         </div>

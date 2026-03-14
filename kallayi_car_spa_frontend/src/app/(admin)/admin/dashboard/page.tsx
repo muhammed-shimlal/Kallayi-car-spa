@@ -6,11 +6,13 @@ import {
     LayoutDashboard, Users, Car, Wallet, LogOut,
     TrendingUp, Activity, Receipt, ChevronRight, Download,
     CreditCard, FileText, FlaskConical, CheckCircle, PlusCircle,
-    Clock, AlertCircle, Check, BadgeDollarSign, UserCog
+    Clock, AlertCircle, Check, BadgeDollarSign, UserCog, Lock,
+    AlertTriangle, IndianRupee, Landmark, BookOpen, BarChart2, Trophy,
+    Search, MapPin, Star, Calendar
 } from 'lucide-react';
 import {
-    LineChart, Line, XAxis, YAxis, CartesianGrid,
-    Tooltip, ResponsiveContainer
+    LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+    Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
 } from 'recharts';
 
 export default function AdminDashboard() {
@@ -18,26 +20,66 @@ export default function AdminDashboard() {
 
     // --- Navigation State ---
     const [isLoading, setIsLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('staff'); // Defaulting to staff to see the new feature
+    const [activeTab, setActiveTab] = useState('overview');
     const [financeSubTab, setFinanceSubTab] = useState('overview');
     const [adminName, setAdminName] = useState('Loading...');
 
     // --- Data States ---
     const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0 });
-    const [chartData, setChartData] = useState([]);
-    const [recentBookings, setRecentBookings] = useState([]);
+    const generateDemoChartData = () => {
+        const days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            days.push({ name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: Math.floor(Math.random() * 8000) + 2000 });
+        }
+        return days;
+    };
+    const [chartData, setChartData] = useState<any[]>(generateDemoChartData());
+    const [recentBookings, setRecentBookings] = useState<any[]>([]);
     const [expenses, setExpenses] = useState<any[]>([]);
-    const [payrollData, setPayrollData] = useState<any[]>([]); // Using real API data
+    const [payrollData, setPayrollData] = useState<any[]>([]);
     const [khataCustomers, setKhataCustomers] = useState<any[]>([]);
     const [khataLedger, setKhataLedger] = useState<any[]>([]);
     const [selectedKhataCustomer, setSelectedKhataCustomer] = useState<any | null>(null);
     const [isKhataModalOpen, setIsKhataModalOpen] = useState(false);
     const [khataPaymentAmount, setKhataPaymentAmount] = useState<string>('');
-    const [eodData, setEodData] = useState<any | null>(null);
+    const [eodData, setEodData] = useState<any>({
+        is_locked: false,
+        gross_revenue: 0,
+        total_expenses: 0,
+        cash_in_hand: 0,
+        labor_payouts: 0,
+        expected_cash_in_till: 0,
+        closed_by: null
+    });
 
-    // Mocked Data for Inventory
-    const inventoryData = [{ id: 1, name: 'Ceramic Foam Wash', stock: '12 Liters', cost: '₹4,500', status: 'Healthy' }, { id: 2, name: 'Leather Conditioner', stock: '2 Liters', cost: '₹1,200', status: 'Low Stock' }];
     const [customerCredits, setCustomerCredits] = useState<any[]>([]);
+    const [analyticsData, setAnalyticsData] = useState<any>({
+        busiest_hours: [
+            { hour: '9 AM', count: 3 }, { hour: '10 AM', count: 7 }, { hour: '11 AM', count: 5 },
+            { hour: '12 PM', count: 2 }, { hour: '1 PM', count: 6 }, { hour: '2 PM', count: 9 },
+            { hour: '3 PM', count: 11 }, { hour: '4 PM', count: 8 }, { hour: '5 PM', count: 4 },
+        ],
+        packages: [
+            { name: 'Ceramic Coating', total_washes: 12, total_revenue: 36000 },
+            { name: 'Foam Wash + Polish', total_washes: 28, total_revenue: 16800 },
+            { name: 'Basic Wash', total_washes: 45, total_revenue: 9000 },
+            { name: 'Interior Detailing', total_washes: 9, total_revenue: 8100 },
+        ],
+        top_staff: [
+            { name: 'Mohammed Ali', jobs_completed: 18 },
+            { name: 'Rahul K.', jobs_completed: 14 },
+            { name: 'Sanu V.', jobs_completed: 11 },
+            { name: 'Ajin S.', jobs_completed: 8 },
+        ],
+    });;
+
+    // --- CRM State ---
+    const [searchQuery, setSearchQuery] = useState('');
+    const [vehicleData, setVehicleData] = useState<any | null>(null);
+    const [crmLoading, setCrmLoading] = useState(false);
+    const [crmError, setCrmError] = useState('');
 
     // --- Data Fetching ---
     const fetchDashboardData = async () => {
@@ -48,7 +90,7 @@ export default function AdminDashboard() {
         const API_BASE = 'http://127.0.0.1:8001/api';
 
         try {
-            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes, eodRes] = await Promise.all([
+            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes, eodRes, analyticsRes] = await Promise.all([
                 fetch(`${API_BASE}/core/users/me/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/kpi_summary/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: HEADERS }),
@@ -57,14 +99,18 @@ export default function AdminDashboard() {
                 fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/staff/daily-settlement/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/khata/`, { headers: HEADERS }),
-                fetch(`${API_BASE}/finance/close-register/`, { headers: HEADERS })
+                fetch(`${API_BASE}/finance/close-register/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/finance/analytics/`, { headers: HEADERS }).catch(() => null)
             ]);
 
             if (userRes?.ok) { const user = await userRes.json(); setAdminName(user.first_name || user.username); }
             if (kpiRes?.ok) setKpiData(await kpiRes.json());
             if (chartRes?.ok) {
                 const chartApiData = await chartRes.json();
-                setChartData(chartApiData.map((d: any) => ({ name: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: d.value })));
+                if (Array.isArray(chartApiData) && chartApiData.length > 0) {
+                    setChartData(chartApiData.map((d: any) => ({ name: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: d.value })));
+                }
+                // else keep the demo data already in state
             }
             if (bookRes?.ok) { const b = await bookRes.json(); setRecentBookings(b.slice(0, 10)); }
             if (expRes?.ok) { const e = await expRes.json(); setExpenses(e.results || e); }
@@ -72,8 +118,39 @@ export default function AdminDashboard() {
             if (payrollRes?.ok) { const pd = await payrollRes.json(); setPayrollData(pd); }
             if (khataRes?.ok) { const khataData = await khataRes.json(); setKhataCustomers(khataData); }
             if (eodRes?.ok) { const eodD = await eodRes.json(); setEodData(eodD); }
+            if (analyticsRes?.ok) { setAnalyticsData(await analyticsRes.json()); }
 
         } catch (error) { console.error("Fetch Error:", error); } finally { setIsLoading(false); }
+    };
+
+    const handleCrmSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!searchQuery.trim()) return;
+        
+        setCrmLoading(true);
+        setCrmError('');
+        const token = localStorage.getItem('auth_token');
+        
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/bookings/vehicle-history/?q=${encodeURIComponent(searchQuery)}`, {
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                setVehicleData(data);
+                setActiveTab('crm');
+            } else {
+                const err = await res.json();
+                setCrmError(err.error || 'Vehicle not found');
+                setVehicleData(null);
+            }
+        } catch (error) {
+            setCrmError('Connection error while fetching timeline.');
+            setVehicleData(null);
+        } finally {
+            setCrmLoading(false);
+        }
     };
 
     useEffect(() => { fetchDashboardData(); }, [router]);
@@ -185,7 +262,6 @@ export default function AdminDashboard() {
         } catch (e) { alert("Network error closing register."); }
     };
 
-    // Settle End-of-Day Payout
     const settleWorkerPay = async (id: number) => {
         try {
             const token = localStorage.getItem('auth_token');
@@ -208,8 +284,6 @@ export default function AdminDashboard() {
     };
 
     const totalOutstandingCredit = customerCredits.reduce((sum, item) => sum + item.amount, 0);
-
-    // Calculate Total End of Day Payouts
     const totalDailyPayout = payrollData.reduce((sum, worker) => sum + worker.final_payout, 0);
 
     if (isLoading) return (
@@ -221,17 +295,35 @@ export default function AdminDashboard() {
     return (
         <div className="min-h-screen bg-[#050505] text-white flex font-jakarta selection:bg-[#FF2A6D]">
 
-            {/* SIDEBAR */}
+            {/* SIDEBAR NAVIGATION */}
             <aside className="w-72 bg-[#141518]/60 backdrop-blur-2xl border-r border-white/5 flex flex-col hidden lg:flex">
                 <div className="p-8 border-b border-white/5">
                     <h2 className="text-xl font-syncopate font-bold tracking-widest">KALLAYI<span className="text-[#FF2A6D]">.</span></h2>
                     <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#8E939B] mt-2">Admin Portal</p>
                 </div>
                 <nav className="flex-1 p-6 space-y-2">
-                    <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><LayoutDashboard className="w-4 h-4" /> Overview</button>
-                    <button onClick={() => setActiveTab('finance')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'finance' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><Wallet className="w-4 h-4" /> Finance Dept</button>
-                    <button className="w-full flex items-center gap-4 px-4 py-4 rounded-xl text-[#8E939B] hover:text-white font-bold text-xs uppercase tracking-widest transition-all"><Car className="w-4 h-4" /> Fleet Mgmt</button>
-                    <button onClick={() => setActiveTab('staff')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'staff' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><Users className="w-4 h-4" /> Staff Ops</button>
+                    <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}>
+                        <LayoutDashboard className="w-4 h-4" /> Overview
+                    </button>
+                    <button onClick={() => setActiveTab('finance')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'finance' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}>
+                        <Wallet className="w-4 h-4" /> Finance Dept
+                    </button>
+                    <button onClick={() => setActiveTab('staff')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'staff' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}>
+                        <Users className="w-4 h-4" /> Staff Ops
+                    </button>
+                    <button onClick={() => setActiveTab('analytics')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'analytics' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30' : 'text-[#8E939B] hover:text-white'}`}>
+                        <BarChart2 className="w-4 h-4" /> Analytics & Insights
+                    </button>
+                    <button onClick={() => setActiveTab('crm')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'crm' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'text-[#8E939B] hover:text-white'}`}>
+                        <Search className="w-4 h-4" /> CRM & History
+                    </button>
+                    <button onClick={() => setActiveTab('eod')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'eod' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30' : 'text-[#8E939B] hover:text-white'}`}>
+                        <FileText className="w-4 h-4" /> EOD Closing
+                    </button>
+                    <button onClick={() => router.push('/admin/queue')} className="w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-[#8E939B] hover:text-[#01FFFF] hover:bg-[#01FFFF]/5 hover:border hover:border-[#01FFFF]/20">
+                        <Activity className="w-4 h-4" /> Live Queue
+                    </button>
+
 
                     <div className="pt-4 mt-4 border-t border-white/10">
                         <button onClick={() => router.push('/staff/pos')} className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-[#E52323] text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-[0_0_20px_rgba(229,35,35,0.4)]">
@@ -249,14 +341,34 @@ export default function AdminDashboard() {
                             <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">System Admin</p>
                         </div>
                     </div>
-                    <button onClick={handleLogout} className="w-full flex justify-center items-center gap-2 px-4 py-3 rounded-xl border border-white/10 text-gray-400 hover:text-[#FF2A6D] hover:border-[#FF2A6D]/50 transition-colors text-xs font-bold uppercase tracking-widest"><LogOut className="w-4 h-4" /> Disconnect</button>
+                    <button onClick={handleLogout} className="w-full flex justify-center items-center gap-2 px-4 py-3 rounded-xl border border-white/10 text-gray-400 hover:text-[#FF2A6D] hover:border-[#FF2A6D]/50 transition-colors text-xs font-bold uppercase tracking-widest">
+                        <LogOut className="w-4 h-4" /> Disconnect
+                    </button>
                 </div>
             </aside>
 
-            {/* MAIN CONTENT */}
+            {/* MAIN CONTENT AREA */}
             <main className="flex-1 p-8 lg:p-12 overflow-y-auto relative">
+                
+                {/* GLOBAL CRM SEARCH BAR */}
+                <div className="mb-8">
+                    <form onSubmit={handleCrmSearch} className="relative max-w-2xl">
+                        <input 
+                            type="text" 
+                            placeholder="Search License Plate (e.g. KL-11-AB-1234) for CRM Dossier..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-[#141518]/80 backdrop-blur-xl border border-white/10 focus:border-[#01FFFF] rounded-2xl py-4 pl-14 pr-6 text-white font-syncopate tracking-widest text-xs outline-none transition-all shadow-[0_0_20px_rgba(0,0,0,0.5)] focus:shadow-[0_0_30px_rgba(1,255,255,0.15)]"
+                        />
+                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-[#8E939B]" />
+                        <button type="submit" disabled={crmLoading} className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#01FFFF]/10 text-[#01FFFF] hover:bg-[#01FFFF] hover:text-black border border-[#01FFFF]/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all">
+                            {crmLoading ? 'Scanning...' : 'Search'}
+                        </button>
+                    </form>
+                    {crmError && <p className="text-[#FF2A6D] text-xs mt-3 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {crmError}</p>}
+                </div>
 
-                {/* 1. Real-Time KPI Dashboarding */}
+                {/* REAL-TIME KPI DASHBOARD (Always Visible) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-6 rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)]">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-[#01FFFF]/10 rounded-full blur-[50px] group-hover:bg-[#01FFFF]/20 transition-all"></div>
@@ -268,7 +380,9 @@ export default function AdminDashboard() {
                     <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">General Expenses</p><h2 className="text-3xl font-syncopate font-bold text-[#FF2A6D]">₹{kpiData.general_expenses_today.toLocaleString()}</h2></div>
                 </div>
 
-                {/* OVERVIEW TAB */}
+                {/* ---------------------------------------------------- */}
+                {/* VIEW A: OVERVIEW TAB */}
+                {/* ---------------------------------------------------- */}
                 {activeTab === 'overview' && (
                     <div className="animate-[fadeIn_0.5s_ease-out] grid grid-cols-1 lg:grid-cols-3 gap-8">
                         <div className="lg:col-span-2 bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl h-96">
@@ -308,7 +422,9 @@ export default function AdminDashboard() {
                     </div>
                 )}
 
-                {/* FINANCE COMMAND CENTER */}
+                {/* ---------------------------------------------------- */}
+                {/* VIEW B: FINANCE COMMAND CENTER */}
+                {/* ---------------------------------------------------- */}
                 {activeTab === 'finance' && (
                     <div className="animate-[fadeIn_0.5s_ease-out]">
                         <div className="flex justify-between items-center mb-6">
@@ -318,52 +434,72 @@ export default function AdminDashboard() {
                             </button>
                         </div>
 
-                        <div className="flex flex-wrap gap-2 border-b border-white/10 pb-4 mb-8">
-                            <button onClick={() => setFinanceSubTab('overview')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'overview' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>1. Trend Analysis</button>
-                            <button onClick={() => setFinanceSubTab('expenses')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'expenses' ? 'bg-[#FF2A6D]/10 text-[#FF2A6D]' : 'text-[#8E939B] hover:text-white'}`}>2. Expense Manager</button>
-                            <button onClick={() => setFinanceSubTab('credit')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'credit' ? 'bg-purple-500/10 text-purple-400' : 'text-[#8E939B] hover:text-white'}`}>3. Customer Credit</button>
-                            <button onClick={() => setFinanceSubTab('invoices')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400' : 'text-[#8E939B] hover:text-white'}`}>4. PDF Invoices</button>
-                            <button onClick={() => { setFinanceSubTab('khata'); setSelectedKhataCustomer(null); }} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'khata' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>5. Khata / Credit</button>
-                            <button onClick={() => setFinanceSubTab('eod')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'eod' ? 'bg-red-500/10 text-red-500' : 'text-[#8E939B] hover:text-white'}`}>6. EOD Register Close</button>
+                        <div className="flex flex-wrap gap-4 border-b border-white/10 pb-4 mb-8">
+                            <button onClick={() => setFinanceSubTab('overview')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'overview' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>Trend Analysis</button>
+                            <button onClick={() => setFinanceSubTab('khata')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'khata' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>Khata (Credit)</button>
+                            <button onClick={() => setFinanceSubTab('expenses')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'expenses' ? 'bg-[#FF2A6D]/10 text-[#FF2A6D]' : 'text-[#8E939B] hover:text-white'}`}>Expense Manager</button>
+                            <button onClick={() => setFinanceSubTab('invoices')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400' : 'text-[#8E939B] hover:text-white'}`}>PDF Invoices</button>
                         </div>
 
                         {financeSubTab === 'overview' && (
-                            <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl h-96 animate-[fadeIn_0.3s_ease-out]">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={chartData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                        <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} />
-                                        <YAxis stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value}`} />
-                                        <Tooltip contentStyle={{ backgroundColor: '#050505', border: '1px solid rgba(255,255,255,0.1)' }} itemStyle={{ color: '#01FFFF' }} />
-                                        <Line type="monotone" dataKey="value" stroke="#01FFFF" strokeWidth={3} dot={{ fill: '#050505', stroke: '#01FFFF', strokeWidth: 2, r: 4 }} />
-                                    </LineChart>
-                                </ResponsiveContainer>
+                            <div className="animate-[fadeIn_0.3s_ease-out] space-y-6">
+                                {/* Summary Stats Row */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-[#141518]/60 border border-white/5 p-5 rounded-2xl">
+                                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.2em] mb-1">7-Day Revenue</p>
+                                        <h3 className="text-2xl font-syncopate font-bold text-[#01FFFF]">
+                                            ₹{chartData.reduce((s: number, d: any) => s + (d.value || 0), 0).toLocaleString()}
+                                        </h3>
+                                    </div>
+                                    <div className="bg-[#141518]/60 border border-white/5 p-5 rounded-2xl">
+                                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.2em] mb-1">Peak Day</p>
+                                        <h3 className="text-2xl font-syncopate font-bold text-emerald-400">
+                                            {chartData.reduce((max: any, d: any) => d.value > (max?.value || 0) ? d : max, chartData[0])?.name || '—'}
+                                        </h3>
+                                    </div>
+                                    <div className="bg-[#141518]/60 border border-white/5 p-5 rounded-2xl">
+                                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.2em] mb-1">Avg / Day</p>
+                                        <h3 className="text-2xl font-syncopate font-bold text-white">
+                                            ₹{chartData.length > 0 ? Math.round(chartData.reduce((s: number, d: any) => s + (d.value || 0), 0) / chartData.length).toLocaleString() : 0}
+                                        </h3>
+                                    </div>
+                                    <div className="bg-[#141518]/60 border border-white/5 p-5 rounded-2xl">
+                                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.2em] mb-1">Data Points</p>
+                                        <h3 className="text-2xl font-syncopate font-bold text-purple-400">{chartData.length} days</h3>
+                                    </div>
+                                </div>
+
+                                {/* The Line Chart */}
+                                <div className="bg-[#141518]/60 border border-[#01FFFF]/20 p-6 rounded-3xl shadow-[0_0_30px_rgba(1,255,255,0.04)]">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <TrendingUp className="w-4 h-4 text-[#01FFFF]" />
+                                        <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF]">REVENUE TREND</h4>
+                                        <span className="ml-auto text-[10px] text-[#8E939B] uppercase tracking-widest">Last {chartData.length} days</span>
+                                    </div>
+                                    <div className="h-72">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={chartData}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                                                <YAxis stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}k`} dx={-10} />
+                                                <Tooltip
+                                                    contentStyle={{ backgroundColor: '#0C0D0F', border: '1px solid rgba(1,255,255,0.2)', borderRadius: '12px' }}
+                                                    itemStyle={{ color: '#01FFFF' }}
+                                                    labelStyle={{ color: '#8E939B', fontSize: 11 }}
+                                                    formatter={(v: any) => [`₹${v.toLocaleString()}`, 'Revenue']}
+                                                />
+                                                <Line type="monotone" dataKey="value" stroke="#01FFFF" strokeWidth={2.5}
+                                                    dot={{ fill: '#050505', stroke: '#01FFFF', strokeWidth: 2, r: 4 }}
+                                                    activeDot={{ r: 6, fill: '#01FFFF' }}
+                                                />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
-                        {financeSubTab === 'expenses' && (
-                            <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
-                                        <tr><th className="p-4 pl-6">Date</th><th className="p-4">Description</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Action</th></tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/5">
-                                        {expenses.map((exp: any) => (
-                                            <tr key={exp.id} className="hover:bg-white/5">
-                                                <td className="p-4 pl-6 font-mono text-xs">{new Date(exp.date).toLocaleDateString()}</td>
-                                                <td className="p-4">{exp.description}</td>
-                                                <td className="p-4 font-bold text-[#FF2A6D]">₹{exp.amount}</td>
-                                                <td className="p-4 text-right pr-6">
-                                                    {exp.is_approved ? <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-sm uppercase tracking-widest font-bold">Approved</span> : <button onClick={() => approveExpense(exp.id)} className="text-[9px] bg-[#FF2A6D] text-white px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><CheckCircle className="w-3 h-3" /> Approve</button>}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-
-                        {financeSubTab === 'credit' && (
+                        {financeSubTab === 'khata' && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="bg-purple-900/10 border border-purple-500/30 p-6 rounded-3xl mb-6 flex justify-between items-center">
                                     <div>
@@ -407,6 +543,28 @@ export default function AdminDashboard() {
                             </div>
                         )}
 
+                        {financeSubTab === 'expenses' && (
+                            <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                        <tr><th className="p-4 pl-6">Date</th><th className="p-4">Description</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Action</th></tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {expenses.map((exp: any) => (
+                                            <tr key={exp.id} className="hover:bg-white/5">
+                                                <td className="p-4 pl-6 font-mono text-xs">{new Date(exp.date).toLocaleDateString()}</td>
+                                                <td className="p-4">{exp.description}</td>
+                                                <td className="p-4 font-bold text-[#FF2A6D]">₹{exp.amount}</td>
+                                                <td className="p-4 text-right pr-6">
+                                                    {exp.is_approved ? <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-sm uppercase tracking-widest font-bold">Approved</span> : <button onClick={() => approveExpense(exp.id)} className="text-[9px] bg-[#FF2A6D] text-white px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><CheckCircle className="w-3 h-3" /> Approve</button>}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
                         {financeSubTab === 'invoices' && (
                             <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
                                 <table className="w-full text-left text-sm">
@@ -428,184 +586,21 @@ export default function AdminDashboard() {
                                 </table>
                             </div>
                         )}
-
-                        {financeSubTab === 'khata' && !selectedKhataCustomer && (
-                            <div className="animate-[fadeIn_0.3s_ease-out]">
-                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
-                                            <tr><th className="p-4 pl-6">Customer</th><th className="p-4">Phone Number</th><th className="p-4">Outstanding Balance</th><th className="p-4 text-right pr-6">Action</th></tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-white/5">
-                                            {khataCustomers.length === 0 ? (
-                                                <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No active Khata balances.</td></tr>
-                                            ) : (
-                                                khataCustomers.map((c) => (
-                                                    <tr key={c.id} className="hover:bg-white/5 cursor-pointer" onClick={() => loadKhataLedger(c)}>
-                                                        <td className="p-4 pl-6 font-bold text-white flex items-center gap-2">
-                                                            {c.name}
-                                                            {c.outstanding_balance >= c.credit_limit * 0.9 && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
-                                                        </td>
-                                                        <td className="p-4 text-[#8E939B] font-mono text-xs">{c.phone_number}</td>
-                                                        <td className="p-4 font-syncopate font-bold text-[#01FFFF]">₹{c.outstanding_balance}</td>
-                                                        <td className="p-4 text-right pr-6">
-                                                            <button onClick={(e) => { e.stopPropagation(); loadKhataLedger(c); }} className="text-[9px] bg-white/10 text-white border border-white/20 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-white hover:text-black transition">
-                                                                View Ledger <ChevronRight className="w-3 h-3" />
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                )))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {financeSubTab === 'khata' && selectedKhataCustomer && (
-                            <div className="animate-[fadeIn_0.3s_ease-out]">
-                                <div className="flex justify-between items-center mb-6">
-                                    <button onClick={() => setSelectedKhataCustomer(null)} className="text-[#8E939B] hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"><ChevronRight className="w-4 h-4 rotate-180" /> Back to Khata List</button>
-                                    <button onClick={() => { setKhataPaymentAmount(selectedKhataCustomer.outstanding_balance.toString()); setIsKhataModalOpen(true); }} className="flex items-center gap-2 bg-[#01FFFF] text-black px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white transition shadow-[0_0_20px_rgba(1,255,255,0.3)]">
-                                        <BadgeDollarSign className="w-4 h-4" /> Receive Payment
-                                    </button>
-                                </div>
-
-                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden">
-                                    <div className="p-6 border-b border-white/5 flex justify-between items-center bg-black/40">
-                                        <div>
-                                            <h4 className="font-bold text-lg text-white">{selectedKhataCustomer.name}'s Ledger</h4>
-                                            <p className="text-[#8E939B] text-xs font-mono">{selectedKhataCustomer.phone_number}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Current Balance</p>
-                                            <h2 className="text-2xl font-syncopate font-bold text-[#01FFFF]">₹{selectedKhataCustomer.outstanding_balance}</h2>
-                                        </div>
-                                    </div>
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-black/20 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
-                                            <tr><th className="p-4 pl-6">Date</th><th className="p-4">Description</th><th className="p-4">Type</th><th className="p-4 text-right pr-6">Amount</th></tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-white/5">
-                                            {khataLedger.length === 0 ? (
-                                                <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No ledger entries found.</td></tr>
-                                            ) : (
-                                                khataLedger.map((entry) => (
-                                                    <tr key={entry.id} className="hover:bg-white/5">
-                                                        <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
-                                                        <td className="p-4 font-bold text-white">{entry.description}</td>
-                                                        <td className="p-4">
-                                                            <span className={`text-[9px] px-2 py-1 rounded-sm uppercase tracking-widest font-bold ${entry.transaction_type === 'CHARGE' ? 'bg-[#FF2A6D]/20 text-[#FF2A6D]' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                                                                {entry.transaction_type}
-                                                            </span>
-                                                        </td>
-                                                        <td className={`p-4 text-right pr-6 font-syncopate font-bold ${entry.transaction_type === 'CHARGE' ? 'text-[#FF2A6D]' : 'text-emerald-400'}`}>
-                                                            {entry.transaction_type === 'CHARGE' ? '+' : '-'}₹{entry.amount}
-                                                        </td>
-                                                    </tr>
-                                                )))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {financeSubTab === 'eod' && eodData && (
-                            <div className="animate-[fadeIn_0.3s_ease-out] max-w-5xl mx-auto">
-                                <div className="text-center mb-10">
-                                    <h2 className="text-3xl font-syncopate font-bold text-white mb-2 tracking-widest">END OF DAY AUDIT</h2>
-                                    <p className="text-[#8E939B] text-sm font-mono">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                                </div>
-
-                                {eodData.is_locked && (
-                                    <div className="bg-red-500/10 border border-red-500 p-6 rounded-2xl mb-8 flex items-center justify-center gap-4 animate-pulse">
-                                        <AlertCircle className="w-8 h-8 text-red-500"/>
-                                        <div>
-                                            <h3 className="font-syncopate font-bold text-red-500 tracking-widest text-lg">REGISTER LOCKED</h3>
-                                            <p className="text-xs text-red-400 uppercase tracking-widest mt-1">Closed by {eodData.closed_by}</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-                                    {/* Till Verification */}
-                                    <div className="bg-[#141518]/60 border border-white/5 p-8 rounded-3xl relative overflow-hidden group">
-                                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-                                        <div className="border-b border-white/10 pb-4 mb-6 relative z-10 flex items-center justify-between">
-                                            <h3 className="font-syncopate font-bold tracking-widest text-white text-lg flex items-center gap-3">
-                                                <Wallet className="w-5 h-5 text-emerald-400" /> CASH DRAWER MATH
-                                            </h3>
-                                        </div>
-                                        <div className="space-y-4 font-mono text-sm">
-                                            <div className="flex justify-between text-[#8E939B]">
-                                                <span>Total Cash In (Washes + Khata)</span>
-                                                <span className="text-white">₹{eodData.cash_in_hand || 0}</span>
-                                            </div>
-                                            <div className="flex justify-between text-[#FF2A6D]">
-                                                <span>Minus: Physical Expenses</span>
-                                                <span>- ₹{eodData.total_expenses}</span>
-                                            </div>
-                                            <div className="flex justify-between text-[#FF2A6D]">
-                                                <span>Minus: Labor Payouts (Cash)</span>
-                                                <span>- ₹{eodData.labor_payouts || 0}</span>
-                                            </div>
-                                            <div className="pt-4 mt-4 border-t border-white/10 flex justify-between items-center bg-black/40 -mx-8 px-8 py-4">
-                                                <span className="text-xs text-emerald-400 uppercase font-bold tracking-widest font-sans">EXPECTED IN TILL &rarr;</span>
-                                                <span className="text-2xl font-syncopate font-bold text-emerald-400">₹{eodData.expected_cash_in_till}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Profit Breakdown */}
-                                    <div className="bg-[#141518]/60 border border-white/5 p-8 rounded-3xl relative overflow-hidden group">
-                                        <div className="absolute inset-0 bg-gradient-to-br from-[#01FFFF]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-                                        <div className="border-b border-white/10 pb-4 mb-6 relative z-10 flex items-center justify-between">
-                                            <h3 className="font-syncopate font-bold tracking-widest text-white text-lg flex items-center gap-3">
-                                                <TrendingUp className="w-5 h-5 text-[#01FFFF]" /> PROFIT MATRIX
-                                            </h3>
-                                        </div>
-                                        <div className="space-y-4 font-mono text-sm">
-                                            <div className="flex justify-between text-[#8E939B]">
-                                                <span>Gross Service Revenue (All)</span>
-                                                <span className="text-white">₹{eodData.gross_revenue}</span>
-                                            </div>
-                                            <div className="flex justify-between text-[#FF2A6D]">
-                                                <span>Minus: Shop Expenses</span>
-                                                <span>- ₹{eodData.total_expenses}</span>
-                                            </div>
-                                            <div className="pt-4 mt-4 border-t border-white/10 flex justify-between items-center bg-black/40 -mx-8 px-8 py-4">
-                                                <span className="text-xs text-[#01FFFF] uppercase font-bold tracking-widest font-sans">NET SHOP PROFIT &rarr;</span>
-                                                <span className="text-2xl font-syncopate font-bold text-[#01FFFF]">₹{(eodData.gross_revenue - eodData.total_expenses).toFixed(2)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {!eodData.is_locked && (
-                                    <button 
-                                        onClick={handleCloseRegister}
-                                        className="w-full bg-[#E52323] hover:bg-red-700 text-white font-syncopate font-bold py-6 rounded-2xl shadow-[0_0_30px_rgba(229,35,35,0.4)] flex justify-center items-center gap-3 transition-all transform hover:scale-[1.02]"
-                                    >
-                                        <CheckCircle className="w-6 h-6" /> CLOSE REGISTER & LOCK ALL DATA FOR TODAY
-                                    </button>
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
 
-                {/* ========================================= */}
-                {/* 🛡️ STAFF OPS & DYNAMIC PAYROLL TAB        */}
-                {/* ========================================= */}
+                {/* ---------------------------------------------------- */}
+                {/* VIEW C: STAFF OPS & DYNAMIC PAYROLL TAB */}
+                {/* ---------------------------------------------------- */}
                 {activeTab === 'staff' && (
                     <div className="animate-[fadeIn_0.5s_ease-out]">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-syncopate font-bold tracking-widest text-xl">END-OF-DAY SETTLEMENT</h3>
+                            <h3 className="font-syncopate font-bold tracking-widest text-xl">STAFF OPERATIONS</h3>
                             <button className="flex items-center gap-2 bg-white/10 text-white border border-white/20 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition">
                                 <PlusCircle className="w-4 h-4" /> Add Expense/Advance
                             </button>
                         </div>
 
-                        {/* Top Widget: Total Cash Outflow */}
                         <div className="bg-emerald-900/10 border border-emerald-500/30 p-6 rounded-3xl mb-8 flex justify-between items-center">
                             <div>
                                 <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Wallet className="w-4 h-4" /> Total Daily Payout</p>
@@ -617,7 +612,6 @@ export default function AdminDashboard() {
                             </div>
                         </div>
 
-                        {/* The Dynamic Payroll Ledger Table */}
                         <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
                             <div className="p-6 border-b border-white/5 flex gap-2 items-center">
                                 <UserCog className="w-5 h-5 text-[#8E939B]" />
@@ -679,6 +673,335 @@ export default function AdminDashboard() {
                     </div>
                 )}
 
+                {/* ---------------------------------------------------- */}
+                {/* VIEW D: ANALYTICS & INSIGHTS TAB                       */}
+                {/* ---------------------------------------------------- */}
+                {activeTab === 'analytics' && (
+                    <div className="animate-[fadeIn_0.5s_ease-out] space-y-8">
+                        <div className="flex justify-between items-center mb-2">
+                            <div>
+                                <h3 className="font-syncopate font-bold tracking-widest text-xl flex items-center gap-3">
+                                    <BarChart2 className="w-6 h-6 text-blue-400" /> ANALYTICS & INSIGHTS
+                                </h3>
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.2em] mt-1">Aggregated from all completed bookings</p>
+                            </div>
+                        </div>
+
+                        {/* Row 1: Busiest Hours + Package Revenue */}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+
+                            {/* Widget 1: Busiest Hours */}
+                            <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/20 p-6 rounded-3xl shadow-[0_0_30px_rgba(1,255,255,0.04)]">
+                                <div className="flex items-center gap-3 mb-1">
+                                    <Clock className="w-4 h-4 text-[#01FFFF]" />
+                                    <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF]">BUSIEST HOURS</h4>
+                                </div>
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-6">Scheduling intelligence — peak demand windows</p>
+                                <div className="h-56">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={analyticsData.busiest_hours} barCategoryGap="30%">
+                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                                            <XAxis dataKey="hour" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} />
+                                            <YAxis stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} width={28} />
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: '#0C0D0F', border: '1px solid rgba(1,255,255,0.2)', borderRadius: '12px' }}
+                                                itemStyle={{ color: '#01FFFF' }}
+                                                labelStyle={{ color: '#8E939B', fontSize: 11 }}
+                                                formatter={(v: any) => [`${v} cars`, 'Volume']}
+                                            />
+                                            <Bar dataKey="count" fill="#01FFFF" radius={[6, 6, 0, 0]}>
+                                                {analyticsData.busiest_hours.map((_: any, i: number) => (
+                                                    <Cell key={i} fill={i === analyticsData.busiest_hours.reduce((maxI: number, row: any, idx: number, arr: any[]) => row.count > arr[maxI].count ? idx : maxI, 0) ? '#FF2A6D' : '#01FFFF'} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <p className="text-[10px] text-[#8E939B] mt-3 text-center">🔴 Peak hour highlighted in red</p>
+                            </div>
+
+                            {/* Widget 2: Package Revenue */}
+                            <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#FF2A6D]/20 p-6 rounded-3xl shadow-[0_0_30px_rgba(255,42,109,0.04)]">
+                                <div className="flex items-center gap-3 mb-1">
+                                    <TrendingUp className="w-4 h-4 text-[#FF2A6D]" />
+                                    <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#FF2A6D]">REVENUE BY PACKAGE</h4>
+                                </div>
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-6">Marketing intelligence — highest-value services</p>
+                                <div className="h-56">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={analyticsData.packages} layout="vertical" barCategoryGap="25%">
+                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+                                            <XAxis type="number" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}k`} />
+                                            <YAxis type="category" dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} width={120} />
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: '#0C0D0F', border: '1px solid rgba(255,42,109,0.2)', borderRadius: '12px' }}
+                                                labelStyle={{ color: '#8E939B', fontSize: 11 }}
+                                                formatter={(v: any) => [`₹${v.toLocaleString()}`, 'Revenue']}
+                                            />
+                                            <Bar dataKey="total_revenue" radius={[0, 6, 6, 0]}>
+                                                {analyticsData.packages.map((_: any, i: number) => (
+                                                    <Cell key={i} fill={i % 2 === 0 ? '#FF2A6D' : '#01FFFF'} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Widget 3: Staff Leaderboard */}
+                        <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-8 rounded-3xl">
+                            <div className="flex items-center gap-3 mb-6 border-b border-white/5 pb-4">
+                                <Trophy className="w-5 h-5 text-yellow-400" />
+                                <h4 className="font-syncopate font-bold text-sm tracking-widest text-yellow-400">TOP PERFORMING STAFF</h4>
+                                <span className="ml-auto text-[10px] text-[#8E939B] uppercase tracking-widest">By jobs completed today</span>
+                            </div>
+                            <div className="space-y-3">
+                                {analyticsData.top_staff.length === 0 ? (
+                                    <p className="text-[#8E939B] text-center text-xs py-8">No completed bookings yet today.</p>
+                                ) : analyticsData.top_staff.map((staff: any, i: number) => {
+                                    const rankColors = ['text-yellow-400', 'text-gray-300', 'text-amber-600'];
+                                    const rankBg = ['bg-yellow-500/10 border-yellow-500/30', 'bg-gray-400/10 border-gray-400/20', 'bg-amber-700/10 border-amber-600/20'];
+                                    const rankLabel = ['🥇', '🥈', '🥉'];
+                                    const isTop = i < 3;
+                                    const maxJobs = analyticsData.top_staff[0]?.jobs_completed || 1;
+                                    const pct = Math.round((staff.jobs_completed / maxJobs) * 100);
+                                    return (
+                                        <div key={i} className={`flex items-center gap-5 p-4 rounded-2xl border ${isTop ? rankBg[i] : 'border-white/5 bg-white/2'}`}>
+                                            <span className="text-xl w-8 text-center">{isTop ? rankLabel[i] : `#${i + 1}`}</span>
+                                            <div className="flex-1">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <p className={`font-bold text-sm ${isTop ? rankColors[i] : 'text-white'}`}>{staff.name}</p>
+                                                    <span className="font-syncopate font-black text-sm text-white">{staff.jobs_completed} <span className="text-[10px] text-[#8E939B] font-normal">jobs</span></span>
+                                                </div>
+                                                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                                    <div
+                                                        className={`h-full rounded-full transition-all duration-700 ${i === 0 ? 'bg-yellow-400' : i === 1 ? 'bg-gray-300' : i === 2 ? 'bg-amber-600' : 'bg-white/30'}`}
+                                                        style={{ width: `${pct}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ---------------------------------------------------- */}
+                {/* VIEW F: CRM & HISTORY (Digital Garage)                 */}
+                {/* ---------------------------------------------------- */}
+                {activeTab === 'crm' && vehicleData && (
+                    <div className="animate-[fadeIn_0.5s_ease-out] space-y-8">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="font-syncopate font-bold tracking-widest text-2xl flex items-center gap-3">
+                                    <BookOpen className="w-6 h-6 text-emerald-400" /> VEHICLE DOSSIER
+                                </h3>
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.2em] mt-1">Digital Garage CRM</p>
+                            </div>
+                        </div>
+
+                        {/* SECTION 1: PROFILE ROW & KPIS */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Profile Card */}
+                            <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-8 rounded-3xl relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] group-hover:bg-emerald-500/10 transition-all"></div>
+                                <div className="flex justify-between items-start mb-6">
+                                    <div className="bg-white/10 px-4 py-1 rounded-sm border border-white/20">
+                                        <h2 className="text-2xl font-syncopate font-black tracking-[0.1em]">{vehicleData.vehicle_profile.plate_number}</h2>
+                                    </div>
+                                    {vehicleData.vehicle_profile.outstanding_balance > 0 ? (
+                                        <span className="text-[10px] font-bold uppercase tracking-widest bg-[#FF2A6D]/20 text-[#FF2A6D] border border-[#FF2A6D]/30 px-3 py-1.5 rounded-full flex items-center gap-1">
+                                            <AlertCircle className="w-3 h-3" /> Dept: ₹{vehicleData.vehicle_profile.outstanding_balance}
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] font-bold uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-full flex items-center gap-1">
+                                            <CheckCircle className="w-3 h-3" /> Clear Account
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3">
+                                        <Car className="w-5 h-5 text-[#8E939B]" />
+                                        <div>
+                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">Vehicle Model</p>
+                                            <p className="font-bold text-sm text-white truncate max-w-[200px]">{vehicleData.vehicle_profile.model}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <UserCog className="w-5 h-5 text-[#8E939B]" />
+                                        <div>
+                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">Owner</p>
+                                            <p className="font-bold text-sm text-white truncate max-w-[200px]">{vehicleData.vehicle_profile.owner_name}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* LTV & KPIs */}
+                            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-[#141518]/60 backdrop-blur-xl border border-emerald-500/20 p-6 rounded-3xl shadow-[0_0_20px_rgba(52,211,153,0.05)] flex flex-col justify-center text-center">
+                                    <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center justify-center gap-2">
+                                        <BadgeDollarSign className="w-4 h-4" /> Lifetime Spend
+                                    </p>
+                                    <h2 className="text-4xl font-syncopate font-bold tracking-tighter text-white">₹{vehicleData.kpis.total_lifetime_spend.toLocaleString()}</h2>
+                                </div>
+                                <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl flex flex-col justify-center text-center">
+                                    <p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center justify-center gap-2">
+                                        <MapPin className="w-4 h-4" /> Total Visits
+                                    </p>
+                                    <h2 className="text-4xl font-syncopate font-bold tracking-tighter text-white">{vehicleData.kpis.total_visits} <span className="text-sm font-normal text-[#8E939B] tracking-normal">times</span></h2>
+                                </div>
+                                <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/20 p-6 rounded-3xl flex flex-col justify-center text-center shadow-[0_0_20px_rgba(1,255,255,0.05)]">
+                                    <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center justify-center gap-2">
+                                        <Star className="w-4 h-4" /> Favorite Service
+                                    </p>
+                                    <h2 className="text-sm font-bold text-white uppercase tracking-widest leading-relaxed mt-2">{vehicleData.kpis.favorite_service}</h2>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* SECTION 2: SERVICE TIMELINE */}
+                        <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-8 rounded-3xl">
+                            <h4 className="font-syncopate font-bold text-sm tracking-widest mb-8 border-b border-white/5 pb-4">SERVICE TIMELINE</h4>
+                            
+                            {vehicleData.timeline.length === 0 ? (
+                                <p className="text-[#8E939B] text-center text-sm py-12 border border-dashed border-white/10 rounded-2xl">No completed services found for this vehicle.</p>
+                            ) : (
+                                <div className="relative pl-4 sm:pl-8 space-y-8 before:content-[''] before:absolute before:left-[11px] sm:before:left-[27px] before:top-2 before:bottom-2 before:w-px before:bg-gradient-to-b before:from-emerald-500/50 before:to-white/5">
+                                    {vehicleData.timeline.map((event: any, idx: number) => (
+                                        <div key={idx} className="relative group">
+                                            {/* Timeline Node */}
+                                            <div className="absolute -left-[30px] sm:-left-[46px] top-1.5 w-4 h-4 rounded-full border-4 border-[#050505] bg-emerald-400 group-hover:shadow-[0_0_15px_rgba(52,211,153,0.5)] transition-all"></div>
+                                            
+                                            <div className="bg-white/2 hover:bg-white/5 border border-white/5 group-hover:border-emerald-500/20 transition-all p-5 rounded-2xl">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                    <div>
+                                                        <div className="flex items-center gap-3 mb-2">
+                                                            <Calendar className="w-4 h-4 text-[#8E939B]" />
+                                                            <span className="text-[#8E939B] font-mono text-xs">{event.date || 'Unknown Date'}</span>
+                                                        </div>
+                                                        <h5 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF] uppercase">{event.service_package_name}</h5>
+                                                    </div>
+                                                    <div className="flex items-center gap-6">
+                                                        <div className="text-left sm:text-right">
+                                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1">Technician</p>
+                                                            <p className="text-xs font-bold">{event.technician_name}</p>
+                                                        </div>
+                                                        <div className="text-left sm:text-right border-l border-white/10 pl-6">
+                                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1">Price</p>
+                                                            <p className="text-sm font-bold text-emerald-400 font-syncopate">₹{event.price_paid}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* ---------------------------------------------------- */}
+                {/* VIEW E: 🔒 END OF DAY SETTLEMENT TAB      */}
+                {/* ---------------------------------------------------- */}
+                {activeTab === 'eod' && (
+                    <div className="animate-[fadeIn_0.5s_ease-out] max-w-5xl mx-auto space-y-8">
+                        <div className="flex justify-between items-end mb-8 border-b border-white/10 pb-6">
+                            <div>
+                                <h3 className="font-syncopate font-bold tracking-widest text-2xl mb-2 flex items-center gap-3">
+                                    <Lock className={`w-6 h-6 ${eodData.is_locked ? 'text-emerald-400' : 'text-purple-500'}`} /> 
+                                    EOD SETTLEMENT AUDIT
+                                </h3>
+                                <p className="text-xs text-[#8E939B] font-mono tracking-widest uppercase">
+                                    {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                </p>
+                            </div>
+                            
+                            {/* HERE IS THE CLOSE REGISTER BUTTON */}
+                            {eodData.is_locked ? (
+                                <div className="bg-emerald-500/10 border border-emerald-500/30 px-6 py-3 rounded-xl flex items-center gap-2 text-emerald-400 font-bold uppercase text-xs tracking-widest">
+                                    <CheckCircle className="w-4 h-4" /> Register Locked
+                                </div>
+                            ) : (
+                                <button onClick={handleCloseRegister} className="bg-[#E52323] hover:bg-red-700 text-white border border-red-500 px-8 py-4 rounded-xl flex items-center gap-2 font-bold uppercase text-xs tracking-widest shadow-[0_0_30px_rgba(229,35,35,0.4)] transition-all">
+                                    <AlertTriangle className="w-4 h-4" /> Close Register & Lock Data
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Top Level Health Metrics */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                            <div className="bg-[#141518]/60 border border-white/5 p-8 rounded-3xl relative overflow-hidden group">
+                                <p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Query 1: Gross Revenue</p>
+                                <h2 className="text-5xl font-syncopate font-bold text-white tracking-tighter">₹{eodData.gross_revenue?.toLocaleString()}</h2>
+                                <p className="text-xs text-gray-500 mt-4">Total value of all services completed today.</p>
+                            </div>
+                            <div className="bg-emerald-900/10 border border-emerald-500/30 p-8 rounded-3xl relative overflow-hidden">
+                                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2"><TrendingUp className="w-4 h-4"/> True Net Profit</p>
+                                <h2 className="text-5xl font-syncopate font-bold text-emerald-400 tracking-tighter">₹{(eodData.gross_revenue - eodData.total_expenses)?.toLocaleString()}</h2>
+                                <p className="text-xs text-emerald-400/60 mt-4">[Gross Revenue] - [Shop Expenses]</p>
+                            </div>
+                        </div>
+
+                        {/* Audits */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            
+                            {/* Left Column: Payment Split & Deductions */}
+                            <div className="space-y-8">
+                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
+                                    <h4 className="font-bold text-sm uppercase tracking-widest text-[#8E939B] mb-6 border-b border-white/5 pb-4">Query 2: The Payment Split</h4>
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center bg-black/40 p-4 rounded-xl border border-white/5">
+                                            <div className="flex items-center gap-3"><IndianRupee className="w-5 h-5 text-emerald-400"/><span className="font-bold">Physical Cash In</span></div>
+                                            <span className="font-mono text-emerald-400 font-bold tracking-widest">₹{(eodData.cash_in_hand || 0).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center bg-black/40 p-4 rounded-xl border border-white/5">
+                                            <div className="flex items-center gap-3"><Landmark className="w-5 h-5 text-blue-400"/><span className="font-bold">Digital / Unpaid</span></div>
+                                            <span className="font-mono text-blue-400 font-bold tracking-widest">₹{((eodData.gross_revenue || 0) - (eodData.cash_in_hand || 0)).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right Column: The Cash Drawer Audit */}
+                            <div className="bg-[#141518]/60 border border-[#01FFFF]/20 rounded-3xl p-8 relative shadow-[0_0_40px_rgba(1,255,255,0.05)]">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-[#01FFFF]/5 rounded-full blur-[50px] pointer-events-none"></div>
+                                
+                                <h4 className="font-syncopate font-bold text-lg uppercase tracking-widest text-[#01FFFF] mb-6 flex items-center gap-2">
+                                    <IndianRupee className="w-5 h-5"/> Cash Drawer Audit
+                                </h4>
+                                <p className="text-xs text-[#8E939B] mb-8 leading-relaxed">
+                                    Verifies the physical paper cash in your register. Subtracts cash removed today from total cash collected.
+                                </p>
+
+                                <div className="space-y-4 mb-8 text-sm">
+                                    <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl border border-white/5">
+                                        <span className="text-gray-300">Total Cash Received</span>
+                                        <span className="font-mono font-bold text-white">₹{(eodData.cash_in_hand || 0).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-[#E52323]/10 p-4 rounded-xl border border-[#E52323]/20">
+                                        <span className="text-[#E52323]">Minus: Shop Cash Expenses</span>
+                                        <span className="font-mono font-bold text-[#E52323]">- ₹{(eodData.total_expenses || 0).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-[#E52323]/10 p-4 rounded-xl border border-[#E52323]/20">
+                                        <span className="text-[#E52323]">Minus: Staff Petty Cash</span>
+                                        <span className="font-mono font-bold text-[#E52323]">- ₹{(eodData.labor_payouts || 0).toLocaleString()}</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-black/50 border border-[#01FFFF]/30 p-6 rounded-2xl text-center">
+                                    <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Expected Paper Cash in Till</p>
+                                    <h2 className="text-4xl font-syncopate font-bold text-white tracking-tighter">₹{(eodData.expected_cash_in_till || 0).toLocaleString()}</h2>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                )}
             </main>
 
             {/* KHATA PAYMENT MODAL */}

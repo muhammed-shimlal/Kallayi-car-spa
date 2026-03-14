@@ -462,3 +462,81 @@ def close_register(request):
             'expected_cash_in_till': float(expected_cash_in_till),
             'is_locked': True
         })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def analytics_dashboard(request):
+    """Aggregation engine: busiest hours, package popularity, top staff."""
+    from django.db.models import Count
+    from django.db.models.functions import ExtractHour
+
+    # Permission check
+    user = request.user
+    is_authorized = user.is_staff or user.is_superuser
+    if not is_authorized and hasattr(user, 'staff_profile'):
+        is_authorized = user.staff_profile.role in ['ADMIN', 'MANAGER']
+    if not is_authorized:
+        return Response({'error': 'Forbidden'}, status=403)
+
+    completed_bookings = Booking.objects.filter(status='COMPLETED')
+
+    # ── Query 1: Busiest Hours ──────────────────────────────────────────────
+    busiest_hours_qs = (
+        completed_bookings
+        .annotate(hour=ExtractHour('created_at'))
+        .values('hour')
+        .annotate(count=Count('id'))
+        .order_by('hour')
+    )
+    busiest_hours = [
+        {
+            'hour': f"{(row['hour'] % 12) or 12} {'AM' if row['hour'] < 12 else 'PM'}",
+            'raw_hour': row['hour'],
+            'count': row['count']
+        }
+        for row in busiest_hours_qs
+    ]
+
+    # ── Query 2: Package Popularity ─────────────────────────────────────────
+    package_qs = (
+        completed_bookings
+        .filter(service_package__isnull=False)
+        .values('service_package__name')
+        .annotate(
+            total_washes=Count('id'),
+            total_revenue=Sum('service_package__price')
+        )
+        .order_by('-total_revenue')
+    )
+    packages = [
+        {
+            'name': row['service_package__name'],
+            'total_washes': row['total_washes'],
+            'total_revenue': float(row['total_revenue'] or 0)
+        }
+        for row in package_qs
+    ]
+
+    # ── Query 3: Top Staff Performers ───────────────────────────────────────
+    staff_qs = (
+        completed_bookings
+        .filter(technician__isnull=False)
+        .values('technician__first_name', 'technician__username')
+        .annotate(jobs_completed=Count('id'))
+        .order_by('-jobs_completed')[:10]
+    )
+    top_staff = [
+        {
+            'name': row['technician__first_name'] or row['technician__username'],
+            'jobs_completed': row['jobs_completed']
+        }
+        for row in staff_qs
+    ]
+
+    return Response({
+        'busiest_hours': busiest_hours,
+        'packages': packages,
+        'top_staff': top_staff,
+    })
+

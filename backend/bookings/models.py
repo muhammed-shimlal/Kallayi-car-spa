@@ -20,6 +20,11 @@ class Booking(models.Model):
     STATUS_CHOICES = [
         ('PENDING', 'Pending'),
         ('CONFIRMED', 'Confirmed'),
+        ('WAITING', 'Waiting'),
+        ('IN_BAY_1', 'In Bay 1'),
+        ('IN_BAY_2', 'In Bay 2'),
+        ('DETAILING', 'Detailing'),
+        ('READY', 'Ready for Pickup'),
         ('IN_PROGRESS', 'In Progress'),
         ('COMPLETED', 'Completed'),
         ('CANCELLED', 'Cancelled'),
@@ -31,7 +36,8 @@ class Booking(models.Model):
     service_package = models.ForeignKey(ServicePackage, on_delete=models.SET_NULL, null=True)
     time_slot = models.DateTimeField()
     end_time = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='WAITING')
+    bay_assignment = models.CharField(max_length=50, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     points_redeemed = models.IntegerField(default=0)
 

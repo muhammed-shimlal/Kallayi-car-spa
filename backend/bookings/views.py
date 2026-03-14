@@ -211,3 +211,127 @@ def express_walkin(request):
     print(f"📱 MOCK SMS: Welcome to Kallayi! Track your car ({plate_number}) live: https://kallayi.com/track/{booking.id}")
     
     return Response({'status': 'success', 'booking_id': booking.id})
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_booking_stage(request, booking_id):
+    """Kanban board drag-and-drop stage updater."""
+    try:
+        booking = Booking.objects.get(id=booking_id)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=404)
+
+    new_status = request.data.get('new_status')
+    bay_assignment = request.data.get('bay_assignment', None)
+    assigned_technician_id = request.data.get('assigned_technician_id', None)
+
+    valid_statuses = [s[0] for s in Booking.STATUS_CHOICES]
+    if new_status and new_status not in valid_statuses:
+        return Response({'error': f'Invalid status. Valid options: {valid_statuses}'}, status=400)
+
+    if new_status:
+        booking.status = new_status
+    if bay_assignment is not None:
+        booking.bay_assignment = bay_assignment
+    if assigned_technician_id:
+        try:
+            tech = User.objects.get(id=assigned_technician_id)
+            booking.technician = tech
+        except User.DoesNotExist:
+            pass
+
+    booking.save()
+    return Response({'status': 'success', 'booking_id': booking.id, 'new_status': booking.status})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def live_queue(request):
+    """Fetch all active bookings for the Kanban board (excludes COMPLETED & CANCELLED)."""
+    active_statuses = ['WAITING', 'IN_BAY_1', 'IN_BAY_2', 'DETAILING', 'READY', 'PENDING', 'CONFIRMED']
+    bookings = Booking.objects.filter(
+        status__in=active_statuses
+    ).select_related('vehicle', 'customer', 'service_package', 'technician').order_by('time_slot')
+
+    data = []
+    for b in bookings:
+        data.append({
+            'id': b.id,
+            'status': b.status,
+            'bay_assignment': b.bay_assignment,
+            'plate_number': b.vehicle.plate_number if b.vehicle else '???',
+            'vehicle_model': b.vehicle.model if b.vehicle else 'Unknown',
+            'service_name': b.service_package.name if b.service_package else 'Walk-In',
+            'customer_name': str(b.customer) if b.customer else 'Walk-In',
+            'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else None,
+            'created_at': b.created_at.isoformat() if b.created_at else None,
+            'time_slot': b.time_slot.isoformat() if b.time_slot else None,
+        })
+
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def vehicle_crm_history(request):
+    """Vehicle CRM & Service History Tracker."""
+    from django.db.models import Count, Sum
+    q = request.GET.get('q', '').strip()
+    if not q:
+        return Response({'error': 'Missing query parameter q (License Plate)'}, status=400)
+
+    vehicles = Vehicle.objects.filter(plate_number__icontains=q)
+    if not vehicles.exists():
+        return Response({'error': 'No matching vehicle found in the system.'}, status=404)
+    
+    vehicle = vehicles.first()
+
+    completed_bookings = Booking.objects.filter(vehicle=vehicle, status='COMPLETED').order_by('-created_at')
+    
+    total_visits = completed_bookings.count()
+    total_lifetime_spend = completed_bookings.aggregate(total=Sum('service_package__price'))['total'] or 0
+    
+    favorite_service_data = (
+        completed_bookings
+        .filter(service_package__isnull=False)
+        .values('service_package__name')
+        .annotate(count=Count('id'))
+        .order_by('-count')
+        .first()
+    )
+    favorite_service = favorite_service_data['service_package__name'] if favorite_service_data else "None"
+
+    timeline = []
+    for b in completed_bookings:
+        timeline.append({
+            'date': b.created_at.strftime('%Y-%m-%d') if b.created_at else None,
+            'service_package_name': b.service_package.name if b.service_package else 'Walk-In Wash',
+            'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else 'Unassigned',
+            'price_paid': float(b.service_package.price) if b.service_package else 0.0,
+        })
+    
+    owner = vehicle.owner
+    outstanding_balance = 0.0
+    owner_name = "Unknown Walk-In"
+    
+    if owner:
+        outstanding_balance = float(owner.outstanding_balance) if hasattr(owner, 'outstanding_balance') else 0.0
+        owner_name = owner.user.get_full_name() or owner.user.username if owner.user else "Unknown Walk-In"
+        
+    vehicle_profile = {
+        'plate_number': vehicle.plate_number,
+        'model': vehicle.model or "Unknown Model",
+        'owner_name': owner_name,
+        'outstanding_balance': outstanding_balance
+    }
+
+    return Response({
+        'vehicle_profile': vehicle_profile,
+        'kpis': {
+            'total_visits': total_visits,
+            'total_lifetime_spend': float(total_lifetime_spend),
+            'favorite_service': favorite_service
+        },
+        'timeline': timeline
+    })
