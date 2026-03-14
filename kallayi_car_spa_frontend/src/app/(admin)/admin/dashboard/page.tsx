@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Users, Car, Wallet, LogOut, 
     TrendingUp, Activity, Receipt, ChevronRight, Download, 
     CreditCard, FileText, FlaskConical, CheckCircle, PlusCircle,
-    Clock, AlertCircle, Check
+    Clock, AlertCircle, Check, BadgeDollarSign, UserCog
 } from 'lucide-react';
 import { 
     LineChart, Line, XAxis, YAxis, CartesianGrid, 
@@ -18,8 +18,8 @@ export default function AdminDashboard() {
     
     // --- Navigation State ---
     const [isLoading, setIsLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('overview'); 
-    const [financeSubTab, setFinanceSubTab] = useState('overview'); // 'overview' | 'expenses' | 'credit' | 'invoices' | 'inventory'
+    const [activeTab, setActiveTab] = useState('staff'); // Defaulting to staff to see the new feature
+    const [financeSubTab, setFinanceSubTab] = useState('overview'); 
     const [adminName, setAdminName] = useState('Loading...');
     
     // --- Data States ---
@@ -27,17 +27,10 @@ export default function AdminDashboard() {
     const [chartData, setChartData] = useState([]);
     const [recentBookings, setRecentBookings] = useState([]);
     const [expenses, setExpenses] = useState<any[]>([]);
+    const [payrollData, setPayrollData] = useState<any[]>([]); // Using real API data
 
-    // Mocked Data for Inventory & Payroll
-    const inventoryData = [
-        { id: 1, name: 'Ceramic Foam Wash', stock: '12 Liters', cost: '₹4,500', status: 'Healthy' },
-        { id: 2, name: 'Leather Conditioner', stock: '2 Liters', cost: '₹1,200', status: 'Low Stock' }
-    ];
-    const payrollRules = [
-        { id: 1, role: 'Technician', package: 'Deep Detail', commission: '₹200 / wash' },
-        { id: 2, role: 'Washer', package: 'Standard Wash', commission: '₹50 / wash' }
-    ];
-
+    // Mocked Data for Inventory
+    const inventoryData = [ { id: 1, name: 'Ceramic Foam Wash', stock: '12 Liters', cost: '₹4,500', status: 'Healthy' }, { id: 2, name: 'Leather Conditioner', stock: '2 Liters', cost: '₹1,200', status: 'Low Stock' } ];
     const [customerCredits, setCustomerCredits] = useState<any[]>([]);
 
     // --- Data Fetching ---
@@ -49,49 +42,28 @@ export default function AdminDashboard() {
         const API_BASE = 'http://127.0.0.1:8001/api';
 
         try {
-            // Make sure there are EXACTLY 6 fetch calls inside this array
-            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes] = await Promise.all([
+            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes] = await Promise.all([
                 fetch(`${API_BASE}/core/users/me/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/kpi_summary/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/bookings/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/expenses/`, { headers: HEADERS }),
-                fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: HEADERS }) 
+                fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/staff/daily-settlement/`, { headers: HEADERS })
             ]);
 
-            // Safely check each response using Optional Chaining (?.)
-            if (userRes?.ok) { 
-                const user = await userRes.json(); 
-                setAdminName(user.first_name || user.username); 
-            }
+            if (userRes?.ok) { const user = await userRes.json(); setAdminName(user.first_name || user.username); }
             if (kpiRes?.ok) setKpiData(await kpiRes.json());
             if (chartRes?.ok) {
                 const chartApiData = await chartRes.json();
-                setChartData(chartApiData.map((d: any) => ({ 
-                    name: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
-                    value: d.value 
-                })));
+                setChartData(chartApiData.map((d: any) => ({ name: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: d.value })));
             }
-            if (bookRes?.ok) { 
-                const b = await bookRes.json(); 
-                setRecentBookings(b.slice(0, 10)); 
-            }
-            if (expRes?.ok) { 
-                const e = await expRes.json(); 
-                setExpenses(e.results || e); 
-            }
+            if (bookRes?.ok) { const b = await bookRes.json(); setRecentBookings(b.slice(0, 10)); }
+            if (expRes?.ok) { const e = await expRes.json(); setExpenses(e.results || e); }
+            if (creditRes?.ok) { const creditData = await creditRes.json(); setCustomerCredits(creditData); }
+            if (payrollRes?.ok) { const pd = await payrollRes.json(); setPayrollData(pd); }
             
-            // The FIX: Add the question mark here so TypeScript knows it's safe!
-            if (creditRes?.ok) { 
-                const creditData = await creditRes.json(); 
-                setCustomerCredits(creditData); 
-            }
-
-        } catch (error) { 
-            console.error("Dashboard Fetch Error:", error); 
-        } finally { 
-            setIsLoading(false); 
-        }
+        } catch (error) { console.error("Fetch Error:", error); } finally { setIsLoading(false); }
     };
 
     useEffect(() => { fetchDashboardData(); }, [router]);
@@ -133,37 +105,60 @@ export default function AdminDashboard() {
     };
 
     const settleCredit = async (id: number) => {
-    const token = localStorage.getItem('auth_token');
-    try {
-        const res = await fetch(`http://127.0.0.1:8001/api/invoices/${id}/mark_paid/`, {
-            method: 'PATCH',
-            headers: { 
-                'Authorization': `Token ${token}`,
-                'Content-Type': 'application/json' 
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/invoices/${id}/mark_paid/`, {
+                method: 'PATCH',
+                headers: { 
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json' 
+                }
+            });
+            
+            if (res.ok) {
+                setCustomerCredits(prev => prev.filter(credit => credit.id !== id));
+                fetchDashboardData(); 
+                alert("Account marked as settled! Revenue updated.");
+            } else {
+                alert("Failed to settle account.");
             }
-        });
-        
-        if (res.ok) {
-            // Remove it from the table instantly
-            setCustomerCredits(prev => prev.filter(credit => credit.id !== id));
-            // Optional: Re-fetch KPI data to update the Total Revenue instantly!
-            fetchDashboardData(); 
-            alert("Account marked as settled! Revenue updated.");
-        } else {
-            alert("Failed to settle account.");
+        } catch(e) {
+            alert("Network error while settling account.");
         }
-    } catch(e) {
-        alert("Network error while settling account.");
-    }
-};
+    };
+    
+    // Settle End-of-Day Payout
+    const settleWorkerPay = async (id: number) => {
+        try {
+            const token = localStorage.getItem('auth_token');
+            const res = await fetch(`http://127.0.0.1:8001/api/staff/settle-pay/${id}/`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (res.ok) {
+                setPayrollData(prev => prev.map(worker => worker.id === id ? { ...worker, status: 'Paid' } : worker));
+                alert("Worker payment settled successfully!");
+            } else {
+                alert("Failed to settle worker pay");
+            }
+        } catch(e) {
+            alert("Network error settling worker pay");
+        }
+    };
+
+    const totalOutstandingCredit = customerCredits.reduce((sum, item) => sum + item.amount, 0);
+
+    // Calculate Total End of Day Payouts
+    const totalDailyPayout = payrollData.reduce((sum, worker) => sum + worker.final_payout, 0);
 
     if (isLoading) return (
         <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
             <Activity className="w-10 h-10 text-[#01FFFF] animate-spin" />
         </div>
     );
-
-    const totalOutstandingCredit = customerCredits.reduce((sum, item) => sum + item.amount, 0);
 
     return (
         <div className="min-h-screen bg-[#050505] text-white flex font-jakarta selection:bg-[#FF2A6D]">
@@ -178,13 +173,13 @@ export default function AdminDashboard() {
                     <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><LayoutDashboard className="w-4 h-4" /> Overview</button>
                     <button onClick={() => setActiveTab('finance')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'finance' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><Wallet className="w-4 h-4" /> Finance Dept</button>
                     <button className="w-full flex items-center gap-4 px-4 py-4 rounded-xl text-[#8E939B] hover:text-white font-bold text-xs uppercase tracking-widest transition-all"><Car className="w-4 h-4" /> Fleet Mgmt</button>
-                    <button className="w-full flex items-center gap-4 px-4 py-4 rounded-xl text-[#8E939B] hover:text-white font-bold text-xs uppercase tracking-widest transition-all"><Users className="w-4 h-4" /> Staff Ops</button>
+                    <button onClick={() => setActiveTab('staff')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'staff' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><Users className="w-4 h-4" /> Staff Ops</button>
                     
-                    <div className="border-t border-white/10 my-4"></div>
-                    
-                    <button onClick={() => router.push('/staff/pos')} className="w-full flex justify-between items-center gap-4 px-4 py-4 rounded-xl text-white bg-[#E52323] hover:bg-red-700 shadow-[0_0_20px_rgba(229,35,35,0.4)] transition-all font-bold text-xs uppercase tracking-widest">
-                        Launch Express POS <ChevronRight className="w-4 h-4" />
-                    </button>
+                    <div className="pt-4 mt-4 border-t border-white/10">
+                        <button onClick={() => router.push('/staff/pos')} className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-[#E52323] text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-[0_0_20px_rgba(229,35,35,0.4)]">
+                            Launch Express POS <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
                 </nav>
                 <div className="p-6 border-t border-white/5">
                     <div className="flex items-center gap-4 mb-6">
@@ -218,23 +213,18 @@ export default function AdminDashboard() {
                 {/* OVERVIEW TAB */}
                 {activeTab === 'overview' && (
                     <div className="animate-[fadeIn_0.5s_ease-out] grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        <div className="lg:col-span-2 bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="font-syncopate font-bold tracking-widest text-sm">REVENUE TREND</h3>
-                            </div>
-                            <div className="h-72 w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={chartData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                        <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} dy={10} />
-                                        <YAxis stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value}`} dx={-10} />
-                                        <Tooltip contentStyle={{ backgroundColor: '#050505', border: '1px solid rgba(255,255,255,0.1)' }} itemStyle={{ color: '#01FFFF' }} />
-                                        <Line type="monotone" dataKey="value" stroke="#01FFFF" strokeWidth={3} dot={{ fill: '#050505', stroke: '#01FFFF', strokeWidth: 2, r: 4 }} />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
+                        <div className="lg:col-span-2 bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl h-96">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={chartData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                                    <YAxis stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value}`} dx={-10} />
+                                    <Tooltip contentStyle={{ backgroundColor: '#050505', border: '1px solid rgba(255,255,255,0.1)' }} itemStyle={{ color: '#01FFFF' }} />
+                                    <Line type="monotone" dataKey="value" stroke="#01FFFF" strokeWidth={3} dot={{ fill: '#050505', stroke: '#01FFFF', strokeWidth: 2, r: 4 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
                         </div>
-
+                        
                         <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl flex flex-col">
                             <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
                                 <h3 className="font-syncopate font-bold tracking-widest text-sm">LIVE QUEUE</h3>
@@ -270,16 +260,13 @@ export default function AdminDashboard() {
                             </button>
                         </div>
 
-                        {/* Sub-Navigation */}
                         <div className="flex flex-wrap gap-2 border-b border-white/10 pb-4 mb-8">
                             <button onClick={() => setFinanceSubTab('overview')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'overview' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>1. Trend Analysis</button>
                             <button onClick={() => setFinanceSubTab('expenses')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'expenses' ? 'bg-[#FF2A6D]/10 text-[#FF2A6D]' : 'text-[#8E939B] hover:text-white'}`}>2. Expense Manager</button>
                             <button onClick={() => setFinanceSubTab('credit')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'credit' ? 'bg-purple-500/10 text-purple-400' : 'text-[#8E939B] hover:text-white'}`}>3. Customer Credit</button>
                             <button onClick={() => setFinanceSubTab('invoices')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400' : 'text-[#8E939B] hover:text-white'}`}>4. PDF Invoices</button>
-                            <button onClick={() => setFinanceSubTab('inventory')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'inventory' ? 'bg-yellow-500/10 text-yellow-400' : 'text-[#8E939B] hover:text-white'}`}>5. Inventory & Payroll</button>
                         </div>
 
-                        {/* 1. Trend Analysis View */}
                         {financeSubTab === 'overview' && (
                             <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl h-96 animate-[fadeIn_0.3s_ease-out]">
                                 <ResponsiveContainer width="100%" height="100%">
@@ -294,7 +281,6 @@ export default function AdminDashboard() {
                             </div>
                         )}
 
-                        {/* 2. Expense Management */}
                         {financeSubTab === 'expenses' && (
                             <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
                                 <table className="w-full text-left text-sm">
@@ -317,7 +303,6 @@ export default function AdminDashboard() {
                             </div>
                         )}
 
-                        {/* 3. CUSTOMER CREDIT / ACCOUNTS RECEIVABLE */}
                         {financeSubTab === 'credit' && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="bg-purple-900/10 border border-purple-500/30 p-6 rounded-3xl mb-6 flex justify-between items-center">
@@ -362,7 +347,6 @@ export default function AdminDashboard() {
                             </div>
                         )}
 
-                        {/* 4. Automated PDF Invoicing */}
                         {financeSubTab === 'invoices' && (
                             <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
                                 <table className="w-full text-left text-sm">
@@ -384,36 +368,95 @@ export default function AdminDashboard() {
                                 </table>
                             </div>
                         )}
-
-                        {/* 5. Inventory & Payroll Rules */}
-                        {financeSubTab === 'inventory' && (
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-[fadeIn_0.3s_ease-out]">
-                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
-                                    <h4 className="font-bold text-sm uppercase tracking-widest text-[#8E939B] mb-6 flex gap-2 items-center"><FlaskConical className="w-4 h-4"/> Chemical Inventory</h4>
-                                    <div className="space-y-4">
-                                        {inventoryData.map(inv => (
-                                            <div key={inv.id} className="flex justify-between items-center bg-black/40 p-4 rounded-xl border border-white/5">
-                                                <div><p className="font-bold">{inv.name}</p><p className="text-xs text-[#8E939B] mt-1">Value: {inv.cost}</p></div>
-                                                <div className="text-right"><p className="font-mono text-[#01FFFF] font-bold">{inv.stock}</p><p className={`text-[9px] uppercase tracking-widest mt-1 font-bold ${inv.status === 'Low Stock' ? 'text-[#FF2A6D]' : 'text-emerald-400'}`}>{inv.status}</p></div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
-                                    <h4 className="font-bold text-sm uppercase tracking-widest text-[#8E939B] mb-6 flex gap-2 items-center"><Users className="w-4 h-4"/> Payroll Logic</h4>
-                                    <div className="space-y-4">
-                                        {payrollRules.map(rule => (
-                                            <div key={rule.id} className="flex justify-between items-center bg-black/40 p-4 rounded-xl border border-white/5">
-                                                <div><p className="font-bold">{rule.package}</p><p className="text-xs text-[#8E939B] mt-1">{rule.role}</p></div>
-                                                <span className="bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-lg text-xs font-bold font-mono">+{rule.commission}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 )}
+
+                {/* ========================================= */}
+                {/* 🛡️ STAFF OPS & DYNAMIC PAYROLL TAB        */}
+                {/* ========================================= */}
+                {activeTab === 'staff' && (
+                    <div className="animate-[fadeIn_0.5s_ease-out]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-xl">END-OF-DAY SETTLEMENT</h3>
+                            <button className="flex items-center gap-2 bg-white/10 text-white border border-white/20 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition">
+                                <PlusCircle className="w-4 h-4" /> Add Expense/Advance
+                            </button>
+                        </div>
+
+                        {/* Top Widget: Total Cash Outflow */}
+                        <div className="bg-emerald-900/10 border border-emerald-500/30 p-6 rounded-3xl mb-8 flex justify-between items-center">
+                            <div>
+                                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Wallet className="w-4 h-4"/> Total Daily Payout</p>
+                                <h2 className="text-4xl font-syncopate font-bold text-white tracking-tighter">₹{totalDailyPayout.toLocaleString()}</h2>
+                            </div>
+                            <div className="text-right hidden sm:block">
+                                <p className="text-[#8E939B] text-xs">Calculated via Time-Stamped Rate Locking.</p>
+                                <p className="text-[#8E939B] text-xs">[Base] + [Commission] - [Advances] = Payout</p>
+                            </div>
+                        </div>
+
+                        {/* The Dynamic Payroll Ledger Table */}
+                        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+                            <div className="p-6 border-b border-white/5 flex gap-2 items-center">
+                                <UserCog className="w-5 h-5 text-[#8E939B]"/>
+                                <h4 className="font-bold text-sm uppercase tracking-widest text-[#8E939B]">Staff Payroll Ledger (Today)</h4>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                        <tr>
+                                            <th className="p-4 pl-6">Worker Info</th>
+                                            <th className="p-4 text-center">Jobs Done</th>
+                                            <th className="p-4 text-right">Base Salary</th>
+                                            <th className="p-4 text-right text-[#01FFFF]">+ Commissions</th>
+                                            <th className="p-4 text-right text-[#FF2A6D]">- Advances</th>
+                                            <th className="p-4 text-right text-white">Final Payout</th>
+                                            <th className="p-4 text-right pr-6">Settle</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {payrollData.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={7} className="p-8 text-center text-[#8E939B]">No active staff records today.</td>
+                                            </tr>
+                                        ) : payrollData.map((worker) => (
+                                            <tr key={worker.id} className="hover:bg-white/5 transition-colors group">
+                                                <td className="p-4 pl-6">
+                                                    <p className="font-bold text-white text-base">{worker.name}</p>
+                                                    <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-1">{worker.role}</p>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <span className="bg-white/10 text-white px-3 py-1 rounded-full text-xs font-bold font-mono">{worker.jobs_completed}</span>
+                                                </td>
+                                                <td className="p-4 text-right font-mono text-gray-400">₹{worker.base_salary}</td>
+                                                <td className="p-4 text-right font-mono font-bold text-[#01FFFF]">₹{worker.commission_earned}</td>
+                                                <td className="p-4 text-right font-mono font-bold text-[#FF2A6D]">₹{worker.advances}</td>
+                                                <td className="p-4 text-right font-syncopate font-bold text-lg text-emerald-400 group-hover:scale-110 transition-transform origin-right">
+                                                    ₹{worker.final_payout}
+                                                </td>
+                                                <td className="p-4 text-right pr-6">
+                                                    {worker.status === 'Paid' ? (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold">
+                                                            <CheckCircle className="w-3 h-3"/> Settled
+                                                        </span>
+                                                    ) : (
+                                                        <button 
+                                                            onClick={() => settleWorkerPay(worker.id)} 
+                                                            className="inline-flex items-center gap-1 text-[10px] bg-[#01FFFF] text-black hover:bg-white transition-colors px-4 py-1.5 rounded-sm uppercase tracking-widest font-bold shadow-[0_0_15px_rgba(1,255,255,0.3)]"
+                                                        >
+                                                            <BadgeDollarSign className="w-3 h-3"/> Pay Cash
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
             </main>
 
             <style dangerouslySetInnerHTML={{__html: `

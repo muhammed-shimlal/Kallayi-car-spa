@@ -10,11 +10,11 @@ import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 
 const loginSchema = z.object({
-  phone: z.string({
-    required_error: "Phone number is required",
-  }).refine((val) => val && isValidPhoneNumber(val), {
-    message: "Invalid phone number",
-  }),
+  phone: z.string()
+    .min(1, "Phone number is required")
+    .refine((val) => val && isValidPhoneNumber(val), {
+      message: "Invalid phone number",
+    }),
   password: z.string().min(1, "Password is required"),
 });
 
