@@ -2,26 +2,26 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-    LayoutDashboard, Users, Car, Wallet, LogOut, 
-    TrendingUp, Activity, Receipt, ChevronRight, Download, 
+import {
+    LayoutDashboard, Users, Car, Wallet, LogOut,
+    TrendingUp, Activity, Receipt, ChevronRight, Download,
     CreditCard, FileText, FlaskConical, CheckCircle, PlusCircle,
     Clock, AlertCircle, Check, BadgeDollarSign, UserCog
 } from 'lucide-react';
-import { 
-    LineChart, Line, XAxis, YAxis, CartesianGrid, 
-    Tooltip, ResponsiveContainer 
+import {
+    LineChart, Line, XAxis, YAxis, CartesianGrid,
+    Tooltip, ResponsiveContainer
 } from 'recharts';
 
 export default function AdminDashboard() {
     const router = useRouter();
-    
+
     // --- Navigation State ---
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('staff'); // Defaulting to staff to see the new feature
-    const [financeSubTab, setFinanceSubTab] = useState('overview'); 
+    const [financeSubTab, setFinanceSubTab] = useState('overview');
     const [adminName, setAdminName] = useState('Loading...');
-    
+
     // --- Data States ---
     const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0 });
     const [chartData, setChartData] = useState([]);
@@ -33,21 +33,22 @@ export default function AdminDashboard() {
     const [selectedKhataCustomer, setSelectedKhataCustomer] = useState<any | null>(null);
     const [isKhataModalOpen, setIsKhataModalOpen] = useState(false);
     const [khataPaymentAmount, setKhataPaymentAmount] = useState<string>('');
+    const [eodData, setEodData] = useState<any | null>(null);
 
     // Mocked Data for Inventory
-    const inventoryData = [ { id: 1, name: 'Ceramic Foam Wash', stock: '12 Liters', cost: '₹4,500', status: 'Healthy' }, { id: 2, name: 'Leather Conditioner', stock: '2 Liters', cost: '₹1,200', status: 'Low Stock' } ];
+    const inventoryData = [{ id: 1, name: 'Ceramic Foam Wash', stock: '12 Liters', cost: '₹4,500', status: 'Healthy' }, { id: 2, name: 'Leather Conditioner', stock: '2 Liters', cost: '₹1,200', status: 'Low Stock' }];
     const [customerCredits, setCustomerCredits] = useState<any[]>([]);
 
     // --- Data Fetching ---
     const fetchDashboardData = async () => {
         const token = localStorage.getItem('auth_token');
         if (!token) return router.push('/login');
-        
+
         const HEADERS = { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' };
         const API_BASE = 'http://127.0.0.1:8001/api';
 
         try {
-            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes] = await Promise.all([
+            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes, eodRes] = await Promise.all([
                 fetch(`${API_BASE}/core/users/me/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/kpi_summary/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: HEADERS }),
@@ -55,7 +56,8 @@ export default function AdminDashboard() {
                 fetch(`${API_BASE}/finance/expenses/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/staff/daily-settlement/`, { headers: HEADERS }),
-                fetch(`${API_BASE}/finance/khata/`, { headers: HEADERS })
+                fetch(`${API_BASE}/finance/khata/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/finance/close-register/`, { headers: HEADERS })
             ]);
 
             if (userRes?.ok) { const user = await userRes.json(); setAdminName(user.first_name || user.username); }
@@ -69,7 +71,8 @@ export default function AdminDashboard() {
             if (creditRes?.ok) { const creditData = await creditRes.json(); setCustomerCredits(creditData); }
             if (payrollRes?.ok) { const pd = await payrollRes.json(); setPayrollData(pd); }
             if (khataRes?.ok) { const khataData = await khataRes.json(); setKhataCustomers(khataData); }
-            
+            if (eodRes?.ok) { const eodD = await eodRes.json(); setEodData(eodD); }
+
         } catch (error) { console.error("Fetch Error:", error); } finally { setIsLoading(false); }
     };
 
@@ -107,8 +110,8 @@ export default function AdminDashboard() {
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ is_approved: true })
             });
-            fetchDashboardData(); 
-        } catch(e) { alert("Failed to approve"); }
+            fetchDashboardData();
+        } catch (e) { alert("Failed to approve"); }
     };
 
     const settleCredit = async (id: number) => {
@@ -116,24 +119,24 @@ export default function AdminDashboard() {
         try {
             const res = await fetch(`http://127.0.0.1:8001/api/invoices/${id}/mark_paid/`, {
                 method: 'PATCH',
-                headers: { 
+                headers: {
                     'Authorization': `Token ${token}`,
-                    'Content-Type': 'application/json' 
+                    'Content-Type': 'application/json'
                 }
             });
-            
+
             if (res.ok) {
                 setCustomerCredits(prev => prev.filter(credit => credit.id !== id));
-                fetchDashboardData(); 
+                fetchDashboardData();
                 alert("Account marked as settled! Revenue updated.");
             } else {
                 alert("Failed to settle account.");
             }
-        } catch(e) {
+        } catch (e) {
             alert("Network error while settling account.");
         }
     };
-    
+
     const loadKhataLedger = async (customer: any) => {
         setSelectedKhataCustomer(customer);
         try {
@@ -141,7 +144,7 @@ export default function AdminDashboard() {
             if (res.ok) {
                 setKhataLedger(await res.json());
             }
-        } catch(e) { console.error("Failed to load Khata ledger"); }
+        } catch (e) { console.error("Failed to load Khata ledger"); }
     };
 
     const handleKhataSettle = async () => {
@@ -161,7 +164,25 @@ export default function AdminDashboard() {
             } else {
                 alert("Failed to process payment");
             }
-        } catch(e) { alert("Network error"); }
+        } catch (e) { alert("Network error"); }
+    };
+
+    const handleCloseRegister = async () => {
+        if (!confirm("Are you sure you want to CLOSE the register? All transactions for today will be PERMANENTLY locked.")) return;
+        
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/finance/close-register/`, {
+                method: 'POST',
+                headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' }
+            });
+            if (res.ok) {
+                alert("Register successfully closed & locked!");
+                fetchDashboardData();
+            } else {
+                const data = await res.json();
+                alert(data.error || "Failed to close register.");
+            }
+        } catch (e) { alert("Network error closing register."); }
     };
 
     // Settle End-of-Day Payout
@@ -181,7 +202,7 @@ export default function AdminDashboard() {
             } else {
                 alert("Failed to settle worker pay");
             }
-        } catch(e) {
+        } catch (e) {
             alert("Network error settling worker pay");
         }
     };
@@ -199,7 +220,7 @@ export default function AdminDashboard() {
 
     return (
         <div className="min-h-screen bg-[#050505] text-white flex font-jakarta selection:bg-[#FF2A6D]">
-            
+
             {/* SIDEBAR */}
             <aside className="w-72 bg-[#141518]/60 backdrop-blur-2xl border-r border-white/5 flex flex-col hidden lg:flex">
                 <div className="p-8 border-b border-white/5">
@@ -211,7 +232,7 @@ export default function AdminDashboard() {
                     <button onClick={() => setActiveTab('finance')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'finance' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><Wallet className="w-4 h-4" /> Finance Dept</button>
                     <button className="w-full flex items-center gap-4 px-4 py-4 rounded-xl text-[#8E939B] hover:text-white font-bold text-xs uppercase tracking-widest transition-all"><Car className="w-4 h-4" /> Fleet Mgmt</button>
                     <button onClick={() => setActiveTab('staff')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'staff' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><Users className="w-4 h-4" /> Staff Ops</button>
-                    
+
                     <div className="pt-4 mt-4 border-t border-white/10">
                         <button onClick={() => router.push('/staff/pos')} className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-[#E52323] text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-[0_0_20px_rgba(229,35,35,0.4)]">
                             Launch Express POS <ChevronRight className="w-4 h-4" />
@@ -234,7 +255,7 @@ export default function AdminDashboard() {
 
             {/* MAIN CONTENT */}
             <main className="flex-1 p-8 lg:p-12 overflow-y-auto relative">
-                
+
                 {/* 1. Real-Time KPI Dashboarding */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                     <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-6 rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)]">
@@ -261,13 +282,13 @@ export default function AdminDashboard() {
                                 </LineChart>
                             </ResponsiveContainer>
                         </div>
-                        
+
                         <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl flex flex-col">
                             <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
                                 <h3 className="font-syncopate font-bold tracking-widest text-sm">LIVE QUEUE</h3>
                             </div>
                             <div className="flex-1 overflow-y-auto space-y-4 pr-2 hide-scrollbar">
-                                {recentBookings.length === 0 ? <p className="text-[#8E939B] text-center text-xs mt-10">No active bookings.</p> : 
+                                {recentBookings.length === 0 ? <p className="text-[#8E939B] text-center text-xs mt-10">No active bookings.</p> :
                                     recentBookings.map((booking: any) => (
                                         <div key={booking.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl">
                                             <div className="flex justify-between items-start mb-2">
@@ -275,7 +296,7 @@ export default function AdminDashboard() {
                                                     <p className="font-bold text-sm text-white">{booking.vehicle_info || 'Unknown Vehicle'}</p>
                                                     <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-1">{booking.service_package_details?.name || 'Standard Wash'}</p>
                                                 </div>
-                                                <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-sm ${ booking.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-[#FF2A6D]/20 text-[#FF2A6D]' }`}>
+                                                <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-sm ${booking.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-[#FF2A6D]/20 text-[#FF2A6D]'}`}>
                                                     {booking.status}
                                                 </span>
                                             </div>
@@ -303,6 +324,7 @@ export default function AdminDashboard() {
                             <button onClick={() => setFinanceSubTab('credit')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'credit' ? 'bg-purple-500/10 text-purple-400' : 'text-[#8E939B] hover:text-white'}`}>3. Customer Credit</button>
                             <button onClick={() => setFinanceSubTab('invoices')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400' : 'text-[#8E939B] hover:text-white'}`}>4. PDF Invoices</button>
                             <button onClick={() => { setFinanceSubTab('khata'); setSelectedKhataCustomer(null); }} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'khata' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>5. Khata / Credit</button>
+                            <button onClick={() => setFinanceSubTab('eod')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'eod' ? 'bg-red-500/10 text-red-500' : 'text-[#8E939B] hover:text-white'}`}>6. EOD Register Close</button>
                         </div>
 
                         {financeSubTab === 'overview' && (
@@ -332,7 +354,7 @@ export default function AdminDashboard() {
                                                 <td className="p-4">{exp.description}</td>
                                                 <td className="p-4 font-bold text-[#FF2A6D]">₹{exp.amount}</td>
                                                 <td className="p-4 text-right pr-6">
-                                                    {exp.is_approved ? <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-sm uppercase tracking-widest font-bold">Approved</span> : <button onClick={() => approveExpense(exp.id)} className="text-[9px] bg-[#FF2A6D] text-white px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><CheckCircle className="w-3 h-3"/> Approve</button>}
+                                                    {exp.is_approved ? <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-sm uppercase tracking-widest font-bold">Approved</span> : <button onClick={() => approveExpense(exp.id)} className="text-[9px] bg-[#FF2A6D] text-white px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><CheckCircle className="w-3 h-3" /> Approve</button>}
                                                 </td>
                                             </tr>
                                         ))}
@@ -345,7 +367,7 @@ export default function AdminDashboard() {
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="bg-purple-900/10 border border-purple-500/30 p-6 rounded-3xl mb-6 flex justify-between items-center">
                                     <div>
-                                        <p className="text-purple-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Clock className="w-4 h-4"/> Outstanding Balance</p>
+                                        <p className="text-purple-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Clock className="w-4 h-4" /> Outstanding Balance</p>
                                         <h2 className="text-3xl font-syncopate font-bold text-white tracking-tighter">₹{totalOutstandingCredit.toLocaleString()}</h2>
                                     </div>
                                     <div className="text-right hidden sm:block">
@@ -364,21 +386,21 @@ export default function AdminDashboard() {
                                                 <tr><td colSpan={5} className="p-8 text-center text-[#8E939B]">All accounts are settled! No outstanding credit.</td></tr>
                                             ) : (
                                                 customerCredits.map((credit) => (
-                                                <tr key={credit.id} className="hover:bg-white/5">
-                                                    <td className="p-4 pl-6 font-bold text-white">{credit.customer}</td>
-                                                    <td className="p-4 text-[#8E939B]">{credit.vehicle}</td>
-                                                    <td className="p-4 font-mono text-xs">{credit.date}</td>
-                                                    <td className="p-4 font-syncopate font-bold text-yellow-400 flex items-center gap-2">
-                                                        ₹{credit.amount}
-                                                        {credit.status === 'Overdue' && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
-                                                    </td>
-                                                    <td className="p-4 text-right pr-6">
-                                                        <button onClick={() => settleCredit(credit.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-emerald-500 hover:text-black transition">
-                                                            <Check className="w-3 h-3"/> Mark Paid
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            )))}
+                                                    <tr key={credit.id} className="hover:bg-white/5">
+                                                        <td className="p-4 pl-6 font-bold text-white">{credit.customer}</td>
+                                                        <td className="p-4 text-[#8E939B]">{credit.vehicle}</td>
+                                                        <td className="p-4 font-mono text-xs">{credit.date}</td>
+                                                        <td className="p-4 font-syncopate font-bold text-yellow-400 flex items-center gap-2">
+                                                            ₹{credit.amount}
+                                                            {credit.status === 'Overdue' && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
+                                                        </td>
+                                                        <td className="p-4 text-right pr-6">
+                                                            <button onClick={() => settleCredit(credit.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-emerald-500 hover:text-black transition">
+                                                                <Check className="w-3 h-3" /> Mark Paid
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                )))}
                                         </tbody>
                                     </table>
                                 </div>
@@ -392,13 +414,13 @@ export default function AdminDashboard() {
                                         <tr><th className="p-4 pl-6">Booking ID</th><th className="p-4">Customer</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Generate</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
-                                        {recentBookings.filter((b:any) => b.status === 'COMPLETED').map((booking: any) => (
+                                        {recentBookings.filter((b: any) => b.status === 'COMPLETED').map((booking: any) => (
                                             <tr key={booking.id} className="hover:bg-white/5">
                                                 <td className="p-4 pl-6 font-mono text-xs">#INV-{booking.id.toString().padStart(4, '0')}</td>
                                                 <td className="p-4 font-bold">{booking.vehicle_info}</td>
                                                 <td className="p-4 text-[#01FFFF] font-bold">₹{booking.final_price || booking.service_package_details?.price}</td>
                                                 <td className="p-4 text-right pr-6">
-                                                    <button onClick={() => downloadInvoicePDF(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><FileText className="w-3 h-3"/> Get PDF</button>
+                                                    <button onClick={() => downloadInvoicePDF(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><FileText className="w-3 h-3" /> Get PDF</button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -419,20 +441,20 @@ export default function AdminDashboard() {
                                                 <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No active Khata balances.</td></tr>
                                             ) : (
                                                 khataCustomers.map((c) => (
-                                                <tr key={c.id} className="hover:bg-white/5 cursor-pointer" onClick={() => loadKhataLedger(c)}>
-                                                    <td className="p-4 pl-6 font-bold text-white flex items-center gap-2">
-                                                        {c.name}
-                                                        {c.outstanding_balance >= c.credit_limit * 0.9 && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
-                                                    </td>
-                                                    <td className="p-4 text-[#8E939B] font-mono text-xs">{c.phone_number}</td>
-                                                    <td className="p-4 font-syncopate font-bold text-[#01FFFF]">₹{c.outstanding_balance}</td>
-                                                    <td className="p-4 text-right pr-6">
-                                                        <button onClick={(e) => { e.stopPropagation(); loadKhataLedger(c); }} className="text-[9px] bg-white/10 text-white border border-white/20 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-white hover:text-black transition">
-                                                            View Ledger <ChevronRight className="w-3 h-3"/>
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            )))}
+                                                    <tr key={c.id} className="hover:bg-white/5 cursor-pointer" onClick={() => loadKhataLedger(c)}>
+                                                        <td className="p-4 pl-6 font-bold text-white flex items-center gap-2">
+                                                            {c.name}
+                                                            {c.outstanding_balance >= c.credit_limit * 0.9 && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
+                                                        </td>
+                                                        <td className="p-4 text-[#8E939B] font-mono text-xs">{c.phone_number}</td>
+                                                        <td className="p-4 font-syncopate font-bold text-[#01FFFF]">₹{c.outstanding_balance}</td>
+                                                        <td className="p-4 text-right pr-6">
+                                                            <button onClick={(e) => { e.stopPropagation(); loadKhataLedger(c); }} className="text-[9px] bg-white/10 text-white border border-white/20 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-white hover:text-black transition">
+                                                                View Ledger <ChevronRight className="w-3 h-3" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                )))}
                                         </tbody>
                                     </table>
                                 </div>
@@ -442,7 +464,7 @@ export default function AdminDashboard() {
                         {financeSubTab === 'khata' && selectedKhataCustomer && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
                                 <div className="flex justify-between items-center mb-6">
-                                    <button onClick={() => setSelectedKhataCustomer(null)} className="text-[#8E939B] hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"><ChevronRight className="w-4 h-4 rotate-180"/> Back to Khata List</button>
+                                    <button onClick={() => setSelectedKhataCustomer(null)} className="text-[#8E939B] hover:text-white flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors"><ChevronRight className="w-4 h-4 rotate-180" /> Back to Khata List</button>
                                     <button onClick={() => { setKhataPaymentAmount(selectedKhataCustomer.outstanding_balance.toString()); setIsKhataModalOpen(true); }} className="flex items-center gap-2 bg-[#01FFFF] text-black px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white transition shadow-[0_0_20px_rgba(1,255,255,0.3)]">
                                         <BadgeDollarSign className="w-4 h-4" /> Receive Payment
                                     </button>
@@ -468,22 +490,104 @@ export default function AdminDashboard() {
                                                 <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No ledger entries found.</td></tr>
                                             ) : (
                                                 khataLedger.map((entry) => (
-                                                <tr key={entry.id} className="hover:bg-white/5">
-                                                    <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
-                                                    <td className="p-4 font-bold text-white">{entry.description}</td>
-                                                    <td className="p-4">
-                                                        <span className={`text-[9px] px-2 py-1 rounded-sm uppercase tracking-widest font-bold ${entry.transaction_type === 'CHARGE' ? 'bg-[#FF2A6D]/20 text-[#FF2A6D]' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                                                            {entry.transaction_type}
-                                                        </span>
-                                                    </td>
-                                                    <td className={`p-4 text-right pr-6 font-syncopate font-bold ${entry.transaction_type === 'CHARGE' ? 'text-[#FF2A6D]' : 'text-emerald-400'}`}>
-                                                        {entry.transaction_type === 'CHARGE' ? '+' : '-'}₹{entry.amount}
-                                                    </td>
-                                                </tr>
-                                            )))}
+                                                    <tr key={entry.id} className="hover:bg-white/5">
+                                                        <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
+                                                        <td className="p-4 font-bold text-white">{entry.description}</td>
+                                                        <td className="p-4">
+                                                            <span className={`text-[9px] px-2 py-1 rounded-sm uppercase tracking-widest font-bold ${entry.transaction_type === 'CHARGE' ? 'bg-[#FF2A6D]/20 text-[#FF2A6D]' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                                                {entry.transaction_type}
+                                                            </span>
+                                                        </td>
+                                                        <td className={`p-4 text-right pr-6 font-syncopate font-bold ${entry.transaction_type === 'CHARGE' ? 'text-[#FF2A6D]' : 'text-emerald-400'}`}>
+                                                            {entry.transaction_type === 'CHARGE' ? '+' : '-'}₹{entry.amount}
+                                                        </td>
+                                                    </tr>
+                                                )))}
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        )}
+
+                        {financeSubTab === 'eod' && eodData && (
+                            <div className="animate-[fadeIn_0.3s_ease-out] max-w-5xl mx-auto">
+                                <div className="text-center mb-10">
+                                    <h2 className="text-3xl font-syncopate font-bold text-white mb-2 tracking-widest">END OF DAY AUDIT</h2>
+                                    <p className="text-[#8E939B] text-sm font-mono">{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                                </div>
+
+                                {eodData.is_locked && (
+                                    <div className="bg-red-500/10 border border-red-500 p-6 rounded-2xl mb-8 flex items-center justify-center gap-4 animate-pulse">
+                                        <AlertCircle className="w-8 h-8 text-red-500"/>
+                                        <div>
+                                            <h3 className="font-syncopate font-bold text-red-500 tracking-widest text-lg">REGISTER LOCKED</h3>
+                                            <p className="text-xs text-red-400 uppercase tracking-widest mt-1">Closed by {eodData.closed_by}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
+                                    {/* Till Verification */}
+                                    <div className="bg-[#141518]/60 border border-white/5 p-8 rounded-3xl relative overflow-hidden group">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                                        <div className="border-b border-white/10 pb-4 mb-6 relative z-10 flex items-center justify-between">
+                                            <h3 className="font-syncopate font-bold tracking-widest text-white text-lg flex items-center gap-3">
+                                                <Wallet className="w-5 h-5 text-emerald-400" /> CASH DRAWER MATH
+                                            </h3>
+                                        </div>
+                                        <div className="space-y-4 font-mono text-sm">
+                                            <div className="flex justify-between text-[#8E939B]">
+                                                <span>Total Cash In (Washes + Khata)</span>
+                                                <span className="text-white">₹{eodData.cash_in_hand || 0}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[#FF2A6D]">
+                                                <span>Minus: Physical Expenses</span>
+                                                <span>- ₹{eodData.total_expenses}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[#FF2A6D]">
+                                                <span>Minus: Labor Payouts (Cash)</span>
+                                                <span>- ₹{eodData.labor_payouts || 0}</span>
+                                            </div>
+                                            <div className="pt-4 mt-4 border-t border-white/10 flex justify-between items-center bg-black/40 -mx-8 px-8 py-4">
+                                                <span className="text-xs text-emerald-400 uppercase font-bold tracking-widest font-sans">EXPECTED IN TILL &rarr;</span>
+                                                <span className="text-2xl font-syncopate font-bold text-emerald-400">₹{eodData.expected_cash_in_till}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Profit Breakdown */}
+                                    <div className="bg-[#141518]/60 border border-white/5 p-8 rounded-3xl relative overflow-hidden group">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-[#01FFFF]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                                        <div className="border-b border-white/10 pb-4 mb-6 relative z-10 flex items-center justify-between">
+                                            <h3 className="font-syncopate font-bold tracking-widest text-white text-lg flex items-center gap-3">
+                                                <TrendingUp className="w-5 h-5 text-[#01FFFF]" /> PROFIT MATRIX
+                                            </h3>
+                                        </div>
+                                        <div className="space-y-4 font-mono text-sm">
+                                            <div className="flex justify-between text-[#8E939B]">
+                                                <span>Gross Service Revenue (All)</span>
+                                                <span className="text-white">₹{eodData.gross_revenue}</span>
+                                            </div>
+                                            <div className="flex justify-between text-[#FF2A6D]">
+                                                <span>Minus: Shop Expenses</span>
+                                                <span>- ₹{eodData.total_expenses}</span>
+                                            </div>
+                                            <div className="pt-4 mt-4 border-t border-white/10 flex justify-between items-center bg-black/40 -mx-8 px-8 py-4">
+                                                <span className="text-xs text-[#01FFFF] uppercase font-bold tracking-widest font-sans">NET SHOP PROFIT &rarr;</span>
+                                                <span className="text-2xl font-syncopate font-bold text-[#01FFFF]">₹{(eodData.gross_revenue - eodData.total_expenses).toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {!eodData.is_locked && (
+                                    <button 
+                                        onClick={handleCloseRegister}
+                                        className="w-full bg-[#E52323] hover:bg-red-700 text-white font-syncopate font-bold py-6 rounded-2xl shadow-[0_0_30px_rgba(229,35,35,0.4)] flex justify-center items-center gap-3 transition-all transform hover:scale-[1.02]"
+                                    >
+                                        <CheckCircle className="w-6 h-6" /> CLOSE REGISTER & LOCK ALL DATA FOR TODAY
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -504,7 +608,7 @@ export default function AdminDashboard() {
                         {/* Top Widget: Total Cash Outflow */}
                         <div className="bg-emerald-900/10 border border-emerald-500/30 p-6 rounded-3xl mb-8 flex justify-between items-center">
                             <div>
-                                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Wallet className="w-4 h-4"/> Total Daily Payout</p>
+                                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Wallet className="w-4 h-4" /> Total Daily Payout</p>
                                 <h2 className="text-4xl font-syncopate font-bold text-white tracking-tighter">₹{totalDailyPayout.toLocaleString()}</h2>
                             </div>
                             <div className="text-right hidden sm:block">
@@ -516,7 +620,7 @@ export default function AdminDashboard() {
                         {/* The Dynamic Payroll Ledger Table */}
                         <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
                             <div className="p-6 border-b border-white/5 flex gap-2 items-center">
-                                <UserCog className="w-5 h-5 text-[#8E939B]"/>
+                                <UserCog className="w-5 h-5 text-[#8E939B]" />
                                 <h4 className="font-bold text-sm uppercase tracking-widest text-[#8E939B]">Staff Payroll Ledger (Today)</h4>
                             </div>
                             <div className="overflow-x-auto">
@@ -555,14 +659,14 @@ export default function AdminDashboard() {
                                                 <td className="p-4 text-right pr-6">
                                                     {worker.status === 'Paid' ? (
                                                         <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold">
-                                                            <CheckCircle className="w-3 h-3"/> Settled
+                                                            <CheckCircle className="w-3 h-3" /> Settled
                                                         </span>
                                                     ) : (
-                                                        <button 
-                                                            onClick={() => settleWorkerPay(worker.id)} 
+                                                        <button
+                                                            onClick={() => settleWorkerPay(worker.id)}
                                                             className="inline-flex items-center gap-1 text-[10px] bg-[#01FFFF] text-black hover:bg-white transition-colors px-4 py-1.5 rounded-sm uppercase tracking-widest font-bold shadow-[0_0_15px_rgba(1,255,255,0.3)]"
                                                         >
-                                                            <BadgeDollarSign className="w-3 h-3"/> Pay Cash
+                                                            <BadgeDollarSign className="w-3 h-3" /> Pay Cash
                                                         </button>
                                                     )}
                                                 </td>
@@ -574,7 +678,7 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                 )}
-                
+
             </main>
 
             {/* KHATA PAYMENT MODAL */}
@@ -586,12 +690,12 @@ export default function AdminDashboard() {
                             <button onClick={() => setIsKhataModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors"><PlusCircle className="w-6 h-6 rotate-45" /></button>
                         </div>
                         <p className="text-sm text-[#8E939B] mb-6">Record a partial or full settlement for <strong className="text-white">{selectedKhataCustomer?.name}</strong>.</p>
-                        
+
                         <div className="space-y-4 mb-8">
                             <div>
                                 <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Payment Amount (₹)</label>
-                                <input 
-                                    type="number" 
+                                <input
+                                    type="number"
                                     value={khataPaymentAmount}
                                     onChange={(e) => setKhataPaymentAmount(e.target.value)}
                                     className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
@@ -599,8 +703,8 @@ export default function AdminDashboard() {
                                 />
                             </div>
                         </div>
-                        
-                        <button 
+
+                        <button
                             onClick={handleKhataSettle}
                             className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] justify-center hover:bg-white transition-all flex items-center gap-2"
                         >
@@ -610,7 +714,8 @@ export default function AdminDashboard() {
                 </div>
             )}
 
-            <style dangerouslySetInnerHTML={{__html: `
+            <style dangerouslySetInnerHTML={{
+                __html: `
                 .hide-scrollbar::-webkit-scrollbar { display: none; }
                 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }

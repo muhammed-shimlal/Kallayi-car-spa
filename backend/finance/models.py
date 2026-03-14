@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from bookings.models import Booking, ServicePackage
 
 class RevenueCategory(models.Model):
@@ -141,3 +142,19 @@ class KhataLedger(models.Model):
 
     def __str__(self):
         return f"{self.transaction_type} of ₹{self.amount} for {self.customer}"
+
+class DailyRegisterAudit(models.Model):
+    """
+    End-of-Day (EOD) Register Close & Data Lock table.
+    Once closed, prevents historical modifications for that day.
+    """
+    date = models.DateField(default=timezone.now, unique=True)
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='registered_closed')
+    closed_at = models.DateTimeField(auto_now_add=True)
+    gross_revenue = models.DecimalField(max_digits=10, decimal_places=2)
+    expected_cash_in_till = models.DecimalField(max_digits=10, decimal_places=2)
+    total_expenses = models.DecimalField(max_digits=10, decimal_places=2)
+    is_locked = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Audit for {self.date} - Locked: {self.is_locked}"

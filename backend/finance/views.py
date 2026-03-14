@@ -1,11 +1,11 @@
 from rest_framework import viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from django.db.models import Sum, F
 from django.utils import timezone
 from decimal import Decimal
-from .models import Invoice, ChemicalUsageLog, PayrollEntry, GeneralExpense, ExpenseCategory, KhataLedger
+from .models import Invoice, ChemicalUsageLog, PayrollEntry, GeneralExpense, ExpenseCategory, KhataLedger, DailyRegisterAudit
 from .serializers import InvoiceSerializer, GeneralExpenseSerializer, ExpenseCategorySerializer
 from customers.models import Customer
 from bookings.models import Booking
@@ -367,3 +367,98 @@ class KhataViewSet(viewsets.ViewSet):
         print(f"[MOCK SMS] Payment received! ₹{amount} has been credited to your Kallayi Khata. New Balance: ₹{customer.outstanding_balance}.")
 
         return Response({'status': 'Settlement successful', 'new_balance': float(customer.outstanding_balance)})
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def close_register(request):
+    """
+    End-of-Day (EOD) Register Close & Data Lock.
+    GET: Returns a live preview of the day's math (or the locked values if already closed today)
+    POST: Permanently freezes all financial transactions for the day.
+    """
+    if request.user.role not in ['ADMIN', 'MANAGER']:
+        return Response({'error': 'You do not have permission to access the register.'}, status=403)
+
+    today = timezone.localdate()
+    
+    # Check if existing lock exists
+    existing_lock = DailyRegisterAudit.objects.filter(date=today, is_locked=True).first()
+
+    if existing_lock:
+        if request.method == 'POST':
+            return Response({'error': 'The register for today is already closed and locked.'}, status=400)
+            
+        # Return the locked data instead of calculating live
+        return Response({
+            'is_locked': True,
+            'closed_by': getattr(existing_lock.closed_by, 'username', 'Unknown'),
+            'closed_at': existing_lock.closed_at,
+            'gross_revenue': float(existing_lock.gross_revenue),
+            'total_expenses': float(existing_lock.total_expenses),
+            'expected_cash_in_till': float(existing_lock.expected_cash_in_till)
+        })
+
+    # === CALCULATION LOGIC (For both live preview GET and lock POST) ===
+
+    # Calculate Gross Revenue (Value of all Complete Bookings)
+    gross_revenue = Booking.objects.filter(
+        created_at__date=today,
+        status='COMPLETED'
+    ).aggregate(total=Sum('final_price'))['total'] or Decimal('0.00')
+
+    # Calculate Total Expenses (Shop expenses)
+    total_expenses = GeneralExpense.objects.filter(
+        date=today
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    # Calculate Expected Cash In Till
+    # 1. Total Cash Payments Received
+    cash_payments = Invoice.objects.filter(
+        created_at__date=today,
+        is_paid=True,
+        payment_method='CASH'
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    # 2. Khata Settlements (Cash received for old debts)
+    khata_settlements = KhataLedger.objects.filter(
+        created_at__date=today,
+        transaction_type='SETTLEMENT'
+    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+
+    total_cash_in = cash_payments + khata_settlements
+
+    # 3. Staff Payouts (assuming cash payouts today)
+    labor_payouts = PayrollEntry.objects.filter(
+        date=today
+    ).aggregate(total=Sum(F('base_wage') + F('commission_earned') + F('tips_earned')))['total'] or Decimal('0.00')
+
+    expected_cash_in_till = total_cash_in - total_expenses - labor_payouts
+
+    if request.method == 'GET':
+        return Response({
+            'is_locked': False,
+            'gross_revenue': float(gross_revenue),
+            'total_expenses': float(total_expenses),
+            'expected_cash_in_till': float(expected_cash_in_till),
+            'cash_in_hand': float(total_cash_in),
+            'labor_payouts': float(labor_payouts),
+        })
+
+    if request.method == 'POST':
+        # Create the Lock
+        DailyRegisterAudit.objects.create(
+            date=today,
+            closed_by=request.user,
+            gross_revenue=gross_revenue,
+            total_expenses=total_expenses,
+            expected_cash_in_till=expected_cash_in_till,
+            is_locked=True
+        )
+
+        return Response({
+            'message': 'Register successfully closed. All financial data for today is now locked.',
+            'gross_revenue': float(gross_revenue),
+            'total_expenses': float(total_expenses),
+            'expected_cash_in_till': float(expected_cash_in_till),
+            'is_locked': True
+        })
