@@ -1,429 +1,420 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
-  CarFront,
-  User,
-  LogOut,
-  Search,
-  Filter,
-  ArrowUpRight,
-  Wallet,
-  Receipt,
-  Users,
-  MoreHorizontal
-} from "lucide-react";
+    LayoutDashboard, Users, Car, Wallet, LogOut, 
+    TrendingUp, Activity, Receipt, ChevronRight, Download, 
+    CreditCard, FileText, FlaskConical, CheckCircle, PlusCircle,
+    Clock, AlertCircle, Check
+} from 'lucide-react';
 import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer 
-} from "recharts";
-
-// Helper to get cookie
-function getCookie(name: string) {
-  if (typeof document === 'undefined') return null;
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; ${name}=`);
-  if (parts.length === 2) return parts.pop()?.split(';').shift();
-  return null;
-}
+    LineChart, Line, XAxis, YAxis, CartesianGrid, 
+    Tooltip, ResponsiveContainer 
+} from 'recharts';
 
 export default function AdminDashboard() {
-  const router = useRouter();
-  
-  const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<{ first_name?: string; username: string; role: string } | null>(null);
-  
-  const [kpiData, setKpiData] = useState({
-    net_profit_today: 0,
-    revenue_today: 0,
-    general_expenses_today: 0,
-    labor_cost_today: 0,
-    chemical_cost_today: 0
-  });
-  
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [recentJobs, setRecentJobs] = useState<any[]>([]);
+    const router = useRouter();
+    
+    // --- Navigation State ---
+    const [isLoading, setIsLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('overview'); 
+    const [financeSubTab, setFinanceSubTab] = useState('overview'); // 'overview' | 'expenses' | 'credit' | 'invoices' | 'inventory'
+    const [adminName, setAdminName] = useState('Loading...');
+    
+    // --- Data States ---
+    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0 });
+    const [chartData, setChartData] = useState([]);
+    const [recentBookings, setRecentBookings] = useState([]);
+    const [expenses, setExpenses] = useState<any[]>([]);
 
-  useEffect(() => {
-    const initializeDashboard = async () => {
-      const token = getCookie("auth_token");
-      
-      if (!token) {
-        router.push("/login");
-        return;
-      }
+    // Mocked Data for Inventory & Payroll
+    const inventoryData = [
+        { id: 1, name: 'Ceramic Foam Wash', stock: '12 Liters', cost: '₹4,500', status: 'Healthy' },
+        { id: 2, name: 'Leather Conditioner', stock: '2 Liters', cost: '₹1,200', status: 'Low Stock' }
+    ];
+    const payrollRules = [
+        { id: 1, role: 'Technician', package: 'Deep Detail', commission: '₹200 / wash' },
+        { id: 2, role: 'Washer', package: 'Standard Wash', commission: '₹50 / wash' }
+    ];
 
-      const headers = {
-        Authorization: `Token ${token}`,
-        "Content-Type": "application/json"
-      };
+    const [customerCredits, setCustomerCredits] = useState<any[]>([]);
 
-      try {
-        // Fetch User
-        const meRes = await fetch("http://127.0.0.1:8001/api/core/users/me/", { headers });
-        if (!meRes.ok) throw new Error("Auth failed");
-        const meData = await meRes.json();
-        setUser(meData);
+    // --- Data Fetching ---
+    const fetchDashboardData = async () => {
+        const token = localStorage.getItem('auth_token');
+        if (!token) return router.push('/login');
+        
+        const HEADERS = { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' };
+        const API_BASE = 'http://127.0.0.1:8001/api';
 
-        // Fetch KPIs
-        const kpiRes = await fetch("http://127.0.0.1:8001/api/finance/dashboard/kpi_summary/", { headers });
-        if (kpiRes.ok) {
-          const kpi = await kpiRes.json();
-          // Fallback to older keys if API hasn't been updated to match the HTML script yet
-          setKpiData({
-            net_profit_today: kpi.net_profit_today || kpi.net_profit || 0,
-            revenue_today: kpi.revenue_today || kpi.total_revenue || 0,
-            general_expenses_today: kpi.general_expenses_today || kpi.general_expenses || 0,
-            labor_cost_today: kpi.labor_cost_today || kpi.labor_cost || 0,
-            chemical_cost_today: kpi.chemical_cost_today || 0
-          });
+        try {
+            // Make sure there are EXACTLY 6 fetch calls inside this array
+            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes] = await Promise.all([
+                fetch(`${API_BASE}/core/users/me/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/finance/dashboard/kpi_summary/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/bookings/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/finance/expenses/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: HEADERS }) 
+            ]);
+
+            // Safely check each response using Optional Chaining (?.)
+            if (userRes?.ok) { 
+                const user = await userRes.json(); 
+                setAdminName(user.first_name || user.username); 
+            }
+            if (kpiRes?.ok) setKpiData(await kpiRes.json());
+            if (chartRes?.ok) {
+                const chartApiData = await chartRes.json();
+                setChartData(chartApiData.map((d: any) => ({ 
+                    name: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
+                    value: d.value 
+                })));
+            }
+            if (bookRes?.ok) { 
+                const b = await bookRes.json(); 
+                setRecentBookings(b.slice(0, 10)); 
+            }
+            if (expRes?.ok) { 
+                const e = await expRes.json(); 
+                setExpenses(e.results || e); 
+            }
+            
+            // The FIX: Add the question mark here so TypeScript knows it's safe!
+            if (creditRes?.ok) { 
+                const creditData = await creditRes.json(); 
+                setCustomerCredits(creditData); 
+            }
+
+        } catch (error) { 
+            console.error("Dashboard Fetch Error:", error); 
+        } finally { 
+            setIsLoading(false); 
         }
-
-        // Fetch Chart Data
-        const chartRes = await fetch("http://127.0.0.1:8001/api/finance/dashboard/revenue_chart/", { headers });
-        if (chartRes.ok) {
-          const chart = await chartRes.json();
-          // Format dates for display
-          const formattedChart = chart.map((d: any) => {
-             const dateObj = new Date(d.date);
-             return {
-                 ...d,
-                 displayDate: dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-             };
-          });
-          setChartData(formattedChart);
-        }
-
-        // Fetch Recent Bookings / Jobs
-        const jobsRes = await fetch("http://127.0.0.1:8001/api/bookings/", { headers });
-        if (jobsRes.ok) {
-          const jobsData = await jobsRes.json();
-          setRecentJobs(jobsData.results?.slice(0, 5) || jobsData.slice(0, 5) || []);
-        }
-
-      } catch (err) {
-        console.error("Dashboard fetch error:", err);
-        router.push("/login");
-      } finally {
-        setIsLoading(false);
-      }
     };
 
-    initializeDashboard();
-  }, [router]);
+    useEffect(() => { fetchDashboardData(); }, [router]);
 
-  const handleLogout = () => {
-    document.cookie = "auth_token=; path=/; max-age=0";
-    router.push("/login");
-  };
+    // --- Actions ---
+    const handleLogout = () => { localStorage.removeItem('auth_token'); router.push('/login'); };
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val || 0);
-  };
+    const downloadTaxReport = async () => {
+        try {
+            const res = await fetch('http://127.0.0.1:8001/api/finance/reports/tax_summary/', { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            if (!res.ok) throw new Error("Failed");
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `tax_summary.csv`; a.click();
+        } catch (e) { alert("Failed to export."); }
+    };
 
-  const getStatusBadge = (status: string) => {
-    const s = status?.toUpperCase() || "";
-    if (s.includes("COMPLETED") || s.includes("DONE")) {
-      return <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">Success</span>;
-    }
-    if (s.includes("PROGRESS") || s.includes("ONGOING")) {
-      return <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">In Progress</span>;
-    }
-    return <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold">Pending</span>;
-  };
+    const downloadInvoicePDF = async (id: number) => {
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/finance/invoices/${id}/download_pdf/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            if (!res.ok) throw new Error("Failed");
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `Invoice_Kallayi_${id}.pdf`; a.click();
+        } catch (e) { alert("Invoice generation failed."); }
+    };
 
-  return (
-    <div className="bg-gray-50 min-h-screen text-gray-800 font-sans">
-      
-      {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
-        <div className="flex items-center gap-8">
-          <div className="flex items-center gap-2 text-xl font-black tracking-tight text-gray-900">
-            <div className="bg-gray-900 text-white p-1.5 rounded-lg">
-              <CarFront className="w-5 h-5" />
-            </div>
-            Kallayi<span className="font-normal text-gray-500">Admin</span>
-          </div>
-          
-          <div className="hidden lg:flex items-center gap-6 text-sm font-semibold text-gray-500 ml-8">
-            <a href="#" className="text-black">Overview</a>
-            <a href="#" className="hover:text-black transition">Finance</a>
-            <a href="#" className="hover:text-black transition">Bookings</a>
-            <a href="#" className="hover:text-black transition">Fleet</a>
-            <a href="#" className="hover:text-black transition">Staff</a>
-          </div>
-        </div>
+    const approveExpense = async (id: number) => {
+        try {
+            await fetch(`http://127.0.0.1:8001/api/finance/expenses/${id}/`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_approved: true })
+            });
+            fetchDashboardData(); 
+        } catch(e) { alert("Failed to approve"); }
+    };
 
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-3 pr-4 border-r border-gray-200">
-            <div className="text-right">
-              <p className="text-sm font-bold text-gray-900">
-                {isLoading ? "Loading..." : (user?.first_name || user?.username || "Admin")}
-              </p>
-              <p className="text-xs text-gray-500">Administrator</p>
-            </div>
-            <div className="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center text-gray-500">
-              <User className="w-5 h-5" />
-            </div>
-          </div>
-          <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition">
-            <LogOut className="w-5 h-5" />
-          </button>
-        </div>
-      </nav>
-
-      <main className="max-w-[1400px] mx-auto p-6 md:p-8">
+    const settleCredit = async (id: number) => {
+    const token = localStorage.getItem('auth_token');
+    try {
+        const res = await fetch(`http://127.0.0.1:8001/api/invoices/${id}/mark_paid/`, {
+            method: 'PATCH',
+            headers: { 
+                'Authorization': `Token ${token}`,
+                'Content-Type': 'application/json' 
+            }
+        });
         
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
-            <p className="text-gray-500 text-sm mt-1">Monitor daily activities and financial health of your spa.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
-              <input 
-                type="text" 
-                placeholder="Search now..." 
-                className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-black w-64 transition"
-              />
-            </div>
-            <button className="bg-black text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 hover:bg-gray-800 transition">
-              <Filter className="w-4 h-4" /> Filter By
-            </button>
-          </div>
+        if (res.ok) {
+            // Remove it from the table instantly
+            setCustomerCredits(prev => prev.filter(credit => credit.id !== id));
+            // Optional: Re-fetch KPI data to update the Total Revenue instantly!
+            fetchDashboardData(); 
+            alert("Account marked as settled! Revenue updated.");
+        } else {
+            alert("Failed to settle account.");
+        }
+    } catch(e) {
+        alert("Network error while settling account.");
+    }
+};
+
+    if (isLoading) return (
+        <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
+            <Activity className="w-10 h-10 text-[#01FFFF] animate-spin" />
         </div>
+    );
 
-        {/* KPI Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-            <p className="text-gray-500 text-sm font-semibold mb-2">Net Profit Today</p>
-            <div className="flex items-baseline gap-3">
-              <h2 className="text-3xl font-black text-gray-900">
-                {isLoading ? "..." : formatCurrency(kpiData.net_profit_today)}
-              </h2>
-              <span className="text-xs font-bold text-green-500 bg-green-50 px-2 py-1 rounded-md flex items-center">
-                <ArrowUpRight className="w-3 h-3 mr-1" /> Today
-              </span>
-            </div>
-          </div>
+    const totalOutstandingCredit = customerCredits.reduce((sum, item) => sum + item.amount, 0);
 
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex justify-between items-center">
-            <div>
-              <p className="text-gray-500 text-sm font-semibold mb-1">Total Revenue</p>
-              <h3 className="text-2xl font-bold text-gray-900">
-                {isLoading ? "..." : formatCurrency(kpiData.revenue_today)}
-              </h3>
-            </div>
-            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100">
-              <Wallet className="w-5 h-5 text-gray-600" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex justify-between items-center">
-            <div>
-              <p className="text-gray-500 text-sm font-semibold mb-1">General Expenses</p>
-              <h3 className="text-2xl font-bold text-gray-900">
-                {isLoading ? "..." : formatCurrency(kpiData.general_expenses_today)}
-              </h3>
-            </div>
-            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100">
-              <Receipt className="w-5 h-5 text-gray-600" />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex justify-between items-center">
-            <div>
-              <p className="text-gray-500 text-sm font-semibold mb-1">Labor Cost</p>
-              <h3 className="text-2xl font-bold text-gray-900">
-                {isLoading ? "..." : formatCurrency(kpiData.labor_cost_today)}
-              </h3>
-            </div>
-            <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center border border-green-100">
-              <Users className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content Areas */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          <div className="lg:col-span-2 space-y-8">
+    return (
+        <div className="min-h-screen bg-[#050505] text-white flex font-jakarta selection:bg-[#FF2A6D]">
             
-            {/* Chart Section */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-gray-900 text-lg">Transaction Activity</h3>
-                <div className="flex items-center gap-4 text-sm font-medium text-gray-500">
-                  <span className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-black"></div> Revenue
-                  </span>
+            {/* SIDEBAR */}
+            <aside className="w-72 bg-[#141518]/60 backdrop-blur-2xl border-r border-white/5 flex flex-col hidden lg:flex">
+                <div className="p-8 border-b border-white/5">
+                    <h2 className="text-xl font-syncopate font-bold tracking-widest">KALLAYI<span className="text-[#FF2A6D]">.</span></h2>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#8E939B] mt-2">Admin Portal</p>
                 </div>
-              </div>
-              <div className="h-64 w-full">
-                {isLoading ? (
-                  <div className="w-full h-full bg-gray-100 animate-pulse rounded-xl" />
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#000000" stopOpacity={0.1}/>
-                          <stop offset="95%" stopColor="#000000" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <XAxis 
-                        dataKey="displayDate" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: '#9CA3AF', fontSize: 12 }} 
-                        dy={10}
-                      />
-                      <YAxis 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: '#9CA3AF', fontSize: 12 }} 
-                        tickFormatter={(val) => `₹${val}`}
-                      />
-                      <Tooltip 
-                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        itemStyle={{ color: '#000', fontWeight: 'bold' }}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="value" // Adjust if your api uses "revenue" instead of "value"
-                        stroke="#000000" 
-                        strokeWidth={2}
-                        fillOpacity={1} 
-                        fill="url(#colorRevenue)" 
-                        activeDot={{ r: 6, fill: '#000', stroke: '#fff', strokeWidth: 2 }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                <nav className="flex-1 p-6 space-y-2">
+                    <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><LayoutDashboard className="w-4 h-4" /> Overview</button>
+                    <button onClick={() => setActiveTab('finance')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'finance' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}><Wallet className="w-4 h-4" /> Finance Dept</button>
+                    <button className="w-full flex items-center gap-4 px-4 py-4 rounded-xl text-[#8E939B] hover:text-white font-bold text-xs uppercase tracking-widest transition-all"><Car className="w-4 h-4" /> Fleet Mgmt</button>
+                    <button className="w-full flex items-center gap-4 px-4 py-4 rounded-xl text-[#8E939B] hover:text-white font-bold text-xs uppercase tracking-widest transition-all"><Users className="w-4 h-4" /> Staff Ops</button>
+                </nav>
+                <div className="p-6 border-t border-white/5">
+                    <div className="flex items-center gap-4 mb-6">
+                        <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center font-syncopate font-bold">
+                            {adminName.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <p className="font-bold text-sm">{adminName}</p>
+                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">System Admin</p>
+                        </div>
+                    </div>
+                    <button onClick={handleLogout} className="w-full flex justify-center items-center gap-2 px-4 py-3 rounded-xl border border-white/10 text-gray-400 hover:text-[#FF2A6D] hover:border-[#FF2A6D]/50 transition-colors text-xs font-bold uppercase tracking-widest"><LogOut className="w-4 h-4" /> Disconnect</button>
+                </div>
+            </aside>
+
+            {/* MAIN CONTENT */}
+            <main className="flex-1 p-8 lg:p-12 overflow-y-auto relative">
+                
+                {/* 1. Real-Time KPI Dashboarding */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-6 rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)]">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#01FFFF]/10 rounded-full blur-[50px] group-hover:bg-[#01FFFF]/20 transition-all"></div>
+                        <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Net Profit Today</p>
+                        <h2 className="text-4xl font-syncopate font-bold text-white tracking-tighter">₹{kpiData.net_profit_today.toLocaleString()}</h2>
+                    </div>
+                    <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Total Revenue</p><h2 className="text-3xl font-syncopate font-bold">₹{kpiData.revenue_today.toLocaleString()}</h2></div>
+                    <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Labor Cost</p><h2 className="text-3xl font-syncopate font-bold">₹{kpiData.labor_cost_today.toLocaleString()}</h2></div>
+                    <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">General Expenses</p><h2 className="text-3xl font-syncopate font-bold text-[#FF2A6D]">₹{kpiData.general_expenses_today.toLocaleString()}</h2></div>
+                </div>
+
+                {/* OVERVIEW TAB */}
+                {activeTab === 'overview' && (
+                    <div className="animate-[fadeIn_0.5s_ease-out] grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div className="lg:col-span-2 bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="font-syncopate font-bold tracking-widest text-sm">REVENUE TREND</h3>
+                            </div>
+                            <div className="h-72 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                        <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} dy={10} />
+                                        <YAxis stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value}`} dx={-10} />
+                                        <Tooltip contentStyle={{ backgroundColor: '#050505', border: '1px solid rgba(255,255,255,0.1)' }} itemStyle={{ color: '#01FFFF' }} />
+                                        <Line type="monotone" dataKey="value" stroke="#01FFFF" strokeWidth={3} dot={{ fill: '#050505', stroke: '#01FFFF', strokeWidth: 2, r: 4 }} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl flex flex-col">
+                            <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+                                <h3 className="font-syncopate font-bold tracking-widest text-sm">LIVE QUEUE</h3>
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-4 pr-2 hide-scrollbar">
+                                {recentBookings.length === 0 ? <p className="text-[#8E939B] text-center text-xs mt-10">No active bookings.</p> : 
+                                    recentBookings.map((booking: any) => (
+                                        <div key={booking.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <p className="font-bold text-sm text-white">{booking.vehicle_info || 'Unknown Vehicle'}</p>
+                                                    <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-1">{booking.service_package_details?.name || 'Standard Wash'}</p>
+                                                </div>
+                                                <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-sm ${ booking.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-[#FF2A6D]/20 text-[#FF2A6D]' }`}>
+                                                    {booking.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))
+                                }
+                            </div>
+                        </div>
+                    </div>
                 )}
-              </div>
-            </div>
 
-            {/* Recent Bookings Table */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                <h3 className="font-bold text-gray-900 text-lg">Recent Bookings</h3>
-                <button className="text-gray-400 hover:text-black transition">
-                  <MoreHorizontal className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-gray-500 font-semibold border-b border-gray-100">
-                    <tr>
-                      <th className="py-3 px-6">ID</th>
-                      <th className="py-3 px-6">Vehicle / Package</th>
-                      <th className="py-3 px-6">Status</th>
-                      <th className="py-3 px-6">Tech</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
-                    {isLoading ? (
-                      <tr><td colSpan={4} className="py-8 px-6 text-center text-gray-400 animate-pulse">Loading bookings...</td></tr>
-                    ) : recentJobs.length === 0 ? (
-                      <tr><td colSpan={4} className="py-8 px-6 text-center text-gray-400">No recent bookings found.</td></tr>
-                    ) : (
-                      recentJobs.map((b, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50 transition border-b border-gray-50 last:border-0">
-                          <td className="py-4 px-6 text-gray-500">#{b.id}</td>
-                          <td className="py-4 px-6">
-                            <p className="font-bold text-gray-900">{b.service_package_details?.name || b.package?.name || 'Wash'}</p>
-                            <p className="text-xs text-gray-500">{b.vehicle_info || b.vehicle?.model || 'Unknown'}</p>
-                          </td>
-                          <td className="py-4 px-6">
-                            {getStatusBadge(b.status)}
-                          </td>
-                          <td className="py-4 px-6 text-sm">
-                            {b.technician_name ? b.technician_name : <span className="text-gray-400">Unassigned</span>}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+                {/* FINANCE COMMAND CENTER */}
+                {activeTab === 'finance' && (
+                    <div className="animate-[fadeIn_0.5s_ease-out]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-xl">FINANCIAL LEDGER</h3>
+                            <button onClick={downloadTaxReport} className="flex items-center gap-2 bg-white/10 text-white border border-white/20 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition">
+                                <Download className="w-4 h-4" /> Export Tax Report
+                            </button>
+                        </div>
 
-          <div className="space-y-8">
-            
-            {/* Chemical Cost Target */}
-            <div className="bg-[#1C1C1E] text-white rounded-2xl shadow-lg p-8 relative overflow-hidden">
-              <div className="absolute -right-10 -top-10 w-40 h-40 border-[20px] border-white/5 rounded-full"></div>
-              
-              <p className="text-gray-400 font-semibold text-sm mb-1 z-10 relative">Total Chemical Cost Today</p>
-              <h2 className="text-4xl font-black z-10 relative">
-                {isLoading ? "..." : formatCurrency(kpiData.chemical_cost_today)}
-              </h2>
-              
-              <div className="mt-8 z-10 relative">
-                <div className="flex justify-between text-xs font-bold text-gray-400 mb-2">
-                  <span>Usage Target</span>
-                  <span>Safe</span>
-                </div>
-                <div className="w-full bg-white/10 rounded-full h-2">
-                  <div className="bg-green-400 h-2 rounded-full" style={{ width: '35%' }}></div>
-                </div>
-              </div>
-            </div>
+                        {/* Sub-Navigation */}
+                        <div className="flex flex-wrap gap-2 border-b border-white/10 pb-4 mb-8">
+                            <button onClick={() => setFinanceSubTab('overview')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'overview' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>1. Trend Analysis</button>
+                            <button onClick={() => setFinanceSubTab('expenses')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'expenses' ? 'bg-[#FF2A6D]/10 text-[#FF2A6D]' : 'text-[#8E939B] hover:text-white'}`}>2. Expense Manager</button>
+                            <button onClick={() => setFinanceSubTab('credit')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'credit' ? 'bg-purple-500/10 text-purple-400' : 'text-[#8E939B] hover:text-white'}`}>3. Customer Credit</button>
+                            <button onClick={() => setFinanceSubTab('invoices')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400' : 'text-[#8E939B] hover:text-white'}`}>4. PDF Invoices</button>
+                            <button onClick={() => setFinanceSubTab('inventory')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'inventory' ? 'bg-yellow-500/10 text-yellow-400' : 'text-[#8E939B] hover:text-white'}`}>5. Inventory & Payroll</button>
+                        </div>
 
-            {/* Top Staff Leaderboard */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-gray-900 text-lg">Top Staff</h3>
-                <button className="text-gray-400 hover:text-black transition">
-                  <MoreHorizontal className="w-5 h-5" />
-                </button>
-              </div>
-              
-              <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">AM</div>
-                    <div>
-                      <p className="font-bold text-gray-900 text-sm">Alexander Munle</p>
-                      <p className="text-xs text-gray-500">Sr. Detailer</p>
+                        {/* 1. Trend Analysis View */}
+                        {financeSubTab === 'overview' && (
+                            <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl h-96 animate-[fadeIn_0.3s_ease-out]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                        <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} />
+                                        <YAxis stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value) => `₹${value}`} />
+                                        <Tooltip contentStyle={{ backgroundColor: '#050505', border: '1px solid rgba(255,255,255,0.1)' }} itemStyle={{ color: '#01FFFF' }} />
+                                        <Line type="monotone" dataKey="value" stroke="#01FFFF" strokeWidth={3} dot={{ fill: '#050505', stroke: '#01FFFF', strokeWidth: 2, r: 4 }} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
+
+                        {/* 2. Expense Management */}
+                        {financeSubTab === 'expenses' && (
+                            <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                        <tr><th className="p-4 pl-6">Date</th><th className="p-4">Description</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Action</th></tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {expenses.map((exp: any) => (
+                                            <tr key={exp.id} className="hover:bg-white/5">
+                                                <td className="p-4 pl-6 font-mono text-xs">{new Date(exp.date).toLocaleDateString()}</td>
+                                                <td className="p-4">{exp.description}</td>
+                                                <td className="p-4 font-bold text-[#FF2A6D]">₹{exp.amount}</td>
+                                                <td className="p-4 text-right pr-6">
+                                                    {exp.is_approved ? <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-sm uppercase tracking-widest font-bold">Approved</span> : <button onClick={() => approveExpense(exp.id)} className="text-[9px] bg-[#FF2A6D] text-white px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><CheckCircle className="w-3 h-3"/> Approve</button>}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* 3. CUSTOMER CREDIT / ACCOUNTS RECEIVABLE */}
+                        {financeSubTab === 'credit' && (
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <div className="bg-purple-900/10 border border-purple-500/30 p-6 rounded-3xl mb-6 flex justify-between items-center">
+                                    <div>
+                                        <p className="text-purple-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Clock className="w-4 h-4"/> Outstanding Balance</p>
+                                        <h2 className="text-3xl font-syncopate font-bold text-white tracking-tighter">₹{totalOutstandingCredit.toLocaleString()}</h2>
+                                    </div>
+                                    <div className="text-right hidden sm:block">
+                                        <p className="text-[#8E939B] text-xs">Unpaid accounts are tracked here.</p>
+                                        <p className="text-[#8E939B] text-xs">Settle them when cash is received.</p>
+                                    </div>
+                                </div>
+
+                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                            <tr><th className="p-4 pl-6">Customer</th><th className="p-4">Vehicle/Account</th><th className="p-4">Date of Service</th><th className="p-4">Amount Owed</th><th className="p-4 text-right pr-6">Action</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {customerCredits.length === 0 ? (
+                                                <tr><td colSpan={5} className="p-8 text-center text-[#8E939B]">All accounts are settled! No outstanding credit.</td></tr>
+                                            ) : (
+                                                customerCredits.map((credit) => (
+                                                <tr key={credit.id} className="hover:bg-white/5">
+                                                    <td className="p-4 pl-6 font-bold text-white">{credit.customer}</td>
+                                                    <td className="p-4 text-[#8E939B]">{credit.vehicle}</td>
+                                                    <td className="p-4 font-mono text-xs">{credit.date}</td>
+                                                    <td className="p-4 font-syncopate font-bold text-yellow-400 flex items-center gap-2">
+                                                        ₹{credit.amount}
+                                                        {credit.status === 'Overdue' && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
+                                                    </td>
+                                                    <td className="p-4 text-right pr-6">
+                                                        <button onClick={() => settleCredit(credit.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-emerald-500 hover:text-black transition">
+                                                            <Check className="w-3 h-3"/> Mark Paid
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            )))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 4. Automated PDF Invoicing */}
+                        {financeSubTab === 'invoices' && (
+                            <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                        <tr><th className="p-4 pl-6">Booking ID</th><th className="p-4">Customer</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Generate</th></tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {recentBookings.filter((b:any) => b.status === 'COMPLETED').map((booking: any) => (
+                                            <tr key={booking.id} className="hover:bg-white/5">
+                                                <td className="p-4 pl-6 font-mono text-xs">#INV-{booking.id.toString().padStart(4, '0')}</td>
+                                                <td className="p-4 font-bold">{booking.vehicle_info}</td>
+                                                <td className="p-4 text-[#01FFFF] font-bold">₹{booking.final_price || booking.service_package_details?.price}</td>
+                                                <td className="p-4 text-right pr-6">
+                                                    <button onClick={() => downloadInvoicePDF(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><FileText className="w-3 h-3"/> Get PDF</button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* 5. Inventory & Payroll Rules */}
+                        {financeSubTab === 'inventory' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-[fadeIn_0.3s_ease-out]">
+                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
+                                    <h4 className="font-bold text-sm uppercase tracking-widest text-[#8E939B] mb-6 flex gap-2 items-center"><FlaskConical className="w-4 h-4"/> Chemical Inventory</h4>
+                                    <div className="space-y-4">
+                                        {inventoryData.map(inv => (
+                                            <div key={inv.id} className="flex justify-between items-center bg-black/40 p-4 rounded-xl border border-white/5">
+                                                <div><p className="font-bold">{inv.name}</p><p className="text-xs text-[#8E939B] mt-1">Value: {inv.cost}</p></div>
+                                                <div className="text-right"><p className="font-mono text-[#01FFFF] font-bold">{inv.stock}</p><p className={`text-[9px] uppercase tracking-widest mt-1 font-bold ${inv.status === 'Low Stock' ? 'text-[#FF2A6D]' : 'text-emerald-400'}`}>{inv.status}</p></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
+                                    <h4 className="font-bold text-sm uppercase tracking-widest text-[#8E939B] mb-6 flex gap-2 items-center"><Users className="w-4 h-4"/> Payroll Logic</h4>
+                                    <div className="space-y-4">
+                                        {payrollRules.map(rule => (
+                                            <div key={rule.id} className="flex justify-between items-center bg-black/40 p-4 rounded-xl border border-white/5">
+                                                <div><p className="font-bold">{rule.package}</p><p className="text-xs text-[#8E939B] mt-1">{rule.role}</p></div>
+                                                <span className="bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-lg text-xs font-bold font-mono">+{rule.commission}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                  </div>
-                  <span className="font-bold text-sm">₹2,386</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 flex items-center justify-center font-bold text-sm">DR</div>
-                    <div>
-                      <p className="font-bold text-gray-900 text-sm">Dianne Russell</p>
-                      <p className="text-xs text-gray-500">Washer</p>
-                    </div>
-                  </div>
-                  <span className="font-bold text-sm">₹2,142</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center font-bold text-sm">BS</div>
-                    <div>
-                      <p className="font-bold text-gray-900 text-sm">Brooklyn Simmons</p>
-                      <p className="text-xs text-gray-500">Driver</p>
-                    </div>
-                  </div>
-                  <span className="font-bold text-sm">₹1,494</span>
-                </div>
-              </div>
-            </div>
+                )}
+            </main>
 
-          </div>
+            <style dangerouslySetInnerHTML={{__html: `
+                .hide-scrollbar::-webkit-scrollbar { display: none; }
+                .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+                @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            `}} />
         </div>
-      </main>
-    </div>
-  );
+    );
 }

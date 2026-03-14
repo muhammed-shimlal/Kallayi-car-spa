@@ -32,8 +32,11 @@ export default function LoginPage() {
       const authData = await authRes.json();
       const token = authData.token;
 
-      // Save token in cookie
-      document.cookie = `auth_token=${token}; path=/; max-age=86400; SameSite=Lax`;
+      // 1. Force save to Local Storage (This is what the Admin page looks for!)
+      localStorage.setItem('auth_token', token); 
+
+      // 2. You can also keep the cookie if you want, but localStorage is mandatory.
+      document.cookie = `auth_token=${token}; path=/;`;
 
       // 2. Fetch User Profile
       const meRes = await fetch("http://127.0.0.1:8001/api/core/users/me/", {

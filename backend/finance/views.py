@@ -31,6 +31,28 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         response = HttpResponse(pdf_file, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="invoice_{invoice.id}.pdf"'
         return response
+    
+    # Add this inside class InvoiceViewSet(viewsets.ModelViewSet):
+
+    @action(detail=True, methods=['patch', 'post'])
+    def mark_paid(self, request, pk=None):
+        """Manually mark an invoice as paid (e.g., cash received later)"""
+        invoice = self.get_object()
+        
+        if invoice.is_paid:
+            return Response({'status': 'Invoice is already paid'}, status=400)
+            
+        invoice.is_paid = True
+        invoice.payment_method = 'CASH' # Record that this was settled manually
+        invoice.save()
+
+        # Update the associated booking status if it exists
+        if hasattr(invoice, 'booking') and invoice.booking:
+            if invoice.booking.status != 'COMPLETED':
+                invoice.booking.status = 'COMPLETED'
+                invoice.booking.save()
+
+        return Response({'status': 'Invoice settled successfully'})
 
 class GeneralExpenseViewSet(viewsets.ModelViewSet):
     queryset = GeneralExpense.objects.all().select_related('category', 'recorded_by')
@@ -148,6 +170,42 @@ class DashboardViewSet(viewsets.ViewSet):
                 'month': month_name,
                 'income': float(month_revenue),
                 'expense': float(month_expense)
+            })
+            
+        return Response(data)
+    
+    # Add this inside class DashboardViewSet(viewsets.ViewSet):
+
+    @action(detail=False, methods=['get'])
+    def outstanding_credit(self, request):
+        """Fetch all unpaid invoices for the Accounts Receivable table"""
+        # Find all invoices where is_paid is False
+        unpaid_invoices = Invoice.objects.filter(is_paid=False).select_related('booking')
+        
+        data = []
+        for invoice in unpaid_invoices:
+            # Safely extract customer and vehicle info if booking exists
+            customer_name = "Unknown"
+            vehicle_info = "N/A"
+            
+            if hasattr(invoice, 'booking') and invoice.booking:
+                # Try to get customer name, fallback to string representation
+                customer = invoice.booking.customer
+                customer_name = f"{customer.user.first_name} {customer.user.last_name}".strip() or customer.user.username
+                vehicle = invoice.booking.vehicle
+                vehicle_info = f"{vehicle.make} {vehicle.model} ({vehicle.plate_number})"
+            
+            # If invoice is older than 30 days, mark as Overdue
+            days_old = (timezone.now() - invoice.created_at).days
+            status = 'Overdue' if days_old > 30 else 'Pending'
+
+            data.append({
+                'id': invoice.id,
+                'customer': customer_name,
+                'vehicle': vehicle_info,
+                'amount': float(invoice.amount),
+                'date': invoice.created_at.strftime("%Y-%m-%d"),
+                'status': status
             })
             
         return Response(data)
