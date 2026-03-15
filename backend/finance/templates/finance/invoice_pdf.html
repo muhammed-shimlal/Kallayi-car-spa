@@ -1,114 +1,155 @@
 <!DOCTYPE html>
 <html>
-
 <head>
     <meta charset="utf-8">
-    <style>
-        body {
-            font-family: Helvetica, sans-serif;
-            padding: 20px;
-        }
-
-        h1 {
-            color: #333;
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 40px;
-        }
-
-        .details {
-            margin-bottom: 30px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-
-        th,
-        td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-
-        th {
-            background-color: #f2f2f2;
-        }
-
-        .total {
-            text-align: right;
-            margin-top: 20px;
-            font-size: 1.2em;
-            font-weight: bold;
-        }
-
-        .footer {
-            margin-top: 50px;
-            font-size: 0.8em;
-            color: #777;
-            text-align: center;
-        }
-    </style>
+    <title>Kallayi Car Spa — Tax Invoice</title>
 </head>
+<body style="margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; background: #ffffff;">
 
-<body>
-    <div class="header">
-        <h1>INVOICE #{{ invoice.id }}</h1>
-        <div>
-            <p><strong>Kallayi Car Spa</strong></p>
-            <p>123 Car Wash Lane</p>
-            <p>Kerala, India</p>
-            <p>GSTIN: 29ABCDE1234F1Z5</p>
+    <!-- OUTER WRAPPER -->
+    <div style="max-width: 680px; margin: 0 auto; padding: 40px 36px;">
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- HEADER                                                  -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+            <tr>
+                <td style="vertical-align: top;">
+                    <h1 style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 3px; color: #111;">
+                        KALLAYI<span style="color: #E52323;">.</span> CAR SPA
+                    </h1>
+                    <p style="margin: 4px 0 0 0; font-size: 9px; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; color: #999;">
+                        Premium Auto Care
+                    </p>
+                </td>
+                <td style="vertical-align: top; text-align: right;">
+                    <span style="display: inline-block; background-color: #E52323; color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 3px; padding: 6px 16px; text-transform: uppercase;">
+                        TAX INVOICE
+                    </span>
+                </td>
+            </tr>
+        </table>
+
+        <!-- DIVIDER -->
+        <div style="border-top: 3px solid #E52323; margin-bottom: 28px;"></div>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- INVOICE META + CUSTOMER INFO                            -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+            <tr>
+                <td style="vertical-align: top; width: 50%;">
+                    <p style="margin: 0 0 4px 0; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999;">Invoice Number</p>
+                    <p style="margin: 0 0 16px 0; font-size: 18px; font-weight: 800; color: #111;">#INV-{{ booking.id|stringformat:"04d" }}</p>
+
+                    <p style="margin: 0 0 4px 0; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999;">Date Issued</p>
+                    <p style="margin: 0; font-size: 13px; font-weight: 600; color: #333;">{{ booking.created_at|date:"M d, Y" }}</p>
+                </td>
+                <td style="vertical-align: top; width: 50%; text-align: right;">
+                    <p style="margin: 0 0 4px 0; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999;">Billed To</p>
+                    <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 700; color: #111;">
+                        {{ booking.customer.user.first_name }} {{ booking.customer.user.last_name }}
+                    </p>
+                    {% if customer_phone %}
+                    <p style="margin: 0 0 4px 0; font-size: 12px; color: #555;">Phone: {{ customer_phone }}</p>
+                    {% endif %}
+                    <p style="margin: 0; font-size: 12px; color: #555;">
+                        Vehicle: <strong style="color: #111;">{{ booking.vehicle.plate_number }}</strong>
+                    </p>
+                </td>
+            </tr>
+        </table>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- SERVICE DETAILS TABLE                                   -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+            <thead>
+                <tr>
+                    <th style="text-align: left; padding: 10px 12px; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999; border-bottom: 2px solid #e0e0e0;">Description</th>
+                    <th style="text-align: center; padding: 10px 12px; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999; border-bottom: 2px solid #e0e0e0;">Vehicle</th>
+                    <th style="text-align: right; padding: 10px 12px; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999; border-bottom: 2px solid #e0e0e0;">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="padding: 14px 12px; font-size: 14px; font-weight: 600; color: #111; border-bottom: 1px solid #f0f0f0;">
+                        {{ booking.service_package.name }}
+                        <br>
+                        <span style="font-size: 11px; font-weight: 400; color: #888;">Booking #{{ booking.id }}</span>
+                    </td>
+                    <td style="padding: 14px 12px; font-size: 12px; color: #555; text-align: center; border-bottom: 1px solid #f0f0f0;">
+                        {{ booking.vehicle.plate_number }}
+                    </td>
+                    <td style="padding: 14px 12px; font-size: 14px; font-weight: 700; color: #111; text-align: right; border-bottom: 1px solid #f0f0f0;">
+                        ₹{{ booking.service_package.price }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- TOTALS SECTION                                          -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <table style="width: 100%; border-collapse: collapse; margin-top: 0;">
+            <tr>
+                <td style="width: 60%;"></td>
+                <td style="width: 40%;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 8px 12px; font-size: 12px; color: #777;">Subtotal</td>
+                            <td style="padding: 8px 12px; font-size: 12px; color: #333; text-align: right; font-weight: 600;">₹{{ booking.service_package.price }}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 12px; font-size: 12px; color: #777;">GST (Inclusive)</td>
+                            <td style="padding: 8px 12px; font-size: 12px; color: #333; text-align: right;">Included</td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" style="border-top: 2px solid #E52323;"></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px 12px; font-size: 15px; font-weight: 800; color: #111; letter-spacing: 1px;">TOTAL PAID</td>
+                            <td style="padding: 12px 12px; font-size: 18px; font-weight: 900; color: #E52323; text-align: right;">₹{{ booking.service_package.price }}</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- PAYMENT METHOD BADGE                                    -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <div style="margin-top: 24px; padding: 14px 20px; background-color: #f7f7f7; border-left: 4px solid #E52323;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="vertical-align: middle;">
+                        <p style="margin: 0 0 2px 0; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999;">Payment Method</p>
+                        <p style="margin: 0; font-size: 14px; font-weight: 700; color: #111;">
+                            {% if invoice and invoice.payment_method %}
+                                {{ invoice.get_payment_method_display }}
+                            {% else %}
+                                Cash
+                            {% endif %}
+                        </p>
+                    </td>
+                    <td style="vertical-align: middle; text-align: right;">
+                        <span style="display: inline-block; background-color: {% if invoice and invoice.is_paid %}#16a34a{% else %}#f59e0b{% endif %}; color: #ffffff; font-size: 10px; font-weight: 800; letter-spacing: 2px; padding: 5px 14px; text-transform: uppercase;">
+                            {% if invoice and invoice.is_paid %}PAID{% else %}PENDING{% endif %}
+                        </span>
+                    </td>
+                </tr>
+            </table>
         </div>
-    </div>
 
-    <div class="details">
-        <p><strong>Date:</strong> {{ invoice.created_at|date:"Y-m-d" }}</p>
-        <p><strong>Customer:</strong> {% if invoice.booking %}{{ invoice.booking.customer.user.username }}{% else %}{{
-            invoice.subscription.customer.user.username }}{% endif %}</p>
-        {% if invoice.booking %}
-        <p><strong>Vehicle:</strong> {{ invoice.booking.vehicle.model }} ({{ invoice.booking.vehicle.plate_number }})
-        </p>
-        {% else %}
-        <p><strong>Plan:</strong> {{ invoice.subscription.plan.name }}</p>
-        {% endif %}
-    </div>
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- FOOTER                                                  -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center;">
+            <p style="margin: 0 0 4px 0; font-size: 11px; color: #555; font-weight: 600;">Thank you for choosing Kallayi Car Spa!</p>
+            <p style="margin: 0 0 4px 0; font-size: 10px; color: #999;">Kozhikode, Kerala, India &nbsp;|&nbsp; GSTIN: 32XXXXX1234X1ZX</p>
+            <p style="margin: 0; font-size: 9px; color: #bbb; letter-spacing: 1px;">This is a computer-generated invoice and does not require a signature.</p>
+        </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th>Item</th>
-                <th>Price</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                {% if invoice.booking %}
-                <td>{{ invoice.booking.service_package.name }}</td>
-                {% else %}
-                <td>Subscription: {{ invoice.subscription.plan.name }}</td>
-                {% endif %}
-                <td>₹{{ invoice.amount }}</td>
-            </tr>
-        </tbody>
-    </table>
-
-    <div class="total">
-        <p style="font-size: 0.8em; font-weight: normal;">Base Amount: ₹{{ invoice.amount }}</p>
-        <p style="font-size: 0.8em; font-weight: normal;">GST (18% Inclusive): Included</p>
-        <p>Total: ₹{{ invoice.amount }}</p>
-    </div>
-
-    <div class="footer">
-        <p>Thank you for your business!</p>
-        <p>Payment Method: {{ invoice.payment_method }} | Status: {% if invoice.is_paid %}PAID{% else %}PENDING{% endif
-            %}</p>
     </div>
 </body>
-
 </html>

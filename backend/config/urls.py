@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from customers.views import CustomerViewSet, SubscriptionPlanViewSet, ReviewViewSet, CouponViewSet
 from fleet.views import VehicleViewSet, TechnicianLocationViewSet, ServiceVehicleViewSet, FleetLogViewSet
 from bookings.views import BookingViewSet, ServicePackageViewSet, CalendarViewSet, DriverBookingViewSet
-from finance.views import InvoiceViewSet, DashboardViewSet, GeneralExpenseViewSet, ExpenseCategoryViewSet, ReportingViewSet, KhataViewSet, close_register, analytics_dashboard
+from finance.views import InvoiceViewSet, DashboardViewSet, GeneralExpenseViewSet, ExpenseCategoryViewSet, ReportingViewSet, KhataViewSet, close_register, analytics_dashboard, generate_invoice_pdf
 from staff.views import TimeEntryViewSet, JobInspectionViewSet, SOPChecklistViewSet, StaffDashboardViewSet, StaffProfileViewSet
 
 router = DefaultRouter()
@@ -52,4 +52,5 @@ urlpatterns = [
     path('api/register/', register_customer),
     path('api/finance/close-register/', close_register, name='close-register'),
     path('api/finance/analytics/', analytics_dashboard, name='analytics-dashboard'),
+    path('api/finance/invoice/<int:booking_id>/pdf/', generate_invoice_pdf, name='invoice-pdf'),
 ]

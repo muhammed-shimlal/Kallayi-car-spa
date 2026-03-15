@@ -37,6 +37,7 @@ if DEBUG:
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -165,3 +166,10 @@ AUTHENTICATION_BACKENDS = [
     'core.backends.EmailBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
+
+# Channels
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}

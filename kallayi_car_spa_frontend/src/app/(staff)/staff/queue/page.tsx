@@ -208,9 +208,61 @@ export default function QueueBoard() {
 
     useEffect(() => {
         fetchQueue();
-        // Poll every 30 seconds for live updates
-        const interval = setInterval(() => fetchQueue(true), 30000);
-        return () => clearInterval(interval);
+        
+        // Setup WebSocket for Real-Time Live Queue
+        const wsUrl = 'ws://127.0.0.1:8001/ws/queue/';
+        const ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+            console.log('Connected to Live Queue WebSocket');
+            setIsConnected(true);
+        };
+        
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'queue_update' && message.data) {
+                    const updatedBooking: BookingCard = message.data;
+                    
+                    setColumns((prev) => {
+                        const newCols = { ...prev };
+                        
+                        // 1. Remove the booking from all columns
+                        Object.keys(newCols).forEach(colId => {
+                            newCols[colId] = newCols[colId].filter(card => card.id !== updatedBooking.id);
+                        });
+                        
+                        // 2. Add booking to new column
+                        const destCol = newCols[updatedBooking.status] !== undefined ? updatedBooking.status : 'WAITING';
+                        newCols[destCol] = [...newCols[destCol], updatedBooking];
+                        
+                        return newCols;
+                    });
+                    
+                    setLastUpdated(new Date());
+                }
+            } catch (err) {
+                console.error("Failed to parse websocket message", err);
+            }
+        };
+        
+        ws.onclose = () => {
+            setIsConnected(false);
+            console.log('Live Queue WebSocket disconnected');
+        };
+        
+        ws.onerror = (err) => {
+            console.error('WebSocket error:', err);
+            setIsConnected(false);
+        };
+
+        // Fallback polling (every 5 mins) just in case
+        const interval = setInterval(() => fetchQueue(true), 300000);
+        
+        return () => {
+            clearInterval(interval);
+            ws.close();
+        };
     }, [fetchQueue]);
 
     // ─── Drag End Handler ─────────────────────────────────────────────────────

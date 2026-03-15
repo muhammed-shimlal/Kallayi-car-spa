@@ -11,7 +11,7 @@ from customers.models import Customer
 from bookings.models import Booking
 
 from django.http import HttpResponse
-from django.template.loader import render_to_string
+from django.template.loader import render_to_string, get_template
 try:
     from weasyprint import HTML
 except (ImportError, OSError):
@@ -539,4 +539,54 @@ def analytics_dashboard(request):
         'packages': packages,
         'top_staff': top_staff,
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def generate_invoice_pdf(request, booking_id):
+    """
+    Generate a beautifully branded PDF invoice for a given booking.
+    Uses xhtml2pdf (pure Python, no GTK dependency).
+    """
+    from io import BytesIO
+
+    try:
+        from xhtml2pdf import pisa
+    except ImportError:
+        return HttpResponse("PDF generation not available (xhtml2pdf not installed).", status=503)
+
+    try:
+        booking = Booking.objects.select_related(
+            'customer__user', 'vehicle', 'service_package'
+        ).get(pk=booking_id)
+    except Booking.DoesNotExist:
+        return HttpResponse("Booking not found.", status=404)
+
+    # Try to get associated invoice for payment info
+    invoice = None
+    try:
+        invoice = Invoice.objects.get(booking=booking)
+    except Invoice.DoesNotExist:
+        pass
+
+    customer_phone = booking.customer.phone_number if booking.customer else ''
+
+    context = {
+        'booking': booking,
+        'invoice': invoice,
+        'customer_phone': customer_phone,
+    }
+
+    template = get_template('finance/invoice_pdf.html')
+    html_string = template.render(context)
+
+    result = BytesIO()
+    pdf = pisa.CreatePDF(BytesIO(html_string.encode('utf-8')), dest=result)
+
+    if pdf.err:
+        return HttpResponse("Error generating PDF.", status=500)
+
+    response = HttpResponse(result.getvalue(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="Kallayi_Invoice_{booking.id}.pdf"'
+    return response
 

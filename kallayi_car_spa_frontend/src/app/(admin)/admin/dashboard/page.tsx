@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 import {
     LayoutDashboard, Users, Car, Wallet, LogOut,
     TrendingUp, Activity, Receipt, ChevronRight, Download,
@@ -44,36 +45,14 @@ export default function AdminDashboard() {
     const [selectedKhataCustomer, setSelectedKhataCustomer] = useState<any | null>(null);
     const [isKhataModalOpen, setIsKhataModalOpen] = useState(false);
     const [khataPaymentAmount, setKhataPaymentAmount] = useState<string>('');
-    const [eodData, setEodData] = useState<any>({
-        is_locked: false,
-        gross_revenue: 0,
-        total_expenses: 0,
-        cash_in_hand: 0,
-        labor_payouts: 0,
-        expected_cash_in_till: 0,
-        closed_by: null
-    });
+    const [eodData, setEodData] = useState<any>(null);
 
     const [customerCredits, setCustomerCredits] = useState<any[]>([]);
     const [analyticsData, setAnalyticsData] = useState<any>({
-        busiest_hours: [
-            { hour: '9 AM', count: 3 }, { hour: '10 AM', count: 7 }, { hour: '11 AM', count: 5 },
-            { hour: '12 PM', count: 2 }, { hour: '1 PM', count: 6 }, { hour: '2 PM', count: 9 },
-            { hour: '3 PM', count: 11 }, { hour: '4 PM', count: 8 }, { hour: '5 PM', count: 4 },
-        ],
-        packages: [
-            { name: 'Ceramic Coating', total_washes: 12, total_revenue: 36000 },
-            { name: 'Foam Wash + Polish', total_washes: 28, total_revenue: 16800 },
-            { name: 'Basic Wash', total_washes: 45, total_revenue: 9000 },
-            { name: 'Interior Detailing', total_washes: 9, total_revenue: 8100 },
-        ],
-        top_staff: [
-            { name: 'Mohammed Ali', jobs_completed: 18 },
-            { name: 'Rahul K.', jobs_completed: 14 },
-            { name: 'Sanu V.', jobs_completed: 11 },
-            { name: 'Ajin S.', jobs_completed: 8 },
-        ],
-    });;
+        busiest_hours: [],
+        packages: [],
+        top_staff: [],
+    });
 
     // --- CRM State ---
     const [searchQuery, setSearchQuery] = useState('');
@@ -101,7 +80,7 @@ export default function AdminDashboard() {
                 fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/staff/daily-settlement/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/khata/`, { headers: HEADERS }),
-                fetch(`${API_BASE}/finance/close-register/`, { headers: HEADERS }),
+                fetch(`${API_BASE}/finance/eod-report/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/analytics/`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/bookings/global-history/`, { headers: HEADERS }).catch(() => null)
             ]);
@@ -119,7 +98,7 @@ export default function AdminDashboard() {
             if (expRes?.ok) { const e = await expRes.json(); setExpenses(e.results || e); }
             if (creditRes?.ok) { const creditData = await creditRes.json(); setCustomerCredits(creditData); }
             if (payrollRes?.ok) { const pd = await payrollRes.json(); setPayrollData(pd); }
-            if (khataRes?.ok) { const khataData = await khataRes.json(); setKhataCustomers(khataData); }
+            if (khataRes?.ok) { const khataData = await khataRes.json(); setCustomerCredits(khataData); setKhataCustomers(khataData); }
             if (eodRes?.ok) { const eodD = await eodRes.json(); setEodData(eodD); }
             if (analyticsRes?.ok) { setAnalyticsData(await analyticsRes.json()); }
             
@@ -190,7 +169,7 @@ export default function AdminDashboard() {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url; a.download = `tax_summary.csv`; a.click();
-        } catch (e) { alert("Failed to export."); }
+        } catch (e) { toast.error("Failed to export."); }
     };
 
     const downloadInvoicePDF = async (id: number) => {
@@ -201,7 +180,28 @@ export default function AdminDashboard() {
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url; a.download = `Invoice_Kallayi_${id}.pdf`; a.click();
-        } catch (e) { alert("Invoice generation failed."); }
+        } catch (e) { toast.error("Invoice generation failed."); }
+    };
+
+    const downloadInvoice = async (bookingId: number) => {
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/finance/invoice/${bookingId}/pdf/`, {
+                headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
+            });
+            if (!res.ok) throw new Error('Failed to generate PDF');
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Kallayi_Invoice_${bookingId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast.success('Invoice Downloaded');
+        } catch (e) {
+            toast.error('Failed to download invoice.');
+        }
     };
 
     const approveExpense = async (id: number) => {
@@ -212,7 +212,7 @@ export default function AdminDashboard() {
                 body: JSON.stringify({ is_approved: true })
             });
             fetchDashboardData();
-        } catch (e) { alert("Failed to approve"); }
+        } catch (e) { toast.error("Failed to approve"); }
     };
 
     const settleCredit = async (id: number) => {
@@ -229,12 +229,12 @@ export default function AdminDashboard() {
             if (res.ok) {
                 setCustomerCredits(prev => prev.filter(credit => credit.id !== id));
                 fetchDashboardData();
-                alert("Account marked as settled! Revenue updated.");
+                toast.success("Account marked as settled! Revenue updated.");
             } else {
-                alert("Failed to settle account.");
+                toast.error("Failed to settle account.");
             }
         } catch (e) {
-            alert("Network error while settling account.");
+            toast.error("Network error while settling account.");
         }
     };
 
@@ -257,33 +257,31 @@ export default function AdminDashboard() {
                 body: JSON.stringify({ customer_id: selectedKhataCustomer.id, amount: khataPaymentAmount, description: "Admin Dashboard Settlement" })
             });
             if (res.ok) {
-                alert("Payment received successfully!");
+                toast.success("Payment received successfully!");
                 setIsKhataModalOpen(false);
                 setKhataPaymentAmount('');
                 fetchDashboardData();
                 loadKhataLedger(selectedKhataCustomer);
             } else {
-                alert("Failed to process payment");
+                toast.error("Failed to process payment");
             }
-        } catch (e) { alert("Network error"); }
+        } catch (e) { toast.error("Network error"); }
     };
 
     const handleCloseRegister = async () => {
-        if (!confirm("Are you sure you want to CLOSE the register? All transactions for today will be PERMANENTLY locked.")) return;
-        
         try {
             const res = await fetch(`http://127.0.0.1:8001/api/finance/close-register/`, {
                 method: 'POST',
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' }
             });
             if (res.ok) {
-                alert("Register successfully closed & locked!");
+                toast.success('Register successfully closed and financial data locked.');
                 fetchDashboardData();
             } else {
                 const data = await res.json();
-                alert(data.error || "Failed to close register.");
+                toast.error(data.error || "Failed to close register.");
             }
-        } catch (e) { alert("Network error closing register."); }
+        } catch (e) { toast.error("Network error closing register."); }
     };
 
     const settleWorkerPay = async (id: number) => {
@@ -298,12 +296,12 @@ export default function AdminDashboard() {
             });
             if (res.ok) {
                 setPayrollData(prev => prev.map(worker => worker.id === id ? { ...worker, status: 'Paid' } : worker));
-                alert("Worker payment settled successfully!");
+                toast.success('Worker paid successfully.');
             } else {
-                alert("Failed to settle worker pay");
+                toast.error("Failed to settle worker pay");
             }
         } catch (e) {
-            alert("Network error settling worker pay");
+            toast.error("Network error settling worker pay");
         }
     };
 
@@ -928,6 +926,15 @@ export default function AdminDashboard() {
                                                             <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1">Price</p>
                                                             <p className="text-sm font-bold text-emerald-400 font-syncopate">₹{event.price_paid}</p>
                                                         </div>
+                                                        {event.booking_id && (
+                                                            <button
+                                                                onClick={() => downloadInvoice(event.booking_id)}
+                                                                title="Download PDF Receipt"
+                                                                className="text-[#8E939B] hover:text-[#01FFFF] transition-colors ml-2"
+                                                            >
+                                                                <Download className="w-4 h-4" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -997,6 +1004,15 @@ export default function AdminDashboard() {
                                                 <div className="flex items-center gap-4">
                                                     <span className="text-[10px] text-[#8E939B] uppercase tracking-widest">By {entry.technician_name}</span>
                                                     <span className="font-syncopate font-bold text-[#FF2A6D] text-sm hidden sm:inline-block">₹{entry.price}</span>
+                                                    {entry.booking_id && (
+                                                        <button
+                                                            onClick={() => downloadInvoice(entry.booking_id)}
+                                                            title="Download PDF Receipt"
+                                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors"
+                                                        >
+                                                            <Download className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -1013,12 +1029,19 @@ export default function AdminDashboard() {
                 {/* ---------------------------------------------------- */}
                 {activeTab === 'eod' && (
                     <div className="animate-[fadeIn_0.5s_ease-out] max-w-5xl mx-auto space-y-8">
-                        <div className="flex justify-between items-end mb-8 border-b border-white/10 pb-6">
-                            <div>
-                                <h3 className="font-syncopate font-bold tracking-widest text-2xl mb-2 flex items-center gap-3">
-                                    <Lock className={`w-6 h-6 ${eodData.is_locked ? 'text-emerald-400' : 'text-purple-500'}`} /> 
-                                    EOD SETTLEMENT AUDIT
-                                </h3>
+                        {!eodData ? (
+                            <div className="flex flex-col items-center justify-center py-20">
+                                <Activity className="w-10 h-10 text-[#01FFFF] animate-spin mb-4" />
+                                <p className="text-[#8E939B] font-bold tracking-widest text-sm uppercase">Loading EOD Data...</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex justify-between items-end mb-8 border-b border-white/10 pb-6">
+                                    <div>
+                                        <h3 className="font-syncopate font-bold tracking-widest text-2xl mb-2 flex items-center gap-3">
+                                            <Lock className={`w-6 h-6 ${eodData.is_locked ? 'text-emerald-400' : 'text-purple-500'}`} /> 
+                                            EOD SETTLEMENT AUDIT
+                                        </h3>
                                 <p className="text-xs text-[#8E939B] font-mono tracking-widest uppercase">
                                     {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                 </p>
@@ -1103,6 +1126,8 @@ export default function AdminDashboard() {
                             </div>
 
                         </div>
+                            </>
+                        )}
                     </div>
                 )}
             </main>
