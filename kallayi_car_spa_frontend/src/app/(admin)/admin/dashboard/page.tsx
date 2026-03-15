@@ -80,6 +80,8 @@ export default function AdminDashboard() {
     const [vehicleData, setVehicleData] = useState<any | null>(null);
     const [crmLoading, setCrmLoading] = useState(false);
     const [crmError, setCrmError] = useState('');
+    const [globalHistory, setGlobalHistory] = useState<any | null>(null);
+    const [globalHistoryDate, setGlobalHistoryDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
     // --- Data Fetching ---
     const fetchDashboardData = async () => {
@@ -100,7 +102,8 @@ export default function AdminDashboard() {
                 fetch(`${API_BASE}/staff/daily-settlement/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/khata/`, { headers: HEADERS }),
                 fetch(`${API_BASE}/finance/close-register/`, { headers: HEADERS }),
-                fetch(`${API_BASE}/finance/analytics/`, { headers: HEADERS }).catch(() => null)
+                fetch(`${API_BASE}/finance/analytics/`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/bookings/global-history/`, { headers: HEADERS }).catch(() => null)
             ]);
 
             if (userRes?.ok) { const user = await userRes.json(); setAdminName(user.first_name || user.username); }
@@ -119,9 +122,30 @@ export default function AdminDashboard() {
             if (khataRes?.ok) { const khataData = await khataRes.json(); setKhataCustomers(khataData); }
             if (eodRes?.ok) { const eodD = await eodRes.json(); setEodData(eodD); }
             if (analyticsRes?.ok) { setAnalyticsData(await analyticsRes.json()); }
-
+            
+            const [globalHistRes] = arguments[0] ? [] : [arguments.length > 0 ? arguments[10] : null];
+            // Accessing the 11th resolved promise dynamically
+            try {
+               const ghRes = await fetch(`${API_BASE}/bookings/global-history/?date=${globalHistoryDate}`, { headers: HEADERS });
+               if(ghRes.ok) setGlobalHistory(await ghRes.json());
+            } catch (e) {}
+            
         } catch (error) { console.error("Fetch Error:", error); } finally { setIsLoading(false); }
     };
+
+    // Effect for re-fetching Global History when date changes
+    useEffect(() => {
+        const fetchGlobalHistoryOnly = async () => {
+            if (activeTab !== 'crm' || vehicleData) return;
+            const token = localStorage.getItem('auth_token');
+            if (!token) return;
+            try {
+                const res = await fetch(`http://127.0.0.1:8001/api/bookings/global-history/?date=${globalHistoryDate}`, { headers: { 'Authorization': `Token ${token}` } });
+                if (res.ok) setGlobalHistory(await res.json());
+            } catch (e) {}
+        };
+        fetchGlobalHistoryOnly();
+    }, [globalHistoryDate, activeTab, vehicleData]);
 
     const handleCrmSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -364,6 +388,15 @@ export default function AdminDashboard() {
                         <button type="submit" disabled={crmLoading} className="absolute right-3 top-1/2 -translate-y-1/2 bg-[#01FFFF]/10 text-[#01FFFF] hover:bg-[#01FFFF] hover:text-black border border-[#01FFFF]/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all">
                             {crmLoading ? 'Scanning...' : 'Search'}
                         </button>
+                        {vehicleData && (
+                            <button 
+                                type="button" 
+                                onClick={() => { setVehicleData(null); setSearchQuery(''); }}
+                                className="absolute -right-24 top-1/2 -translate-y-1/2 text-[#8E939B] hover:text-[#FF2A6D] text-[10px] uppercase font-bold tracking-widest flex items-center gap-1 transition-colors"
+                            >
+                                ✕ Clear
+                            </button>
+                        )}
                     </form>
                     {crmError && <p className="text-[#FF2A6D] text-xs mt-3 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {crmError}</p>}
                 </div>
@@ -792,7 +825,8 @@ export default function AdminDashboard() {
                 {/* ---------------------------------------------------- */}
                 {/* VIEW F: CRM & HISTORY (Digital Garage)                 */}
                 {/* ---------------------------------------------------- */}
-                {activeTab === 'crm' && vehicleData && (
+                {activeTab === 'crm' && (
+                  vehicleData ? (
                     <div className="animate-[fadeIn_0.5s_ease-out] space-y-8">
                         <div className="flex justify-between items-center mb-6">
                             <div>
@@ -903,6 +937,75 @@ export default function AdminDashboard() {
                             )}
                         </div>
                     </div>
+                  ) : (
+                    <div className="animate-[fadeIn_0.5s_ease-out] space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-white/5 pb-4">
+                            <h3 className="font-syncopate font-bold tracking-widest text-xl">DAILY SHOP LEDGER</h3>
+                            <div className="relative">
+                                <label className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E939B] pointer-events-none">
+                                    <Calendar className="w-4 h-4" />
+                                </label>
+                                <input 
+                                    type="date"
+                                    value={globalHistoryDate}
+                                    onChange={(e) => setGlobalHistoryDate(e.target.value)}
+                                    className="bg-[#141518]/60 border border-white/10 text-white text-xs font-bold font-mono py-2 pl-9 pr-4 rounded-xl outline-none focus:border-[#01FFFF] transition-all cursor-pointer"
+                                />
+                            </div>
+                        </div>
+
+                        {globalHistory?.stats && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                                <div className="bg-[#141518]/60 border border-[#01FFFF]/20 p-5 rounded-2xl flex items-center justify-between shadow-[0_0_15px_rgba(1,255,255,0.05)]">
+                                    <div>
+                                        <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Total Services</p>
+                                        <h3 className="text-2xl font-syncopate font-bold text-white tracking-tighter">{globalHistory.stats.total_services}</h3>
+                                    </div>
+                                    <Car className="w-8 h-8 text-[#01FFFF]/30" />
+                                </div>
+                                <div className="bg-[#141518]/60 border border-emerald-500/20 p-5 rounded-2xl flex items-center justify-between shadow-[0_0_15px_rgba(52,211,153,0.05)]">
+                                    <div>
+                                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Ledger Revenue</p>
+                                        <h3 className="text-2xl font-syncopate font-bold text-white tracking-tighter">₹{globalHistory.stats.total_revenue.toLocaleString()}</h3>
+                                    </div>
+                                    <BadgeDollarSign className="w-8 h-8 text-emerald-400/30" />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6 shadow-2xl">
+                            {!globalHistory?.feed || globalHistory.feed.length === 0 ? (
+                                <p className="text-[#8E939B] text-center py-12 border border-dashed border-white/10 rounded-2xl">No completed services found for {globalHistoryDate}.</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {globalHistory.feed.map((entry: any, i: number) => (
+                                        <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white/2 hover:bg-white/5 border border-white/5 hover:border-white/10 rounded-2xl transition-colors gap-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                                                    <Car className="w-4 h-4 text-[#8E939B]" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-mono text-white font-bold tracking-wider">{entry.plate_number}</p>
+                                                    <p className="text-[#01FFFF] text-[10px] uppercase font-bold tracking-widest mt-1">{entry.service_package_name}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col sm:items-end gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    {entry.is_today && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>}
+                                                    <p className="text-[#8E939B] text-xs font-mono">{entry.date}</p>
+                                                </div>
+                                                <div className="flex items-center gap-4">
+                                                    <span className="text-[10px] text-[#8E939B] uppercase tracking-widest">By {entry.technician_name}</span>
+                                                    <span className="font-syncopate font-bold text-[#FF2A6D] text-sm hidden sm:inline-block">₹{entry.price}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                  )
                 )}
 
                 {/* ---------------------------------------------------- */}

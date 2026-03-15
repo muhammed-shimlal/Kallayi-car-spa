@@ -335,3 +335,66 @@ def vehicle_crm_history(request):
         },
         'timeline': timeline
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def global_service_history(request):
+    """Global service feed showing completed services for a specific date (or today)."""
+    from django.utils import timezone
+    from django.db.models import Sum
+    from datetime import datetime
+    
+    date_str = request.GET.get('date')
+    now = timezone.now().date()
+    
+    target_date = now
+    if date_str:
+        try:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            pass # fallback to today
+            
+    # Filter bookings that were exactly on the target date in local time
+    # Because created_at is UTC, we do a range query covering local day
+    
+    # We'll just filter exactly for now to keep it simple, or based on the date part
+    # A robust way is booking filter on time_slot or created_at
+    bookings = Booking.objects.filter(
+        status='COMPLETED', 
+        created_at__date=target_date
+    ).select_related('vehicle', 'service_package', 'technician').order_by('-created_at')
+    
+    # Calculate stats
+    total_services = bookings.count()
+    total_revenue = bookings.aggregate(total=Sum('service_package__price'))['total'] or 0
+    
+    data = []
+    
+    for b in bookings:
+        local_dt = timezone.localtime(b.created_at)
+        time_str = local_dt.strftime("%I:%M %p")
+        
+        if local_dt.date() == now:
+            display_date = f"Today, {time_str}"
+        else:
+            display_date = local_dt.strftime(f"%b {local_dt.day}, %Y, %I:%M %p")
+            
+        data.append({
+            'id': b.id,
+            'date': display_date,
+            'is_today': local_dt.date() == now,
+            'plate_number': b.vehicle.plate_number if b.vehicle else 'Walk-In',
+            'service_package_name': b.service_package.name if b.service_package else 'Custom Service',
+            'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else 'Unassigned',
+            'price': float(b.service_package.price) if b.service_package else 0.0,
+        })
+        
+    return Response({
+        'stats': {
+            'target_date': target_date.strftime('%Y-%m-%d'),
+            'total_services': total_services,
+            'total_revenue': float(total_revenue)
+        },
+        'feed': data
+    })
