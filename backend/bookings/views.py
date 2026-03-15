@@ -398,3 +398,71 @@ def global_service_history(request):
         },
         'feed': data
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_assigned_tasks(request):
+    """Fetch all active tasks assigned to the logged-in worker."""
+    tasks = Booking.objects.filter(
+        technician=request.user
+    ).exclude(
+        status__in=['COMPLETED', 'READY', 'CANCELLED']
+    ).select_related(
+        'vehicle', 'service_package', 'customer__user'
+    ).order_by('created_at')
+
+    data = []
+    for b in tasks:
+        data.append({
+            'id': b.id,
+            'status': b.status,
+            'plate_number': b.vehicle.plate_number if b.vehicle else '???',
+            'vehicle_model': b.vehicle.model if b.vehicle else 'Unknown',
+            'service_name': b.service_package.name if b.service_package else 'Walk-In Wash',
+            'service_price': float(b.service_package.price) if b.service_package else 0.0,
+            'customer_name': b.customer.user.get_full_name() or b.customer.user.username if b.customer else 'Walk-In',
+            'bay_assignment': b.bay_assignment,
+            'created_at': b.created_at.isoformat() if b.created_at else None,
+            'start_time': b.start_time.isoformat() if b.start_time else None,
+        })
+
+    return Response(data)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def start_task(request, booking_id):
+    """Worker starts a wash — sets status to IN_PROGRESS and records start_time."""
+    try:
+        booking = Booking.objects.get(pk=booking_id, technician=request.user)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Task not found or not assigned to you.'}, status=404)
+
+    if booking.status == 'IN_PROGRESS':
+        return Response({'error': 'Task is already in progress.'}, status=400)
+
+    booking.status = 'IN_PROGRESS'
+    booking.start_time = timezone.now()
+    booking.save()
+
+    return Response({'status': 'success', 'message': 'Task started.', 'booking_id': booking.id})
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def finish_task(request, booking_id):
+    """Worker finishes a wash — sets status to READY and records end_time."""
+    try:
+        booking = Booking.objects.get(pk=booking_id, technician=request.user)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Task not found or not assigned to you.'}, status=404)
+
+    if booking.status != 'IN_PROGRESS':
+        return Response({'error': 'Task must be in-progress before finishing.'}, status=400)
+
+    booking.status = 'READY'
+    booking.end_time = timezone.now()
+    booking.save()
+
+    return Response({'status': 'success', 'message': 'Task finished. Manager alerted.', 'booking_id': booking.id})

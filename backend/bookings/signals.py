@@ -5,6 +5,7 @@ from django.utils import timezone
 from .models import Booking
 # Need to securely import DailyRegisterAudit for the lock check
 from finance.models import DailyRegisterAudit
+from notifications.services import send_customer_notification
 
 def check_register_lock(target_date):
     if DailyRegisterAudit.objects.filter(date=target_date, is_locked=True).exists():
@@ -12,22 +13,52 @@ def check_register_lock(target_date):
 
 @receiver([pre_save, pre_delete], sender=Booking)
 def freeze_booking(sender, instance, **kwargs):
-    target_date = getattr(instance, 'created_at', timezone.now()).date()
+    target_date = (instance.created_at or timezone.now()).date()
     check_register_lock(target_date)
+
+
+@receiver(pre_save, sender=Booking)
+def cache_old_booking_status(sender, instance, **kwargs):
+    """Cache the old status before save so post_save can detect actual transitions."""
+    if instance.pk:
+        try:
+            old = Booking.objects.filter(pk=instance.pk).values_list('status', flat=True).first()
+            instance._old_status = old
+        except Exception:
+            instance._old_status = None
+    else:
+        instance._old_status = None
+
 
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
 @receiver(post_save, sender=Booking)
-def notify_customer_on_ready(sender, instance, **kwargs):
-    """Fires a mock SMS when a car is moved to READY status on the Kanban board."""
-    if instance.status == 'READY':
+def notify_customer_on_ready(sender, instance, created, **kwargs):
+    """Fires WhatsApp notification ONLY when status transitions to READY (not on every save)."""
+    if created:
+        return
+
+    old_status = getattr(instance, '_old_status', None)
+
+    # Only trigger when the status *actually changed* to READY
+    if instance.status == 'READY' and old_status != 'READY':
         try:
-            customer_name = str(instance.customer)
             plate = instance.vehicle.plate_number if instance.vehicle else 'your car'
-            print(f"📱 MOCK SMS: Hi {customer_name}, your car ({plate}) is shining and ready for pickup at Kallayi Car Spa! See you soon 🚗✨")
+            phone = instance.customer.phone_number if instance.customer else None
+
+            message = (
+                f"Hi! Your vehicle ({plate}) is shining and ready for pickup "
+                f"at Kallayi Car Spa. View your receipt here: "
+                f"https://kallayi.com/receipt/{instance.id}"
+            )
+
+            if phone:
+                send_customer_notification(phone, message)
+            else:
+                print(f"[Signal] No phone number for customer on Booking #{instance.id}, skipping SMS.")
         except Exception as e:
-            print(f"[Signal Error] Could not send ready SMS: {e}")
+            print(f"[Signal Error] Could not send ready notification: {e}")
 
     # Broadcast update to Kanban Board
     try:

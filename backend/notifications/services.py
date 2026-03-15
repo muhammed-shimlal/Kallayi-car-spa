@@ -28,3 +28,17 @@ def send_email(to, subject, body):
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
         return False
+
+
+def send_customer_notification(phone_number, message):
+    """
+    Send a WhatsApp/SMS notification to the customer.
+    Currently prints a formatted block to the Django terminal.
+    """
+    # TODO: Connect to Twilio/MSG91 API here
+    logger.info(f"WhatsApp to {phone_number}: {message}")
+    print(f"\n{'='*50}")
+    print(f"🚀 AUTOMATED WHATSAPP TO {phone_number}:")
+    print(f"{message}")
+    print(f"{'='*50}\n")
+    return True

@@ -36,6 +36,7 @@ class Booking(models.Model):
     service_package = models.ForeignKey(ServicePackage, on_delete=models.SET_NULL, null=True)
     time_slot = models.DateTimeField()
     end_time = models.DateTimeField(null=True, blank=True)
+    start_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='WAITING')
     bay_assignment = models.CharField(max_length=50, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
