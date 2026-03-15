@@ -23,9 +23,25 @@ class IsAdminUserOrReadOnly(BasePermission):
         return request.user and request.user.is_staff
 
 class ServicePackageViewSet(viewsets.ModelViewSet):
-    queryset = ServicePackage.objects.all()
+    queryset = ServicePackage.objects.all().order_by('price')
     serializer_class = ServicePackageSerializer
-    permission_classes = [IsAdminUserOrReadOnly]
+
+    def get_permissions(self):
+        if self.request.method in SAFE_METHODS:
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if request.method not in SAFE_METHODS:
+            user = request.user
+            is_admin_or_manager = (
+                user.is_superuser or
+                user.is_staff or
+                (hasattr(user, 'staff_profile') and user.staff_profile.role in ['ADMIN', 'MANAGER'])
+            )
+            if not is_admin_or_manager:
+                self.permission_denied(request, message="Only Admin or Manager can modify service packages.")
 
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all()

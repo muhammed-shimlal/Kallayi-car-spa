@@ -9,7 +9,7 @@ import {
     CreditCard, FileText, FlaskConical, CheckCircle, PlusCircle,
     Clock, AlertCircle, Check, BadgeDollarSign, UserCog, Lock,
     AlertTriangle, IndianRupee, Landmark, BookOpen, BarChart2, Trophy,
-    Search, MapPin, Star, Calendar
+    Search, MapPin, Star, Calendar, Wrench, Trash2, Pencil, UserMinus
 } from 'lucide-react';
 import {
     LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -46,6 +46,19 @@ export default function AdminDashboard() {
     const [isKhataModalOpen, setIsKhataModalOpen] = useState(false);
     const [khataPaymentAmount, setKhataPaymentAmount] = useState<string>('');
     const [eodData, setEodData] = useState<any>(null);
+
+    // --- Service Menu State ---
+    const [services, setServices] = useState<any[]>([]);
+    const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+    const [editingService, setEditingService] = useState<any | null>(null);
+    const [serviceForm, setServiceForm] = useState({ name: '', description: '', price: '', duration_minutes: '' });
+
+    // --- Staff Directory State ---
+    const [staffDirectory, setStaffDirectory] = useState<any[]>([]);
+    const [staffSubTab, setStaffSubTab] = useState('payroll');
+    const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
+    const [editingStaff, setEditingStaff] = useState<any | null>(null);
+    const [staffForm, setStaffForm] = useState({ first_name: '', phone_number: '', role: 'WASHER', base_salary: '', commission_rate: '' });
 
     const [customerCredits, setCustomerCredits] = useState<any[]>([]);
     const [analyticsData, setAnalyticsData] = useState<any>({
@@ -112,6 +125,126 @@ export default function AdminDashboard() {
         } catch (error) { console.error("Fetch Error:", error); } finally { setIsLoading(false); }
     };
 
+    // --- Service Menu CRUD ---
+    const fetchServices = async () => {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch('http://127.0.0.1:8001/api/bookings/services/', {
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok) setServices(await res.json());
+        } catch (e) { console.error('Failed to fetch services'); }
+    };
+
+    const openServiceModal = (service: any | null = null) => {
+        if (service) {
+            setEditingService(service);
+            setServiceForm({ name: service.name, description: service.description || '', price: String(service.price), duration_minutes: String(service.duration_minutes) });
+        } else {
+            setEditingService(null);
+            setServiceForm({ name: '', description: '', price: '', duration_minutes: '' });
+        }
+        setIsServiceModalOpen(true);
+    };
+
+    const saveService = async () => {
+        const token = localStorage.getItem('auth_token');
+        const url = editingService
+            ? `http://127.0.0.1:8001/api/bookings/services/${editingService.id}/`
+            : 'http://127.0.0.1:8001/api/bookings/services/';
+        const method = editingService ? 'PATCH' : 'POST';
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...serviceForm, price: parseFloat(serviceForm.price), duration_minutes: parseInt(serviceForm.duration_minutes) })
+            });
+            if (res.ok) {
+                toast.success('Service saved successfully!');
+                setIsServiceModalOpen(false);
+                fetchServices();
+            } else {
+                const data = await res.json();
+                toast.error(data.detail || 'Failed to save service');
+            }
+        } catch (e) { toast.error('Network error'); }
+    };
+
+    const deleteService = async (id: number) => {
+        if (!confirm('Are you sure you want to delete this service?')) return;
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/bookings/services/${id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok || res.status === 204) {
+                toast.success('Service deleted.');
+                setServices(prev => prev.filter(s => s.id !== id));
+            } else { toast.error('Failed to delete.'); }
+        } catch (e) { toast.error('Network error'); }
+    };
+
+    // --- Staff Directory CRUD ---
+    const fetchStaffDirectory = async () => {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch('http://127.0.0.1:8001/api/staff/directory/', {
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok) setStaffDirectory(await res.json());
+        } catch (e) { console.error('Failed to fetch staff directory'); }
+    };
+
+    const openStaffModal = (staff: any | null = null) => {
+        if (staff) {
+            setEditingStaff(staff);
+            setStaffForm({ first_name: staff.first_name, phone_number: staff.phone_number || '', role: staff.role, base_salary: String(staff.base_salary), commission_rate: String(staff.commission_rate || '') });
+        } else {
+            setEditingStaff(null);
+            setStaffForm({ first_name: '', phone_number: '', role: 'WASHER', base_salary: '', commission_rate: '' });
+        }
+        setIsStaffModalOpen(true);
+    };
+
+    const saveStaff = async () => {
+        const token = localStorage.getItem('auth_token');
+        const url = editingStaff
+            ? `http://127.0.0.1:8001/api/staff/directory/${editingStaff.id}/`
+            : 'http://127.0.0.1:8001/api/staff/directory/';
+        const method = editingStaff ? 'PATCH' : 'POST';
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...staffForm, base_salary: parseFloat(staffForm.base_salary) || 0, commission_rate: parseFloat(staffForm.commission_rate) || 0 })
+            });
+            if (res.ok) {
+                toast.success(editingStaff ? 'Staff updated!' : 'Staff registered successfully!');
+                setIsStaffModalOpen(false);
+                fetchStaffDirectory();
+            } else {
+                const data = await res.json();
+                toast.error(data.detail || 'Failed to save');
+            }
+        } catch (e) { toast.error('Network error'); }
+    };
+
+    const terminateStaff = async (id: number) => {
+        if (!confirm('WARNING: Are you sure you want to remove this staff member? Their past payroll records will be preserved, but their login will be revoked.')) return;
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/staff/directory/${id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok || res.status === 204) {
+                toast.success('Staff member terminated.');
+                setStaffDirectory(prev => prev.filter(s => s.id !== id));
+            } else { toast.error('Failed to terminate.'); }
+        } catch (e) { toast.error('Network error'); }
+    };
+
     // Effect for re-fetching Global History when date changes
     useEffect(() => {
         const fetchGlobalHistoryOnly = async () => {
@@ -156,7 +289,7 @@ export default function AdminDashboard() {
         }
     };
 
-    useEffect(() => { fetchDashboardData(); }, [router]);
+    useEffect(() => { fetchDashboardData(); fetchServices(); fetchStaffDirectory(); }, [router]);
 
     // --- Actions ---
     const handleLogout = () => { localStorage.removeItem('auth_token'); router.push('/login'); };
@@ -341,6 +474,9 @@ export default function AdminDashboard() {
                     </button>
                     <button onClick={() => setActiveTab('eod')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'eod' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30' : 'text-[#8E939B] hover:text-white'}`}>
                         <FileText className="w-4 h-4" /> EOD Closing
+                    </button>
+                    <button onClick={() => setActiveTab('services')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'services' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'text-[#8E939B] hover:text-white'}`}>
+                        <Wrench className="w-4 h-4" /> Service Menu
                     </button>
                     <button onClick={() => router.push('/admin/queue')} className="w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-[#8E939B] hover:text-[#01FFFF] hover:bg-[#01FFFF]/5 hover:border hover:border-[#01FFFF]/20">
                         <Activity className="w-4 h-4" /> Live Queue
@@ -625,12 +761,30 @@ export default function AdminDashboard() {
                 {/* ---------------------------------------------------- */}
                 {activeTab === 'staff' && (
                     <div className="animate-[fadeIn_0.5s_ease-out]">
-                        <div className="flex justify-between items-center mb-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                             <h3 className="font-syncopate font-bold tracking-widest text-xl">STAFF OPERATIONS</h3>
-                            <button className="flex items-center gap-2 bg-white/10 text-white border border-white/20 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition">
-                                <PlusCircle className="w-4 h-4" /> Add Expense/Advance
-                            </button>
+                            <div className="flex items-center gap-2 bg-[#141518]/60 border border-white/10 rounded-full p-1">
+                                <button
+                                    onClick={() => setStaffSubTab('payroll')}
+                                    className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${staffSubTab === 'payroll' ? 'bg-white/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}
+                                >
+                                    Payroll Ledger
+                                </button>
+                                <button
+                                    onClick={() => setStaffSubTab('directory')}
+                                    className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${staffSubTab === 'directory' ? 'bg-white/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}
+                                >
+                                    Staff Directory
+                                </button>
+                            </div>
                         </div>
+
+                        {/* PAYROLL SUB-TAB */}
+                        {staffSubTab === 'payroll' && (
+                            <>
+                        <button className="flex items-center gap-2 bg-white/10 text-white border border-white/20 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition mb-6">
+                            <PlusCircle className="w-4 h-4" /> Add Expense/Advance
+                        </button>
 
                         <div className="bg-emerald-900/10 border border-emerald-500/30 p-6 rounded-3xl mb-8 flex justify-between items-center">
                             <div>
@@ -701,6 +855,96 @@ export default function AdminDashboard() {
                                 </table>
                             </div>
                         </div>
+                            </>
+                        )}
+
+                        {/* DIRECTORY SUB-TAB */}
+                        {staffSubTab === 'directory' && (
+                            <>
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                                    <div>
+                                        <h2 className="font-syncopate font-bold text-lg tracking-widest">STAFF DIRECTORY<span className="text-[#01FFFF]">.</span></h2>
+                                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] font-bold mt-1">Hire, Edit & Manage Workers</p>
+                                    </div>
+                                    <button
+                                        onClick={() => openStaffModal()}
+                                        className="bg-[#01FFFF] text-black font-syncopate font-bold text-xs tracking-widest px-6 py-3 rounded-xl flex items-center gap-2 shadow-[0_0_20px_rgba(1,255,255,0.3)] hover:bg-white transition-all active:scale-95"
+                                    >
+                                        <PlusCircle className="w-4 h-4" /> REGISTER NEW STAFF
+                                    </button>
+                                </div>
+
+                                <div className="bg-[#141518]/60 backdrop-blur-xl rounded-[2rem] border border-white/5 overflow-hidden">
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead>
+                                                <tr className="border-b border-white/10">
+                                                    <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Name</th>
+                                                    <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Role</th>
+                                                    <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B] hidden md:table-cell">Phone</th>
+                                                    <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Base Salary (₹)</th>
+                                                    <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Commission %</th>
+                                                    <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {staffDirectory.length === 0 && (
+                                                    <tr><td colSpan={5} className="text-center py-12 text-[#8E939B] text-sm">No staff registered yet.</td></tr>
+                                                )}
+                                                {staffDirectory.map((staff: any) => {
+                                                    const roleColors: Record<string, string> = {
+                                                        MANAGER: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                                                        TECHNICIAN: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                                                        WASHER: 'bg-[#01FFFF]/15 text-[#01FFFF] border-[#01FFFF]/30',
+                                                        DRIVER: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+                                                    };
+                                                    return (
+                                                        <tr key={staff.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
+                                                            <td className="px-6 py-5">
+                                                                <p className="font-bold text-sm text-white">{staff.first_name}</p>
+                                                                <p className="text-[10px] text-[#8E939B] mt-0.5">@{staff.username}</p>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-center">
+                                                                <span className={`text-[9px] font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full border ${roleColors[staff.role] || 'bg-white/10 text-white border-white/20'}`}>
+                                                                    {staff.role}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-5 hidden md:table-cell">
+                                                                <span className="text-xs text-[#8E939B]">{staff.phone_number || '—'}</span>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-right">
+                                                                <span className="font-syncopate font-bold text-emerald-400">₹{parseFloat(staff.base_salary).toLocaleString()}</span>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-right">
+                                                                <span className="font-mono text-amber-400 font-bold">{parseFloat(staff.commission_rate || 0)}%</span>
+                                                            </td>
+                                                            <td className="px-6 py-5">
+                                                                <div className="flex items-center justify-center gap-2">
+                                                                    <button
+                                                                        onClick={() => openStaffModal(staff)}
+                                                                        className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#01FFFF] hover:border-[#01FFFF]/30 transition-all"
+                                                                        title="Edit"
+                                                                    >
+                                                                        <Pencil className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => terminateStaff(staff.id)}
+                                                                        className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#FF2A6D] hover:border-[#FF2A6D]/30 transition-all"
+                                                                        title="Terminate"
+                                                                    >
+                                                                        <UserMinus className="w-3.5 h-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
 
@@ -1130,6 +1374,82 @@ export default function AdminDashboard() {
                         )}
                     </div>
                 )}
+
+                {/* === SERVICE MENU TAB === */}
+                {activeTab === 'services' && (
+                    <div className="space-y-8 animate-[fadeIn_0.3s_ease-out]">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div>
+                                <h2 className="font-syncopate font-bold text-xl tracking-widest">SERVICE MENU<span className="text-amber-400">.</span></h2>
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] font-bold mt-1">Configuration & Pricing</p>
+                            </div>
+                            <button
+                                onClick={() => openServiceModal()}
+                                className="bg-[#01FFFF] text-black font-syncopate font-bold text-xs tracking-widest px-6 py-3 rounded-xl flex items-center gap-2 shadow-[0_0_20px_rgba(1,255,255,0.3)] hover:bg-white transition-all active:scale-95"
+                            >
+                                <PlusCircle className="w-4 h-4" /> ADD NEW SERVICE
+                            </button>
+                        </div>
+
+                        {/* Services Table */}
+                        <div className="bg-[#141518]/60 backdrop-blur-xl rounded-[2rem] border border-white/5 overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-white/10">
+                                            <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Service Name</th>
+                                            <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B] hidden md:table-cell">Description</th>
+                                            <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Duration</th>
+                                            <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Price (₹)</th>
+                                            <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {services.length === 0 && (
+                                            <tr><td colSpan={5} className="text-center py-12 text-[#8E939B] text-sm">No services configured yet. Click "Add New Service" to get started.</td></tr>
+                                        )}
+                                        {services.map((svc: any) => (
+                                            <tr key={svc.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
+                                                <td className="px-6 py-5">
+                                                    <p className="font-bold text-sm text-white">{svc.name}</p>
+                                                </td>
+                                                <td className="px-6 py-5 hidden md:table-cell">
+                                                    <p className="text-xs text-[#8E939B] max-w-xs truncate">{svc.description || '—'}</p>
+                                                </td>
+                                                <td className="px-6 py-5 text-center">
+                                                    <span className="inline-flex items-center gap-1 text-xs text-[#8E939B]">
+                                                        <Clock className="w-3 h-3" /> {svc.duration_minutes} min
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-5 text-right">
+                                                    <span className="font-syncopate font-bold text-emerald-400">₹{parseFloat(svc.price).toLocaleString()}</span>
+                                                </td>
+                                                <td className="px-6 py-5">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <button
+                                                            onClick={() => openServiceModal(svc)}
+                                                            className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#01FFFF] hover:border-[#01FFFF]/30 transition-all"
+                                                            title="Edit"
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => deleteService(svc.id)}
+                                                            className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#FF2A6D] hover:border-[#FF2A6D]/30 transition-all"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </main>
 
             {/* KHATA PAYMENT MODAL */}
@@ -1160,6 +1480,153 @@ export default function AdminDashboard() {
                             className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] justify-center hover:bg-white transition-all flex items-center gap-2"
                         >
                             <BadgeDollarSign className="w-5 h-5" /> CONFIRM SETTLEMENT
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* SERVICE CREATE/EDIT MODAL */}
+            {isServiceModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-amber-400">
+                                {editingService ? 'EDIT SERVICE' : 'NEW SERVICE'}
+                            </h3>
+                            <button onClick={() => setIsServiceModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors">
+                                <PlusCircle className="w-6 h-6 rotate-45" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Service Name</label>
+                                <input
+                                    type="text" value={serviceForm.name}
+                                    onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-2"
+                                    placeholder="e.g. Foam Wash & Wax"
+                                />
+                            </div>
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Description</label>
+                                <textarea
+                                    value={serviceForm.description}
+                                    onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-2 resize-none h-24"
+                                    placeholder="Brief description of the service"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Price (₹)</label>
+                                    <input
+                                        type="number" value={serviceForm.price}
+                                        onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-2"
+                                        placeholder="500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Duration (min)</label>
+                                    <input
+                                        type="number" value={serviceForm.duration_minutes}
+                                        onChange={(e) => setServiceForm({ ...serviceForm, duration_minutes: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-2"
+                                        placeholder="60"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={saveService}
+                            className="w-full bg-amber-400 text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(251,191,36,0.4)] hover:bg-amber-300 transition-all flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle className="w-5 h-5" /> {editingService ? 'UPDATE SERVICE' : 'CREATE SERVICE'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* STAFF CREATE/EDIT MODAL */}
+            {isStaffModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">
+                                {editingStaff ? 'EDIT STAFF' : 'REGISTER STAFF'}
+                            </h3>
+                            <button onClick={() => setIsStaffModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors">
+                                <PlusCircle className="w-6 h-6 rotate-45" />
+                            </button>
+                        </div>
+
+                        {!editingStaff && (
+                            <div className="bg-[#01FFFF]/5 border border-[#01FFFF]/20 px-4 py-3 rounded-xl mb-6">
+                                <p className="text-[10px] text-[#01FFFF] uppercase tracking-widest font-bold">Default login password: Kallayi123!</p>
+                            </div>
+                        )}
+
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Full Name</label>
+                                <input
+                                    type="text" value={staffForm.first_name}
+                                    onChange={(e) => setStaffForm({ ...staffForm, first_name: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                    placeholder="e.g. Mohammed Ali"
+                                />
+                            </div>
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Phone Number</label>
+                                <input
+                                    type="tel" value={staffForm.phone_number}
+                                    onChange={(e) => setStaffForm({ ...staffForm, phone_number: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                    placeholder="+91 9876543210"
+                                />
+                            </div>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Role</label>
+                                    <select
+                                        value={staffForm.role}
+                                        onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
+                                    >
+                                        <option value="WASHER" className="bg-[#141518]">Washer</option>
+                                        <option value="TECHNICIAN" className="bg-[#141518]">Technician</option>
+                                        <option value="MANAGER" className="bg-[#141518]">Manager</option>
+                                        <option value="DRIVER" className="bg-[#141518]">Driver</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Salary (₹)</label>
+                                    <input
+                                        type="number" value={staffForm.base_salary}
+                                        onChange={(e) => setStaffForm({ ...staffForm, base_salary: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                        placeholder="500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Comm %</label>
+                                    <input
+                                        type="number" value={staffForm.commission_rate}
+                                        onChange={(e) => setStaffForm({ ...staffForm, commission_rate: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                        placeholder="10"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={saveStaff}
+                            className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] hover:bg-white transition-all flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle className="w-5 h-5" /> {editingStaff ? 'UPDATE STAFF' : 'REGISTER & CREATE LOGIN'}
                         </button>
                     </div>
                 </div>

@@ -1,10 +1,44 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from .models import StaffProfile, TimeEntry, SOPChecklist, JobInspection
-from .serializers import StaffProfileSerializer, TimeEntrySerializer, SOPChecklistSerializer, JobInspectionSerializer
+from .serializers import StaffProfileSerializer, TimeEntrySerializer, SOPChecklistSerializer, JobInspectionSerializer, StaffDirectorySerializer
 from django.utils import timezone
+
+
+class StaffDirectoryViewSet(viewsets.ModelViewSet):
+    """Full CRUD for admin to manage staff members."""
+    serializer_class = StaffDirectorySerializer
+
+    def get_queryset(self):
+        return StaffProfile.objects.filter(
+            role__in=['WASHER', 'TECHNICIAN', 'MANAGER', 'DRIVER'],
+            user__is_active=True,
+        ).select_related('user').order_by('role', 'user__first_name')
+
+    def get_permissions(self):
+        return [IsAuthenticated()]
+
+    def check_permissions(self, request):
+        super().check_permissions(request)
+        if request.method not in SAFE_METHODS:
+            user = request.user
+            is_admin = (
+                user.is_superuser or
+                (hasattr(user, 'staff_profile') and user.staff_profile.role == 'ADMIN')
+            )
+            if not is_admin:
+                self.permission_denied(request, message="Only Admin can manage staff.")
+
+    def destroy(self, request, *args, **kwargs):
+        """Soft-delete: deactivate instead of deleting to preserve payroll history."""
+        instance = self.get_object()
+        instance.user.is_active = False
+        instance.user.save()
+        instance.is_active = False
+        instance.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class StaffProfileViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = StaffProfile.objects.all()
