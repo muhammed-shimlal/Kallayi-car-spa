@@ -590,3 +590,67 @@ def generate_invoice_pdf(request, booking_id):
     response['Content-Disposition'] = f'attachment; filename="Kallayi_Invoice_{booking.id}.pdf"'
     return response
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def manual_khata_charge(request):
+    """Manually add a credit charge to a customer's Khata (find or create by phone)."""
+    user = request.user
+    if not user.is_superuser and not (hasattr(user, 'staff_profile') and user.staff_profile.role in ['ADMIN', 'MANAGER']):
+        return Response({'error': 'Forbidden'}, status=403)
+
+    phone = request.data.get('phone', '').strip()
+    name = request.data.get('name', '').strip()
+    amount = request.data.get('amount')
+    description = request.data.get('description', 'Manual Khata Entry').strip()
+
+    if not phone:
+        return Response({'error': 'Phone number is required.'}, status=400)
+    if not amount or float(amount) <= 0:
+        return Response({'error': 'A valid positive amount is required.'}, status=400)
+
+    amount = Decimal(str(amount))
+
+    # Find or create customer by phone
+    from django.contrib.auth.models import User as AuthUser
+    customer = Customer.objects.filter(phone_number=phone).first()
+
+    if not customer:
+        if not name:
+            return Response({'error': 'Customer not found. Please provide a name to register them.'}, status=400)
+        # Auto-create User + Customer
+        base_username = name.lower().replace(' ', '_')
+        username = base_username
+        counter = 1
+        while AuthUser.objects.filter(username=username).exists():
+            username = f"{base_username}_{counter}"
+            counter += 1
+
+        new_user = AuthUser.objects.create_user(username=username, password='Kallayi123!', first_name=name)
+        customer = Customer.objects.create(user=new_user, phone_number=phone, credit_limit=Decimal('5000.00'))
+
+    # Credit limit check
+    new_balance = customer.outstanding_balance + amount
+    if new_balance > customer.credit_limit:
+        return Response({
+            'error': f'Credit limit exceeded. Current balance: ₹{customer.outstanding_balance}, Limit: ₹{customer.credit_limit}'
+        }, status=400)
+
+    # Apply charge
+    customer.outstanding_balance = new_balance
+    customer.save()
+
+    KhataLedger.objects.create(
+        customer=customer,
+        amount=amount,
+        transaction_type='CHARGE',
+        description=description or 'Manual Khata Entry',
+    )
+
+    return Response({
+        'status': 'success',
+        'customer_name': customer.user.first_name or customer.user.username,
+        'new_balance': float(customer.outstanding_balance),
+        'credit_limit': float(customer.credit_limit),
+    })
+

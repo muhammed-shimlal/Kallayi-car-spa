@@ -47,6 +47,10 @@ export default function AdminDashboard() {
     const [khataPaymentAmount, setKhataPaymentAmount] = useState<string>('');
     const [eodData, setEodData] = useState<any>(null);
 
+    // --- Manual Khata Charge State ---
+    const [isManualKhataOpen, setIsManualKhataOpen] = useState(false);
+    const [manualKhataForm, setManualKhataForm] = useState({ phone: '', name: '', amount: '', description: '' });
+
     // --- Service Menu State ---
     const [services, setServices] = useState<any[]>([]);
     const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
@@ -242,6 +246,36 @@ export default function AdminDashboard() {
                 toast.success('Staff member terminated.');
                 setStaffDirectory(prev => prev.filter(s => s.id !== id));
             } else { toast.error('Failed to terminate.'); }
+        } catch (e) { toast.error('Network error'); }
+    };
+
+    // --- Manual Khata Charge ---
+    const submitManualKhataCharge = async () => {
+        if (!manualKhataForm.phone || !manualKhataForm.amount) {
+            toast.error('Phone and Amount are required.');
+            return;
+        }
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch('http://127.0.0.1:8001/api/finance/khata/manual-charge/', {
+                method: 'POST',
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: manualKhataForm.phone,
+                    name: manualKhataForm.name,
+                    amount: parseFloat(manualKhataForm.amount),
+                    description: manualKhataForm.description || 'Manual Khata Entry',
+                }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                toast.success(`Charged ₹${manualKhataForm.amount} to ${data.customer_name}'s Khata. New balance: ₹${data.new_balance}`);
+                setIsManualKhataOpen(false);
+                setManualKhataForm({ phone: '', name: '', amount: '', description: '' });
+                fetchDashboardData();
+            } else {
+                toast.error(data.error || 'Failed to create Khata charge.');
+            }
         } catch (e) { toast.error('Network error'); }
     };
 
@@ -668,14 +702,18 @@ export default function AdminDashboard() {
 
                         {financeSubTab === 'khata' && (
                             <div className="animate-[fadeIn_0.3s_ease-out]">
-                                <div className="bg-purple-900/10 border border-purple-500/30 p-6 rounded-3xl mb-6 flex justify-between items-center">
+                                <div className="bg-purple-900/10 border border-purple-500/30 p-6 rounded-3xl mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                     <div>
                                         <p className="text-purple-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Clock className="w-4 h-4" /> Outstanding Balance</p>
                                         <h2 className="text-3xl font-syncopate font-bold text-white tracking-tighter">₹{totalOutstandingCredit.toLocaleString()}</h2>
                                     </div>
-                                    <div className="text-right hidden sm:block">
-                                        <p className="text-[#8E939B] text-xs">Unpaid accounts are tracked here.</p>
-                                        <p className="text-[#8E939B] text-xs">Settle them when cash is received.</p>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => setIsManualKhataOpen(true)}
+                                            className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-purple-500 hover:text-black transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+                                        >
+                                            <PlusCircle className="w-4 h-4" /> Add Khata Charge
+                                        </button>
                                     </div>
                                 </div>
 
