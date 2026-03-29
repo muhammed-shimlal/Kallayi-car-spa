@@ -373,10 +373,13 @@ class KhataViewSet(viewsets.ViewSet):
 def close_register(request):
     """
     End-of-Day (EOD) Register Close & Data Lock.
-    GET: Returns a live preview of the day's math (or the locked values if already closed today)
-    POST: Permanently freezes all financial transactions for the day.
     """
-    if request.user.role not in ['ADMIN', 'MANAGER']:
+    user = request.user
+    is_authorized = user.is_superuser or user.is_staff
+    if not is_authorized and hasattr(user, 'staff_profile'):
+        is_authorized = user.staff_profile.role in ['ADMIN', 'MANAGER']
+        
+    if not is_authorized:
         return Response({'error': 'You do not have permission to access the register.'}, status=403)
 
     today = timezone.localdate()
@@ -404,7 +407,7 @@ def close_register(request):
     gross_revenue = Booking.objects.filter(
         created_at__date=today,
         status='COMPLETED'
-    ).aggregate(total=Sum('final_price'))['total'] or Decimal('0.00')
+    ).aggregate(total=Sum('service_package__price'))['total'] or Decimal('0.00')
 
     # Calculate Total Expenses (Shop expenses)
     total_expenses = GeneralExpense.objects.filter(
