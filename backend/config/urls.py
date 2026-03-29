@@ -46,7 +46,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/bookings/', include('bookings.urls')),
     path('api/staff/', include('staff.urls')),
-    path('api/', include(router.urls)),
     path('api/core/', include('core.urls')),
     path('api/api-token-auth/', views.obtain_auth_token),
     path('api/register/', register_customer),
@@ -54,4 +53,5 @@ urlpatterns = [
     path('api/finance/analytics/', analytics_dashboard, name='analytics-dashboard'),
     path('api/finance/invoice/<int:booking_id>/pdf/', generate_invoice_pdf, name='invoice-pdf'),
     path('api/finance/khata/manual-charge/', manual_khata_charge, name='manual-khata-charge'),
+    path('api/', include(router.urls)),
 ]

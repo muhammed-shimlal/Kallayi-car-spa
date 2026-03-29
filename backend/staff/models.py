@@ -19,7 +19,7 @@ class StaffProfile(models.Model):
     hourly_rate = models.DecimalField(max_digits=6, decimal_places=2, default=15.00)
     base_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Percentage (0-100)")
-    joining_date = models.DateField(default=timezone.now)
+    joining_date = models.DateField(default=timezone.localdate)
     
     # Status & Location
     is_active = models.BooleanField(default=True)

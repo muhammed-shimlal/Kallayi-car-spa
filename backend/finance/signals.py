@@ -20,5 +20,5 @@ def freeze_general_expense(sender, instance, **kwargs):
 
 @receiver([pre_save, pre_delete], sender=KhataLedger)
 def freeze_khata_ledger(sender, instance, **kwargs):
-    target_date = getattr(instance, 'created_at', timezone.now()).date()
+    target_date = (getattr(instance, 'created_at', None) or timezone.now()).date()
     check_register_lock(target_date)

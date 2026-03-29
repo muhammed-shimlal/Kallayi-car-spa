@@ -196,7 +196,7 @@ class DashboardViewSet(viewsets.ViewSet):
                 customer = invoice.booking.customer
                 customer_name = f"{customer.user.first_name} {customer.user.last_name}".strip() or customer.user.username
                 vehicle = invoice.booking.vehicle
-                vehicle_info = f"{vehicle.make} {vehicle.model} ({vehicle.plate_number})"
+                vehicle_info = f"{vehicle.model} ({vehicle.plate_number})"
             
             # If invoice is older than 30 days, mark as Overdue
             days_old = (timezone.now() - invoice.created_at).days
@@ -630,10 +630,13 @@ def manual_khata_charge(request):
         customer = Customer.objects.create(user=new_user, phone_number=phone, credit_limit=Decimal('5000.00'))
 
     # Credit limit check
-    new_balance = customer.outstanding_balance + amount
-    if new_balance > customer.credit_limit:
+    current_balance = Decimal(str(customer.outstanding_balance))
+    credit_limit = Decimal(str(customer.credit_limit))
+    new_balance = current_balance + amount
+
+    if new_balance > credit_limit:
         return Response({
-            'error': f'Credit limit exceeded. Current balance: ₹{customer.outstanding_balance}, Limit: ₹{customer.credit_limit}'
+            'error': f'Credit limit exceeded. Current balance: ₹{current_balance}, Limit: ₹{credit_limit}'
         }, status=400)
 
     # Apply charge
