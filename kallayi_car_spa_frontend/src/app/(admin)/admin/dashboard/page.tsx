@@ -112,7 +112,12 @@ export default function AdminDashboard() {
                     setChartData(chartApiData.map((d: any) => ({ name: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: d.value })));
                 }
             }
-            if (bookRes?.ok) { const b = await bookRes.json(); setRecentBookings((b.results || b).slice(0, 10)); }
+            if (bookRes?.ok) { 
+            const b = await bookRes.json(); 
+            // Safely check if it's an array, or if it has a paginated .results array. If neither, use empty []
+               const safeBookingsArray = Array.isArray(b) ? b : (Array.isArray(b.results) ? b.results : []);
+                  setRecentBookings(safeBookingsArray.slice(0, 10)); 
+}
             if (expRes?.ok) { const e = await expRes.json(); setExpenses(e.results || e); }
             if (creditRes?.ok) { const creditData = await creditRes.json(); setCustomerCredits(creditData); }
             if (payrollRes?.ok) { const pd = await payrollRes.json(); setPayrollData(pd); }
@@ -561,7 +566,7 @@ export default function AdminDashboard() {
                     <form onSubmit={handleCrmSearch} className="relative max-w-2xl">
                         <input 
                             type="text" 
-                            placeholder="Search License Plate (e.g. KL-11-AB-1234) for CRM Dossier..."
+                            placeholder="Search License Plate or Phone Number for CRM Dossier..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full bg-[#141518]/80 backdrop-blur-xl border border-white/10 focus:border-[#01FFFF] rounded-2xl py-4 pl-14 pr-6 text-white font-syncopate tracking-widest text-xs outline-none transition-all shadow-[0_0_20px_rgba(0,0,0,0.5)] focus:shadow-[0_0_30px_rgba(1,255,255,0.15)]"
@@ -823,16 +828,31 @@ export default function AdminDashboard() {
                                         <tr><th className="p-4 pl-6">Booking ID</th><th className="p-4">Customer</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Generate</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
-                                        {recentBookings.filter((b: any) => b.status === 'COMPLETED').map((booking: any) => (
-                                            <tr key={booking.id} className="hover:bg-white/5">
-                                                <td className="p-4 pl-6 font-mono text-xs">#INV-{booking.id.toString().padStart(4, '0')}</td>
-                                                <td className="p-4 font-bold">{booking.vehicle_info}</td>
-                                                <td className="p-4 text-[#01FFFF] font-bold">₹{booking.final_price || booking.service_package_details?.price}</td>
-                                                <td className="p-4 text-right pr-6">
-                                                    <button onClick={() => downloadInvoicePDF(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><FileText className="w-3 h-3" /> Get PDF</button>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {recentBookings.filter((b: any) => b.status === 'COMPLETED').length === 0 ? (
+                                            <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No completed bookings found to generate invoices for.</td></tr>
+                                        ) : (
+                                            recentBookings.filter((b: any) => b.status === 'COMPLETED').map((booking: any) => (
+                                                <tr key={booking.id} className="hover:bg-white/5">
+                                                    <td className="p-4 pl-6 font-mono text-xs">#INV-{booking.id.toString().padStart(4, '0')}</td>
+                                                    
+                                                    {/* Safely extract vehicle info */}
+                                                    <td className="p-4 font-bold">
+                                                        {booking.vehicle_info || (booking.vehicle ? booking.vehicle.plate_number : 'Walk-In Customer')}
+                                                    </td>
+                                                    
+                                                    {/* Safely extract price */}
+                                                    <td className="p-4 text-[#01FFFF] font-bold">
+                                                        ₹{booking.final_price || (booking.service_package_details?.price) || (booking.service_package?.price) || '0'}
+                                                    </td>
+                                                    
+                                                    <td className="p-4 text-right pr-6">
+                                                        <button onClick={() => downloadInvoice(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center">
+                                                            <FileText className="w-3 h-3" /> Get PDF
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </table>
                             </div>

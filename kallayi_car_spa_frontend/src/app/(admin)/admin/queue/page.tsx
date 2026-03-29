@@ -8,6 +8,7 @@ import {
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
     AlertCircle, User, Wifi, WifiOff, LayoutDashboard
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ function ElapsedTimer({ since }: { since: string | null }) {
 
 // ─── Booking Card ─────────────────────────────────────────────────────────────
 
-function BookingCard({ card, index, col }: { card: BookingCard; index: number; col: Column }) {
+function BookingCard({ card, index, col, onCheckout }: { card: BookingCard; index: number; col: Column; onCheckout?: (bookingId: number) => void }) {
     return (
         <Draggable draggableId={`card-${card.id}`} index={index}>
             {(provided, snapshot) => (
@@ -152,6 +153,16 @@ function BookingCard({ card, index, col }: { card: BookingCard; index: number; c
                         </div>
                         <ElapsedTimer since={card.time_slot || card.created_at} />
                     </div>
+
+                    {col.id === 'READY' && onCheckout && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onCheckout(card.id); }}
+                            className="w-full mt-4 bg-emerald-500 hover:bg-emerald-400 text-black font-syncopate font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-xs shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                        >
+                            <CheckCircle className="w-4 h-4" />
+                            COMPLETE & CHECKOUT
+                        </button>
+                    )}
                 </div>
             )}
         </Draggable>
@@ -201,6 +212,29 @@ export default function AdminQueueBoard() {
         const interval = setInterval(() => fetchQueue(true), 30000);
         return () => clearInterval(interval);
     }, [fetchQueue]);
+
+    const handleCheckout = async (bookingId: number) => {
+        // Optimistic update
+        setColumns(prev => {
+            const newCols = { ...prev };
+            newCols['READY'] = newCols['READY'].filter(c => c.id !== bookingId);
+            return newCols;
+        });
+
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${bookingId}/`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ new_status: 'COMPLETED', bay_assignment: null }),
+            });
+            if (!res.ok) throw new Error('API failed');
+            toast.success('Vehicle Complete & Checkout Successful!');
+        } catch {
+            toast.error('Failed to checkout vehicle. Reverting state.');
+            fetchQueue(); // Revert on error
+        }
+    };
 
     const onDragEnd = async (result: DropResult) => {
         const { source, destination, draggableId } = result;
@@ -338,7 +372,7 @@ export default function AdminQueueBoard() {
                                                     </div>
                                                 )}
                                                 {cards.map((card, index) => (
-                                                    <BookingCard key={card.id} card={card} index={index} col={col} />
+                                                    <BookingCard key={card.id} card={card} index={index} col={col} onCheckout={handleCheckout} />
                                                 ))}
                                                 {provided.placeholder}
                                             </div>

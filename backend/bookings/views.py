@@ -258,6 +258,52 @@ def update_booking_stage(request, booking_id):
             pass
 
     booking.save()
+
+    # --- NEW: TRIGGER FINANCE & INVOICE GENERATION ---
+    if new_status == 'COMPLETED':
+        # 1. Generate Invoice (if missing)
+        if not hasattr(booking, 'invoice'):
+            from finance.models import Invoice
+            Invoice.objects.create(
+                booking=booking,
+                amount=booking.service_package.price if booking.service_package else 0.0
+            )
+        
+        # 2. Trigger Shop Costs and Worker Payroll
+        from finance.logic import calculate_wash_cost, process_payroll_event
+        try:
+            calculate_wash_cost(booking)
+            process_payroll_event(booking)
+        except Exception as e:
+            print(f"Finance calculation error: {e}")
+
+    return Response({'status': 'success', 'booking_id': booking.id, 'new_status': booking.status})
+    """Kanban board drag-and-drop stage updater."""
+    try:
+        booking = Booking.objects.get(id=booking_id)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=404)
+
+    new_status = request.data.get('new_status')
+    bay_assignment = request.data.get('bay_assignment', None)
+    assigned_technician_id = request.data.get('assigned_technician_id', None)
+
+    valid_statuses = [s[0] for s in Booking.STATUS_CHOICES]
+    if new_status and new_status not in valid_statuses:
+        return Response({'error': f'Invalid status. Valid options: {valid_statuses}'}, status=400)
+
+    if new_status:
+        booking.status = new_status
+    if bay_assignment is not None:
+        booking.bay_assignment = bay_assignment
+    if assigned_technician_id:
+        try:
+            tech = User.objects.get(id=assigned_technician_id)
+            booking.technician = tech
+        except User.DoesNotExist:
+            pass
+
+    booking.save()
     return Response({'status': 'success', 'booking_id': booking.id, 'new_status': booking.status})
 
 
@@ -297,7 +343,11 @@ def vehicle_crm_history(request):
     if not q:
         return Response({'error': 'Missing query parameter q (License Plate)'}, status=400)
 
-    vehicles = Vehicle.objects.filter(plate_number__icontains=q)
+    # Search for either the License Plate OR the Owner's Phone Number
+    vehicles = Vehicle.objects.filter(
+        Q(plate_number__icontains=q) | 
+        Q(owner__phone_number__icontains=q)
+    ).select_related('owner__user')
     if not vehicles.exists():
         return Response({'error': 'No matching vehicle found in the system.'}, status=404)
     
