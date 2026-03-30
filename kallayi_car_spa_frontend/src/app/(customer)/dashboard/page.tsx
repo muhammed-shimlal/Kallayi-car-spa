@@ -5,7 +5,7 @@ import styles from "./page.module.css";
 import { Inter, Space_Grotesk } from "next/font/google";
 
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "700"] });
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["300", "700", "900"] });
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], weight: ["300", "700"] });
 
 export default function CinematicCustomerDashboard() {
   const [activeBg, setActiveBg] = useState<"bg-0" | "bg-1" | "bg-2">("bg-0");

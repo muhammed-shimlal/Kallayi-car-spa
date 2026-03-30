@@ -11,13 +11,11 @@ import { useRouter } from "next/navigation";
 
 const posSchema = z.object({
   plate_number: z.string().min(1, "License plate is required"),
-  phone: z.string({
-    required_error: "Phone number is required",
-  }).refine((val) => val && isValidPhoneNumber(val), {
+  phone: z.string().min(1, { message: "Phone number is required" }).refine((val) => val && isValidPhoneNumber(val), {
     message: "Invalid phone number",
   }),
-  package_id: z.number({
-    required_error: "Please select a service package",
+  package_id: z.number().refine((val) => val !== undefined, {
+    message: "Please select a service package",
   }),
 });
 
