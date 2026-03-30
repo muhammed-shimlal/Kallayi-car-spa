@@ -224,6 +224,13 @@ def express_walkin(request):
         address='Kallayi Car Spa - Main Hub'
     )
     
+    # Generate Invoice immediately for POS walk-ins
+    from finance.models import Invoice
+    Invoice.objects.create(
+        booking=booking,
+        amount=package.price
+    )
+    
     print(f"📱 MOCK SMS: Welcome to Kallayi! Track your car ({plate_number}) live: https://kallayi.com/track/{booking.id}")
     
     return Response({'status': 'success', 'booking_id': booking.id})
