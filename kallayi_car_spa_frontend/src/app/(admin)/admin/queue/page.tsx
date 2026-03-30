@@ -19,6 +19,8 @@ interface BookingCard {
     vehicle_model: string;
     service_name: string;
     customer_name: string;
+    customer_id: number | null;
+    price: number;
     technician_name: string | null;
     created_at: string | null;
     time_slot: string | null;
@@ -179,6 +181,16 @@ export default function AdminQueueBoard() {
     const [isLoading, setIsLoading] = useState(true);
     const [isConnected, setIsConnected] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+    const [checkoutModal, setCheckoutModal] = useState({ 
+        isOpen: false, 
+        bookingId: null as number | null, 
+        totalAmount: 0, 
+        cash: 0, 
+        upi: 0, 
+        khata: 0, 
+        customerName: '',
+        customerId: null as number | null
+    });
 
     const fetchQueue = useCallback(async (silent = false) => {
         const token = localStorage.getItem('auth_token');
@@ -213,26 +225,58 @@ export default function AdminQueueBoard() {
         return () => clearInterval(interval);
     }, [fetchQueue]);
 
-    const handleCheckout = async (bookingId: number) => {
-        // Optimistic update
-        setColumns(prev => {
-            const newCols = { ...prev };
-            newCols['READY'] = newCols['READY'].filter(c => c.id !== bookingId);
-            return newCols;
+    const handleCheckout = (bookingId: number) => {
+        let foundCard = null;
+        for (const col of Object.values(columns)) {
+            const match = col.find(c => c.id === bookingId);
+            if (match) {
+                foundCard = match;
+                break;
+            }
+        }
+        if (!foundCard) return;
+        
+        setCheckoutModal({ 
+            isOpen: true, 
+            bookingId, 
+            totalAmount: foundCard.price, 
+            cash: foundCard.price, 
+            upi: 0, 
+            khata: 0, 
+            customerName: foundCard.customer_name,
+            customerId: foundCard.customer_id
         });
+    };
+
+    const submitPayment = async () => {
+        if (!checkoutModal.bookingId) return;
+        
+        const sum = checkoutModal.cash + checkoutModal.upi + checkoutModal.khata;
+        if (sum !== checkoutModal.totalAmount) {
+            toast.error("Payment split does not match the total amount.");
+            return;
+        }
 
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${bookingId}/`, {
+            const res = await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${checkoutModal.bookingId}/`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ new_status: 'COMPLETED', bay_assignment: null }),
+                body: JSON.stringify({ 
+                    new_status: 'COMPLETED', 
+                    bay_assignment: null,
+                    payment_cash: checkoutModal.cash,
+                    payment_upi: checkoutModal.upi,
+                    payment_khata: checkoutModal.khata
+                }),
             });
             if (!res.ok) throw new Error('API failed');
             toast.success('Vehicle Complete & Checkout Successful!');
+            
+            setCheckoutModal({ isOpen: false, bookingId: null, totalAmount: 0, cash: 0, upi: 0, khata: 0, customerName: '', customerId: null });
+            fetchQueue();
         } catch {
-            toast.error('Failed to checkout vehicle. Reverting state.');
-            fetchQueue(); // Revert on error
+            toast.error('Failed to checkout vehicle.');
         }
     };
 
@@ -395,6 +439,97 @@ export default function AdminQueueBoard() {
                     </p>
                 )}
             </footer>
+
+            {/* ── CHECKOUT MODAL ───────────────────────────────────────────── */}
+            {checkoutModal.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
+                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+                        <div className="p-6 border-b border-white/5 bg-white/5">
+                            <h2 className="font-syncopate font-black text-xl tracking-widest text-white uppercase">Checkout</h2>
+                            <p className="text-xs text-[#8E939B] uppercase font-bold tracking-widest mt-1">
+                                {checkoutModal.customerName}
+                            </p>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            <div className="flex justify-between items-center bg-[#0C0D0F] p-4 rounded-2xl border border-white/5">
+                                <span className="text-xs text-[#8E939B] uppercase font-bold tracking-widest">Total Amount</span>
+                                <span className="text-[#01FFFF] font-mono font-bold text-2xl">₹{checkoutModal.totalAmount}</span>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-[#8E939B] uppercase font-bold tracking-widest block mb-2">Cash (₹)</label>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        value={checkoutModal.cash}
+                                        onChange={(e) => setCheckoutModal(prev => ({...prev, cash: Number(e.target.value)}))}
+                                        className="w-full bg-[#0C0D0F] border border-white/10 rounded-xl px-4 py-3 text-white font-mono focus:border-[#01FFFF] focus:outline-none transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-[#8E939B] uppercase font-bold tracking-widest block mb-2">UPI (₹)</label>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        value={checkoutModal.upi}
+                                        onChange={(e) => setCheckoutModal(prev => ({...prev, upi: Number(e.target.value)}))}
+                                        className="w-full bg-[#0C0D0F] border border-white/10 rounded-xl px-4 py-3 text-white font-mono focus:border-[#01FFFF] focus:outline-none transition-colors"
+                                    />
+                                </div>
+                                {checkoutModal.customerId === null ? (
+                                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+                                        <p className="text-red-400 text-[10px] uppercase font-bold tracking-widest text-center">Khata unavailable for Walk-In customers</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <label className="text-xs text-yellow-500 uppercase font-bold tracking-widest block mb-2">Khata/Credit (₹)</label>
+                                        <input 
+                                            type="number" 
+                                            min="0"
+                                            value={checkoutModal.khata}
+                                            onChange={(e) => setCheckoutModal(prev => ({...prev, khata: Number(e.target.value)}))}
+                                            className="w-full bg-[#0C0D0F] border border-yellow-500/30 rounded-xl px-4 py-3 text-white font-mono focus:border-yellow-500 focus:outline-none transition-colors"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {(() => {
+                                const sum = checkoutModal.cash + checkoutModal.upi + checkoutModal.khata;
+                                const diff = checkoutModal.totalAmount - sum;
+                                return (
+                                    <div className="text-center">
+                                        {diff === 0 ? (
+                                            <p className="text-emerald-400 text-xs uppercase font-bold tracking-widest">Math Checks Out!</p>
+                                        ) : diff > 0 ? (
+                                            <p className="text-[#FF2A6D] text-xs uppercase font-bold tracking-widest">Remaining to assign: ₹{diff}</p>
+                                        ) : (
+                                            <p className="text-[#FF2A6D] text-xs uppercase font-bold tracking-widest">Over-assigned by: ₹{Math.abs(diff)}</p>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                        
+                        <div className="p-6 bg-white/5 border-t border-white/5 flex gap-4">
+                            <button 
+                                onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))}
+                                className="flex-1 px-4 py-3 rounded-xl border border-white/10 text-[#8E939B] hover:text-white hover:bg-white/5 transition-all text-xs uppercase font-bold tracking-widest"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={submitPayment}
+                                disabled={(checkoutModal.cash + checkoutModal.upi + checkoutModal.khata) !== checkoutModal.totalAmount}
+                                className="flex-1 px-4 py-3 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-xs uppercase font-bold tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Confirm Payment
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style dangerouslySetInnerHTML={{ __html: `
                 .font-syncopate { font-family: 'Syncopate', sans-serif; }

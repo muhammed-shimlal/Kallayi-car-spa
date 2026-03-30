@@ -249,6 +249,13 @@ def update_booking_stage(request, booking_id):
     bay_assignment = request.data.get('bay_assignment', None)
     assigned_technician_id = request.data.get('assigned_technician_id', None)
 
+    payment_cash = float(request.data.get('payment_cash', 0))
+    payment_upi = float(request.data.get('payment_upi', 0))
+    payment_khata = float(request.data.get('payment_khata', 0))
+
+    if payment_khata > 0 and not booking.customer:
+        return Response({'error': 'Walk-In customers cannot use Khata/Credit.'}, status=400)
+
     valid_statuses = [s[0] for s in Booking.STATUS_CHOICES]
     if new_status and new_status not in valid_statuses:
         return Response({'error': f'Invalid status. Valid options: {valid_statuses}'}, status=400)
@@ -268,13 +275,37 @@ def update_booking_stage(request, booking_id):
 
     # --- NEW: TRIGGER FINANCE & INVOICE GENERATION ---
     if new_status == 'COMPLETED':
+        if payment_khata > 0 and booking.customer:
+            from finance.models import KhataLedger
+            from decimal import Decimal
+            booking.customer.outstanding_balance += Decimal(payment_khata)
+            booking.customer.save()
+            KhataLedger.objects.create(
+                customer=booking.customer,
+                amount=payment_khata,
+                transaction_type='CHARGE',
+                description=f'Service completed for {booking.vehicle.plate_number if booking.vehicle else "Walk-In"}',
+                related_booking=booking
+            )
+
         # 1. Generate Invoice (if missing)
         if not hasattr(booking, 'invoice'):
             from finance.models import Invoice
             Invoice.objects.create(
                 booking=booking,
-                amount=booking.service_package.price if booking.service_package else 0.0
+                amount=booking.service_package.price if booking.service_package else 0.0,
+                split_cash=payment_cash,
+                split_online=payment_upi,
+                split_khata=payment_khata,
+                payment_method='SPLIT' if (payment_cash > 0 and payment_upi > 0) else ('CASH' if payment_cash > 0 else ('ONLINE' if payment_upi > 0 else 'SPLIT'))
             )
+        else:
+            inv = booking.invoice
+            inv.split_cash = payment_cash
+            inv.split_online = payment_upi
+            inv.split_khata = payment_khata
+            inv.payment_method = 'SPLIT' if (payment_cash > 0 and payment_upi > 0) else ('CASH' if payment_cash > 0 else ('ONLINE' if payment_upi > 0 else 'SPLIT'))
+            inv.save()
         
         # 2. Trigger Shop Costs and Worker Payroll
         from finance.logic import calculate_wash_cost, process_payroll_event
@@ -284,33 +315,6 @@ def update_booking_stage(request, booking_id):
         except Exception as e:
             print(f"Finance calculation error: {e}")
 
-    return Response({'status': 'success', 'booking_id': booking.id, 'new_status': booking.status})
-    """Kanban board drag-and-drop stage updater."""
-    try:
-        booking = Booking.objects.get(id=booking_id)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=404)
-
-    new_status = request.data.get('new_status')
-    bay_assignment = request.data.get('bay_assignment', None)
-    assigned_technician_id = request.data.get('assigned_technician_id', None)
-
-    valid_statuses = [s[0] for s in Booking.STATUS_CHOICES]
-    if new_status and new_status not in valid_statuses:
-        return Response({'error': f'Invalid status. Valid options: {valid_statuses}'}, status=400)
-
-    if new_status:
-        booking.status = new_status
-    if bay_assignment is not None:
-        booking.bay_assignment = bay_assignment
-    if assigned_technician_id:
-        try:
-            tech = User.objects.get(id=assigned_technician_id)
-            booking.technician = tech
-        except User.DoesNotExist:
-            pass
-
-    booking.save()
     return Response({'status': 'success', 'booking_id': booking.id, 'new_status': booking.status})
 
 
@@ -333,6 +337,8 @@ def live_queue(request):
             'vehicle_model': b.vehicle.model if b.vehicle else 'Unknown',
             'service_name': b.service_package.name if b.service_package else 'Walk-In',
             'customer_name': str(b.customer) if b.customer else 'Walk-In',
+            'customer_id': b.customer.id if b.customer else None,
+            'price': float(b.service_package.price) if b.service_package else 0.0,
             'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else None,
             'created_at': b.created_at.isoformat() if b.created_at else None,
             'time_slot': b.time_slot.isoformat() if b.time_slot else None,

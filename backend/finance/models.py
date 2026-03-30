@@ -110,6 +110,7 @@ class Invoice(models.Model):
         ('CASH', 'Cash'),
         ('CARD', 'Card'),
         ('ONLINE', 'Online'),
+        ('SPLIT', 'Split Payment'),
     ]
 
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='invoice', null=True, blank=True)
@@ -119,6 +120,9 @@ class Invoice(models.Model):
     is_deferred = models.BooleanField(default=False, help_text="If true, this income is amortized over time (e.g. Subs)")
     is_paid = models.BooleanField(default=False)
     payment_method = models.CharField(max_length=10, choices=PAYMENT_METHODS, null=True, blank=True)
+    split_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    split_online = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    split_khata = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
