@@ -828,32 +828,34 @@ export default function AdminDashboard() {
                                         <tr><th className="p-4 pl-6">Booking ID</th><th className="p-4">Customer</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Generate</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
-                                        {recentBookings.filter((b: any) => b.status === 'COMPLETED').length === 0 ? (
-                                            <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No completed bookings found to generate invoices for.</td></tr>
-                                        ) : (
-                                            recentBookings.filter((b: any) => b.status === 'COMPLETED').map((booking: any) => (
-                                                <tr key={booking.id} className="hover:bg-white/5">
-                                                    <td className="p-4 pl-6 font-mono text-xs">#INV-{booking.id.toString().padStart(4, '0')}</td>
-                                                    
-                                                    {/* Safely extract vehicle info */}
-                                                    <td className="p-4 font-bold">
-                                                        {booking.vehicle_info || (booking.vehicle ? booking.vehicle.plate_number : 'Walk-In Customer')}
-                                                    </td>
-                                                    
-                                                    {/* Safely extract price */}
-                                                    <td className="p-4 text-[#01FFFF] font-bold">
-                                                        ₹{booking.final_price || (booking.service_package_details?.price) || (booking.service_package?.price) || '0'}
-                                                    </td>
-                                                    
-                                                    <td className="p-4 text-right pr-6">
-                                                        <button onClick={() => downloadInvoice(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center">
-                                                            <FileText className="w-3 h-3" /> Get PDF
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
+                                    {/* CHANGED FROM recentBookings TO globalHistory 👇 */}
+                                    {Array.isArray(globalHistory) && globalHistory.filter((b: any) => b.status === 'COMPLETED').length === 0 ? (
+                                        <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No completed bookings found to generate invoices for.</td></tr>
+                                    ) : (
+                                        /* CHANGED FROM recentBookings TO globalHistory 👇 */
+                                        (Array.isArray(globalHistory) ? globalHistory : []).filter((b: any) => b.status === 'COMPLETED').map((booking: any) => (
+                                            <tr key={booking.id} className="hover:bg-white/5">
+                                                <td className="p-4 pl-6 font-mono text-xs">#INV-{booking.id.toString().padStart(4, '0')}</td>
+                                                
+                                                {/* Safely extract vehicle info */}
+                                                <td className="p-4 font-bold">
+                                                    {booking.vehicle_info || (booking.vehicle ? booking.vehicle.plate_number : 'Walk-In Customer')}
+                                                </td>
+                                                
+                                                {/* Safely extract price */}
+                                                <td className="p-4 text-[#01FFFF] font-bold">
+                                                    ₹{booking.final_price || (booking.service_package_details?.price) || (booking.service_package?.price) || '0'}
+                                                </td>
+                                                
+                                                <td className="p-4 text-right pr-6">
+                                                    <button onClick={() => downloadInvoice(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center">
+                                                        <FileText className="w-3 h-3" /> Get PDF
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
                                 </table>
                             </div>
                         )}
