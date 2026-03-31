@@ -1,7 +1,7 @@
 django>=5.0
 djangorestframework
 psycopg2-binary
-weasyprint
+xhtml2pdf
 django-cors-headers
 Pillow
 python-decouple

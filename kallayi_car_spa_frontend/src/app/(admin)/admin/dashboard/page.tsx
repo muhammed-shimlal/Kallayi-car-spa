@@ -531,7 +531,7 @@ export default function AdminDashboard() {
 
 
                     <div className="pt-4 mt-4 border-t border-white/10">
-                        <button onClick={() => window.open('/admin/pos', '_blank')} className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-[#E52323] text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-[0_0_20px_rgba(229,35,35,0.4)]">
+                        <button onClick={() => router.push('/admin/pos')} className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-[#E52323] text-white font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-[0_0_20px_rgba(229,35,35,0.4)]">
                             Launch Express POS <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>

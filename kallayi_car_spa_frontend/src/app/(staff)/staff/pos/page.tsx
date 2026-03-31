@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { CheckCircle, Loader2, ArrowLeft, Download, LogOut } from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
@@ -26,8 +26,6 @@ export default function ExpressPOSPage() {
   const router = useRouter();
   const [packages, setPackages] = useState<any[]>([]);
   const [isLoadingPackages, setIsLoadingPackages] = useState(true);
-  const [successMode, setSuccessMode] = useState(false);
-  const [completedBookingId, setCompletedBookingId] = useState<number | null>(null);
 
   const {
     control,
@@ -130,71 +128,14 @@ export default function ExpressPOSPage() {
         throw new Error("Failed to process walk-in");
       }
 
-      const resultData = await res.json();
-      setCompletedBookingId(resultData.booking_id);
-
-      // Show success checkmark
-      setSuccessMode(true);
+      toast.success("Vehicle Added to Queue!");
+      reset();
     } catch (error) {
       alert("Error processing walk-in. Ensure you have proper permissions (Washer/Tech/Manager).");
       console.error(error);
     }
   };
 
-  const downloadInvoice = async (bookingId: number) => {
-    try {
-        const res = await fetch(`http://127.0.0.1:8001/api/finance/invoice/${bookingId}/pdf/`, {
-            headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
-        });
-        if (!res.ok) throw new Error('Failed to generate PDF');
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Kallayi_Invoice_${bookingId}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        toast.success('Invoice Downloaded');
-    } catch (e) {
-        toast.error('Failed to download invoice.');
-    }
-  };
-
-  if (successMode) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center animate-in fade-in duration-300">
-        <CheckCircle className="w-48 h-48 text-emerald-400 mb-8 drop-shadow-[0_0_40px_rgba(52,211,153,0.5)]" />
-        <h1 className="text-4xl font-syncopate font-bold text-white tracking-widest uppercase">
-          Vehicle Logged
-        </h1>
-        <div className="flex flex-col sm:flex-row gap-4 mt-8">
-          <button 
-            onClick={() => completedBookingId && downloadInvoice(completedBookingId)} 
-            className="flex items-center justify-center gap-2 bg-[#01FFFF] text-black font-syncopate font-bold uppercase tracking-widest px-8 py-4 rounded-xl hover:bg-white transition-all shadow-[0_0_30px_rgba(1,255,255,0.3)] active:scale-95 text-sm"
-          >
-            <Download className="w-5 h-5" /> Print/Download Invoice
-          </button>
-          
-          <button 
-            onClick={() => {
-              setSuccessMode(false);
-              setCompletedBookingId(null);
-              reset({
-                plate_number: "",
-                phone: "",
-                package_id: undefined,
-              });
-            }}
-            className="flex items-center justify-center gap-2 bg-white/5 text-white border border-white/20 font-syncopate font-bold uppercase tracking-widest px-8 py-4 rounded-xl hover:bg-white hover:text-black transition-all active:scale-95 text-sm"
-          >
-            Log Another Vehicle
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-[#050505] min-h-screen font-jakarta text-white relative">

@@ -12,10 +12,6 @@ from bookings.models import Booking
 
 from django.http import HttpResponse
 from django.template.loader import render_to_string, get_template
-try:
-    from weasyprint import HTML
-except (ImportError, OSError):
-    HTML = None
 
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all()
@@ -23,6 +19,35 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def download_pdf(self, request, pk=None):
+        from io import BytesIO
+        try:
+            from xhtml2pdf import pisa
+        except ImportError:
+            return HttpResponse("PDF generation not available (xhtml2pdf not installed).", status=503)
+            
+        invoice = self.get_object()
+        
+        # Safely get booking and customer info for the template
+        booking = getattr(invoice, 'booking', None)
+        customer_phone = booking.customer.phone_number if booking and booking.customer else ''
+        
+        context = {
+            'invoice': invoice,
+            'booking': booking,
+            'customer_phone': customer_phone,
+        }
+        
+        html_string = render_to_string('finance/invoice_pdf.html', context)
+        
+        result = BytesIO()
+        pdf = pisa.CreatePDF(BytesIO(html_string.encode('utf-8')), dest=result)
+        
+        if pdf.err:
+            return HttpResponse("Error generating PDF.", status=500)
+            
+        response = HttpResponse(result.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="invoice_{invoice.id}.pdf"'
+        return response
         if HTML is None:
             return HttpResponse("PDF Generation not available (Missing GTK)", status=503)
             
