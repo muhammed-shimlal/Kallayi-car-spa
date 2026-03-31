@@ -47,6 +47,40 @@ export default function ExpressPOSPage() {
   });
 
   const selectedPackageId = watch("package_id");
+  const plateNumber = watch("plate_number");
+
+  // --- NEW: AUTO-FILL WATCHER ---
+  useEffect(() => {
+    // Only search if the plate is at least 4 characters long
+    if (!plateNumber || plateNumber.length < 4) return;
+
+    // Debounce the fetch so it doesn't spam the server on every single keystroke
+    const timer = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem("auth_token");
+        
+        // Note: If your router uses /api/fleet/vehicles instead of /api/vehicles, update this URL
+        const res = await fetch(`http://127.0.0.1:8001/api/vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`, {
+          headers: token ? { Authorization: `Token ${token}` } : {},
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.phone) {
+            // Auto-fill the phone number into the form
+            setValue("phone", data.phone, { shouldValidate: true });
+            toast.success(`Found: ${data.customer_name}'s Vehicle`);
+          }
+        }
+      } catch (err) {
+        // Silently fail if vehicle doesn't exist yet
+        console.error(err);
+      }
+    }, 800); // Wait 800ms after the user stops typing to trigger the search
+
+    return () => clearTimeout(timer);
+  }, [plateNumber, setValue]);
+  // ------------------------------
 
   useEffect(() => {
     const fetchPackages = async () => {

@@ -297,7 +297,8 @@ def update_booking_stage(request, booking_id):
                 split_cash=payment_cash,
                 split_online=payment_upi,
                 split_khata=payment_khata,
-                payment_method='SPLIT' if (payment_cash > 0 and payment_upi > 0) else ('CASH' if payment_cash > 0 else ('ONLINE' if payment_upi > 0 else 'SPLIT'))
+                payment_method='SPLIT' if (payment_cash > 0 and payment_upi > 0) else ('CASH' if payment_cash > 0 else ('ONLINE' if payment_upi > 0 else 'SPLIT')),
+                is_paid=True  # <-- NEW LINE ADDED HERE
             )
         else:
             inv = booking.invoice
@@ -305,6 +306,7 @@ def update_booking_stage(request, booking_id):
             inv.split_online = payment_upi
             inv.split_khata = payment_khata
             inv.payment_method = 'SPLIT' if (payment_cash > 0 and payment_upi > 0) else ('CASH' if payment_cash > 0 else ('ONLINE' if payment_upi > 0 else 'SPLIT'))
+            inv.is_paid = True  # <-- NEW LINE ADDED HERE
             inv.save()
         
         # 2. Trigger Shop Costs and Worker Payroll
