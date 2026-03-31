@@ -8,7 +8,10 @@ import {
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
     AlertCircle, User, Wifi, WifiOff, LayoutDashboard
 } from 'lucide-react';
+
 import toast from 'react-hot-toast';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -198,7 +201,7 @@ export default function AdminQueueBoard() {
         if (!silent) setIsLoading(true);
 
         try {
-            const res = await fetch('http://127.0.0.1:8001/api/bookings/live-queue/', {
+            const res = await fetch(`${API_BASE}/bookings/live-queue/`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             if (!res.ok) throw new Error('API error');
@@ -251,7 +254,11 @@ export default function AdminQueueBoard() {
     const submitPayment = async () => {
         if (!checkoutModal.bookingId) return;
         
-        const sum = checkoutModal.cash + checkoutModal.upi + checkoutModal.khata;
+        const cash = checkoutModal.cash || 0;
+        const upi = checkoutModal.upi || 0;
+        const khata = checkoutModal.khata || 0;
+        const sum = cash + upi + khata;
+
         if (sum !== checkoutModal.totalAmount) {
             toast.error("Payment split does not match the total amount.");
             return;
@@ -265,9 +272,9 @@ export default function AdminQueueBoard() {
                 body: JSON.stringify({ 
                     new_status: 'COMPLETED', 
                     bay_assignment: null,
-                    payment_cash: checkoutModal.cash,
-                    payment_upi: checkoutModal.upi,
-                    payment_khata: checkoutModal.khata
+                    payment_cash: cash,
+                    payment_upi: upi,
+                    payment_khata: khata
                 }),
             });
             if (!res.ok) throw new Error('API failed');
@@ -295,12 +302,12 @@ export default function AdminQueueBoard() {
             const sourceCards = [...newCols[sourceCol]];
             const destCards = sourceCol === destCol ? sourceCards : [...newCols[destCol]];
             const [movedCard] = sourceCards.splice(source.index, 1);
-            movedCard.status = destCol;
+            const updatedCard = { ...movedCard, status: destCol };
             if (sourceCol === destCol) {
-                sourceCards.splice(destination.index, 0, movedCard);
+                sourceCards.splice(destination.index, 0, updatedCard);
                 newCols[sourceCol] = sourceCards;
             } else {
-                destCards.splice(destination.index, 0, movedCard);
+                destCards.splice(destination.index, 0, updatedCard);
                 newCols[sourceCol] = sourceCards;
                 newCols[destCol] = destCards;
             }
@@ -314,7 +321,7 @@ export default function AdminQueueBoard() {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    new_status: destCol,
+                    new_status: destCol.startsWith('IN_BAY') ? 'IN_PROGRESS' : destCol,
                     bay_assignment: destCol.startsWith('IN_BAY') ? destCol.replace('IN_BAY_', 'Bay ') : null,
                 }),
             });
@@ -496,7 +503,10 @@ export default function AdminQueueBoard() {
                             </div>
                             
                             {(() => {
-                                const sum = checkoutModal.cash + checkoutModal.upi + checkoutModal.khata;
+                                const cash = checkoutModal.cash || 0;
+                                const upi = checkoutModal.upi || 0;
+                                const khata = checkoutModal.khata || 0;
+                                const sum = cash + upi + khata;
                                 const diff = checkoutModal.totalAmount - sum;
                                 return (
                                     <div className="text-center">
@@ -521,7 +531,7 @@ export default function AdminQueueBoard() {
                             </button>
                             <button 
                                 onClick={submitPayment}
-                                disabled={(checkoutModal.cash + checkoutModal.upi + checkoutModal.khata) !== checkoutModal.totalAmount}
+                                disabled={((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0)) !== checkoutModal.totalAmount}
                                 className="flex-1 px-4 py-3 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-xs uppercase font-bold tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Confirm Payment

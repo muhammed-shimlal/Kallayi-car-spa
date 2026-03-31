@@ -282,13 +282,13 @@ export default function QueueBoard() {
             const destCards = sourceCol === destCol ? sourceCards : [...newCols[destCol]];
             
             const [movedCard] = sourceCards.splice(source.index, 1);
-            movedCard.status = destCol;
+            const updatedCard = { ...movedCard, status: destCol };
             
             if (sourceCol === destCol) {
-                sourceCards.splice(destination.index, 0, movedCard);
+                sourceCards.splice(destination.index, 0, updatedCard);
                 newCols[sourceCol] = sourceCards;
             } else {
-                destCards.splice(destination.index, 0, movedCard);
+                destCards.splice(destination.index, 0, updatedCard);
                 newCols[sourceCol] = sourceCards;
                 newCols[destCol] = destCards;
             }
@@ -305,7 +305,7 @@ export default function QueueBoard() {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    new_status: destCol,
+                    new_status: destCol.startsWith('IN_BAY') ? 'IN_PROGRESS' : destCol,
                     bay_assignment: destCol.startsWith('IN_BAY') ? destCol.replace('IN_BAY_', 'Bay ') : null,
                 }),
             });

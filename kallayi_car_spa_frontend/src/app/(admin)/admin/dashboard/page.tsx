@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
@@ -15,6 +15,8 @@ import {
     LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
 } from 'recharts';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
 
 export default function AdminDashboard() {
     const router = useRouter();
@@ -80,16 +82,15 @@ export default function AdminDashboard() {
     const [globalHistoryDate, setGlobalHistoryDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
     // --- Data Fetching ---
-    const fetchDashboardData = async () => {
+    const fetchDashboardData = useCallback(async () => {
         const token = localStorage.getItem('auth_token');
         if (!token) return router.push('/login');
 
         const HEADERS = { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' };
-        const API_BASE = 'http://127.0.0.1:8001/api';
 
         try {
-            // Fetch all 11 endpoints safely
-            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes, eodRes, analyticsRes, globalHistRes] = await Promise.all([
+            // Fetch all 10 endpoints safely (global-history is fetched separately)
+            const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes, eodRes, analyticsRes] = await Promise.all([
                 fetch(`${API_BASE}/core/users/me/`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/finance/dashboard/kpi_summary/`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: HEADERS }).catch(() => null),
@@ -100,7 +101,6 @@ export default function AdminDashboard() {
                 fetch(`${API_BASE}/finance/khata/`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/finance/close-register/`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/finance/analytics/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/bookings/global-history/?date=${globalHistoryDate}`, { headers: HEADERS }).catch(() => null)
             ]);
 
             // Map data to state
@@ -112,50 +112,46 @@ export default function AdminDashboard() {
                     setChartData(chartApiData.map((d: any) => ({ name: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: d.value })));
                 }
             }
-            if (bookRes?.ok) { 
-            const b = await bookRes.json(); 
-            // Safely check if it's an array, or if it has a paginated .results array. If neither, use empty []
-               const safeBookingsArray = Array.isArray(b) ? b : (Array.isArray(b.results) ? b.results : []);
-                  setRecentBookings(safeBookingsArray.slice(0, 10)); 
-}
+            if (bookRes?.ok) {
+                const b = await bookRes.json();
+                // Safely check if it's an array, or if it has a paginated .results array. If neither, use empty []
+                const safeBookingsArray = Array.isArray(b) ? b : (Array.isArray(b.results) ? b.results : []);
+                setRecentBookings(safeBookingsArray.slice(0, 10));
+            }
             if (expRes?.ok) { const e = await expRes.json(); setExpenses(e.results || e); }
             if (creditRes?.ok) { const creditData = await creditRes.json(); setCustomerCredits(creditData); }
             if (payrollRes?.ok) { const pd = await payrollRes.json(); setPayrollData(pd); }
             if (eodRes?.ok) { const eodD = await eodRes.json(); setEodData(eodD); }
             if (analyticsRes?.ok) { setAnalyticsData(await analyticsRes.json()); }
-            if (globalHistRes?.ok) { setGlobalHistory(await globalHistRes.json()); }
 
             // --- THE KHATA FIX ---
-            if (khataRes?.ok) { 
+            if (khataRes?.ok) {
                 const data = await khataRes.json();
                 const customerList = Array.isArray(data) ? data : (data.results || []);
                 const debtors = customerList.filter((c: any) => Number(c.outstanding_balance || 0) > 0);
-                
-                setKhataCustomers(debtors); 
-                
-                // FORCE BROWSER ALERT POPUP
-                alert(`SUCCESS! We found ${debtors.length} customers in the database who owe money.`);
+                setKhataCustomers(debtors);
+                toast.success(`SUCCESS! We found ${debtors.length} customers in the database who owe money.`);
             } else {
-                alert(`API FAILED! Khata Status: ${khataRes?.status}`);
+                toast.error(`API FAILED! Khata Status: ${khataRes?.status}`);
             }
 
-        } catch (error: any) { 
-            alert("CRASH DETECTED!\n\nReason: " + error.message + "\n\nStack: " + error.stack);
-        } finally { 
-            setIsLoading(false); 
+        } catch (error: any) {
+            toast.error("CRASH DETECTED!\n\nReason: " + error.message);
+        } finally {
+            setIsLoading(false);
         }
-    };
+    }, [router]);
 
     // --- Service Menu CRUD ---
-    const fetchServices = async () => {
+    const fetchServices = useCallback(async () => {
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch('http://127.0.0.1:8001/api/bookings/services/', {
+            const res = await fetch(`${API_BASE}/bookings/services/`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             if (res.ok) setServices(await res.json());
         } catch (e) { console.error('Failed to fetch services'); }
-    };
+    }, []);
 
     const openServiceModal = (service: any | null = null) => {
         if (service) {
@@ -172,13 +168,17 @@ export default function AdminDashboard() {
         const token = localStorage.getItem('auth_token');
         const url = editingService
             ? `http://127.0.0.1:8001/api/bookings/services/${editingService.id}/`
-            : 'http://127.0.0.1:8001/api/bookings/services/';
+            : `${API_BASE}/bookings/services/`;
         const method = editingService ? 'PATCH' : 'POST';
         try {
             const res = await fetch(url, {
                 method,
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...serviceForm, price: parseFloat(serviceForm.price), duration_minutes: parseInt(serviceForm.duration_minutes) })
+                body: JSON.stringify({ 
+                    ...serviceForm, 
+                    price: parseFloat(serviceForm.price) || 0, 
+                    duration_minutes: parseInt(serviceForm.duration_minutes) || 0 
+                })
             });
             if (res.ok) {
                 toast.success('Service saved successfully!');
@@ -207,15 +207,15 @@ export default function AdminDashboard() {
     };
 
     // --- Staff Directory CRUD ---
-    const fetchStaffDirectory = async () => {
+    const fetchStaffDirectory = useCallback(async () => {
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch('http://127.0.0.1:8001/api/staff/directory/', {
+            const res = await fetch(`${API_BASE}/staff/directory/`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             if (res.ok) setStaffDirectory(await res.json());
         } catch (e) { console.error('Failed to fetch staff directory'); }
-    };
+    }, []);
 
     const openStaffModal = (staff: any | null = null) => {
         if (staff) {
@@ -232,7 +232,7 @@ export default function AdminDashboard() {
         const token = localStorage.getItem('auth_token');
         const url = editingStaff
             ? `http://127.0.0.1:8001/api/staff/directory/${editingStaff.id}/`
-            : 'http://127.0.0.1:8001/api/staff/directory/';
+            : `${API_BASE}/staff/directory/`;
         const method = editingStaff ? 'PATCH' : 'POST';
         try {
             const res = await fetch(url, {
@@ -274,7 +274,7 @@ export default function AdminDashboard() {
         }
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch('http://127.0.0.1:8001/api/finance/khata/manual-charge/', {
+            const res = await fetch(`${API_BASE}/finance/khata/manual-charge/`, {
                 method: 'POST',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -296,19 +296,23 @@ export default function AdminDashboard() {
         } catch (e) { toast.error('Network error'); }
     };
 
-    // Effect for re-fetching Global History when date changes
+    // Effect for re-fetching Global History ONLY when the date changes AND crm tab is active.
+    // Does NOT depend on activeTab or vehicleData to avoid firing on every tab switch.
     useEffect(() => {
-        const fetchGlobalHistoryOnly = async () => {
-            if (activeTab !== 'crm' || vehicleData) return;
-            const token = localStorage.getItem('auth_token');
-            if (!token) return;
-            try {
-                const res = await fetch(`http://127.0.0.1:8001/api/bookings/global-history/?date=${globalHistoryDate}`, { headers: { 'Authorization': `Token ${token}` } });
-                if (res.ok) setGlobalHistory(await res.json());
-            } catch (e) {}
-        };
-        fetchGlobalHistoryOnly();
-    }, [globalHistoryDate, activeTab, vehicleData]);
+        if (activeTab !== 'crm' || vehicleData) return;
+        const token = localStorage.getItem('auth_token');
+        if (!token) return;
+        const controller = new AbortController();
+        fetch(`${API_BASE}/bookings/global-history/?date=${globalHistoryDate}`, {
+            headers: { 'Authorization': `Token ${token}` },
+            signal: controller.signal,
+        })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => { if (data) setGlobalHistory(data); })
+            .catch(() => {});
+        return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [globalHistoryDate]);
 
     const handleCrmSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -340,14 +344,14 @@ export default function AdminDashboard() {
         }
     };
 
-    useEffect(() => { fetchDashboardData(); fetchServices(); fetchStaffDirectory(); }, [router]);
+    useEffect(() => { fetchDashboardData(); fetchServices(); fetchStaffDirectory(); }, [fetchDashboardData, fetchServices, fetchStaffDirectory]);
 
     // --- Actions ---
     const handleLogout = () => { localStorage.removeItem('auth_token'); router.push('/login'); };
 
     const downloadTaxReport = async () => {
         try {
-            const res = await fetch('http://127.0.0.1:8001/api/finance/reports/tax_summary/', { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            const res = await fetch(`${API_BASE}/finance/reports/tax_summary/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
             if (!res.ok) throw new Error("Failed");
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
@@ -356,20 +360,10 @@ export default function AdminDashboard() {
         } catch (e) { toast.error("Failed to export."); }
     };
 
-    const downloadInvoicePDF = async (id: number) => {
+    // Single consolidated invoice download function (downloadInvoicePDF removed — duplicate)
+    const downloadInvoice = useCallback(async (bookingId: number) => {
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/finance/invoices/${id}/download_pdf/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
-            if (!res.ok) throw new Error("Failed");
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `Invoice_Kallayi_${id}.pdf`; a.click();
-        } catch (e) { toast.error("Invoice generation failed."); }
-    };
-
-    const downloadInvoice = async (bookingId: number) => {
-        try {
-            const res = await fetch(`http://127.0.0.1:8001/api/finance/invoice/${bookingId}/pdf/`, {
+            const res = await fetch(`${API_BASE}/finance/invoice/${bookingId}/pdf/`, {
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
             });
             if (!res.ok) throw new Error('Failed to generate PDF');
@@ -386,7 +380,7 @@ export default function AdminDashboard() {
         } catch (e) {
             toast.error('Failed to download invoice.');
         }
-    };
+    }, []);
 
     const approveExpense = async (id: number) => {
         try {
