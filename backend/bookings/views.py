@@ -46,6 +46,13 @@ class ServicePackageViewSet(viewsets.ModelViewSet):
 class BookingViewSet(viewsets.ModelViewSet):
     queryset = Booking.objects.all().order_by('-created_at')
     serializer_class = BookingSerializer
+ 
+    @action(detail=False, methods=['get'])
+    def completed(self, request):
+        """Fetch the 100 most recent completed bookings specifically for the PDF Invoices table."""
+        completed_bookings = Booking.objects.filter(status='COMPLETED').order_by('-id')[:100]
+        serializer = self.get_serializer(completed_bookings, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def available_slots(self, request):

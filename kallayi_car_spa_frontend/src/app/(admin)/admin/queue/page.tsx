@@ -280,10 +280,8 @@ export default function AdminQueueBoard() {
             if (!res.ok) throw new Error('API failed');
             toast.success('Vehicle Complete & Checkout Successful!');
             
-            const completedId = checkoutModal.bookingId;
             setCheckoutModal({ isOpen: false, bookingId: null, totalAmount: 0, cash: 0, upi: 0, khata: 0, customerName: '', customerId: null });
             fetchQueue();
-            window.open(`http://127.0.0.1:8001/api/finance/generate_invoice_pdf/${completedId}/`, '_blank');
         } catch {
             toast.error('Failed to checkout vehicle.');
         }

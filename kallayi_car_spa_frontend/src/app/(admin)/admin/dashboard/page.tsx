@@ -80,6 +80,28 @@ export default function AdminDashboard() {
     const [crmError, setCrmError] = useState('');
     const [globalHistory, setGlobalHistory] = useState<any | null>(null);
     const [globalHistoryDate, setGlobalHistoryDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [invoiceList, setInvoiceList] = useState<any[]>([]);
+    useEffect(() => {
+        // Only fetch when the user clicks the "PDF Invoices" sub-tab
+        if (activeTab !== 'finance' || financeSubTab !== 'invoices') return;
+        
+        const fetchInvoices = async () => {
+            const token = localStorage.getItem('auth_token');
+            if (!token) return;
+            try {
+                const res = await fetch(`${API_BASE}/bookings/completed/`, {
+                    headers: { 'Authorization': `Token ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setInvoiceList(Array.isArray(data) ? data : (data.results || []));
+                }
+            } catch (e) { 
+                console.error("Failed to load invoice list", e); 
+            }
+        };
+        fetchInvoices();
+    }, [activeTab, financeSubTab]);
 
     // --- Data Fetching ---
     const fetchDashboardData = useCallback(async () => {
@@ -116,7 +138,7 @@ export default function AdminDashboard() {
                 const b = await bookRes.json();
                 // Safely check if it's an array, or if it has a paginated .results array. If neither, use empty []
                 const safeBookingsArray = Array.isArray(b) ? b : (Array.isArray(b.results) ? b.results : []);
-                setRecentBookings(safeBookingsArray.slice(0, 10));
+                setRecentBookings(safeBookingsArray);
             }
             if (expRes?.ok) { const e = await expRes.json(); setExpenses(e.results || e); }
             if (creditRes?.ok) { const creditData = await creditRes.json(); setCustomerCredits(creditData); }
@@ -363,7 +385,7 @@ export default function AdminDashboard() {
     // Single consolidated invoice download function (downloadInvoicePDF removed — duplicate)
     const downloadInvoice = useCallback(async (bookingId: number) => {
         try {
-            const res = await fetch(`${API_BASE}/finance/invoice/${bookingId}/pdf/`, {
+            const res = await fetch(`${API_BASE}/finance/generate_invoice_pdf/${bookingId}/`, {
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
             });
             if (!res.ok) throw new Error('Failed to generate PDF');
@@ -527,6 +549,9 @@ export default function AdminDashboard() {
                     </button>
                     <button onClick={() => router.push('/admin/queue')} className="w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-[#8E939B] hover:text-[#01FFFF] hover:bg-[#01FFFF]/5 hover:border hover:border-[#01FFFF]/20">
                         <Activity className="w-4 h-4" /> Live Queue
+                    </button>
+                    <button onClick={() => router.push('/admin/finance/expenses')} className="w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-[#8E939B] hover:text-[#FF2A6D] hover:bg-[#FF2A6D]/5 hover:border hover:border-[#FF2A6D]/20">
+                        <Receipt className="w-4 h-4" /> Expense Manager
                     </button>
 
 
@@ -819,37 +844,39 @@ export default function AdminDashboard() {
                             <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
                                 <table className="w-full text-left text-sm">
                                     <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
-                                        <tr><th className="p-4 pl-6">Booking ID</th><th className="p-4">Customer</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Generate</th></tr>
+                                        <tr><th className="p-4 pl-6">Booking ID</th><th className="p-4">Customer</th><th className="p-4">Phone No</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Generate</th></tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
-                                    {/* CHANGED FROM recentBookings TO globalHistory 👇 */}
-                                    {Array.isArray(globalHistory) && globalHistory.filter((b: any) => b.status === 'COMPLETED').length === 0 ? (
-                                        <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">No completed bookings found to generate invoices for.</td></tr>
-                                    ) : (
-                                        /* CHANGED FROM recentBookings TO globalHistory 👇 */
-                                        (Array.isArray(globalHistory) ? globalHistory : []).filter((b: any) => b.status === 'COMPLETED').map((booking: any) => (
-                                            <tr key={booking.id} className="hover:bg-white/5">
-                                                <td className="p-4 pl-6 font-mono text-xs">#INV-{booking.id.toString().padStart(4, '0')}</td>
-                                                
-                                                {/* Safely extract vehicle info */}
-                                                <td className="p-4 font-bold">
-                                                    {booking.vehicle_info || (booking.vehicle ? booking.vehicle.plate_number : 'Walk-In Customer')}
-                                                </td>
-                                                
-                                                {/* Safely extract price */}
-                                                <td className="p-4 text-[#01FFFF] font-bold">
-                                                    ₹{booking.final_price || (booking.service_package_details?.price) || (booking.service_package?.price) || '0'}
-                                                </td>
-                                                
-                                                <td className="p-4 text-right pr-6">
-                                                    <button onClick={() => downloadInvoice(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center">
-                                                        <FileText className="w-3 h-3" /> Get PDF
-                                                    </button>
+                                        {invoiceList.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5} className="p-8 text-center text-[#8E939B]">
+                                                    No completed bookings found to generate invoices for.
                                                 </td>
                                             </tr>
-                                        ))
-                                    )}
-                                </tbody>
+                                        ) : (
+                                            invoiceList.map((booking: any) => (
+                                                <tr key={booking.id} className="hover:bg-white/5 transition-colors group">
+                                                    <td className="p-4 pl-6 font-mono text-xs">
+                                                        #INV-{booking.id.toString().padStart(4, '0')}
+                                                    </td>
+                                                    <td className="p-4 font-bold">
+                                                        {booking.vehicle_info || (booking.vehicle ? booking.vehicle.plate_number : 'Walk-In Customer')}
+                                                    </td>
+                                                    <td className="p-4 text-[#8E939B] text-xs">
+                                                        {booking.customer?.phone_number || booking.customer_phone || 'N/A'}
+                                                    </td>
+                                                    <td className="p-4 text-[#01FFFF] font-bold">
+                                                        ₹{booking.final_price || (booking.service_package_details?.price) || (booking.service_package?.price) || '0'}
+                                                    </td>
+                                                    <td className="p-4 text-right pr-6">
+                                                        <button onClick={() => downloadInvoice(booking.id)} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500 hover:text-black transition px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center">
+                                                            <FileText className="w-3 h-3" /> Get PDF
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
                                 </table>
                             </div>
                         )}
