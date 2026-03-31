@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { CheckCircle, Loader2, ArrowLeft, Download, LogOut } from "lucide-react";
+import { CheckCircle, Loader2, ArrowLeft, Download } from "lucide-react";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
@@ -22,7 +22,7 @@ const posSchema = z.object({
 
 type POSFormValues = z.infer<typeof posSchema>;
 
-export default function ExpressPOSPage() {
+export default function AdminExpressPOSPage() {
   const router = useRouter();
   const [packages, setPackages] = useState<any[]>([]);
   const [isLoadingPackages, setIsLoadingPackages] = useState(true);
@@ -49,38 +49,31 @@ export default function ExpressPOSPage() {
   const selectedPackageId = watch("package_id");
   const plateNumber = watch("plate_number");
 
-  // --- NEW: AUTO-FILL WATCHER ---
+  // AUTO-FILL WATCHER
   useEffect(() => {
-    // Only search if the plate is at least 4 characters long
     if (!plateNumber || plateNumber.length < 4) return;
 
-    // Debounce the fetch so it doesn't spam the server on every single keystroke
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("auth_token");
-        
-        // Note: If your router uses /api/fleet/vehicles instead of /api/vehicles, update this URL
         const res = await fetch(`http://127.0.0.1:8001/api/vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`, {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
-        
+
         if (res.ok) {
           const data = await res.json();
           if (data.phone) {
-            // Auto-fill the phone number into the form
             setValue("phone", data.phone, { shouldValidate: true });
             toast.success(`Found: ${data.customer_name}'s Vehicle`);
           }
         }
       } catch (err) {
-        // Silently fail if vehicle doesn't exist yet
         console.error(err);
       }
-    }, 800); // Wait 800ms after the user stops typing to trigger the search
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [plateNumber, setValue]);
-  // ------------------------------
 
   useEffect(() => {
     const fetchPackages = async () => {
@@ -91,10 +84,8 @@ export default function ExpressPOSPage() {
         });
         if (res.ok) {
           const data = await res.json();
-          // Assuming the data is an array or object with results
           setPackages(data.results || data);
         } else {
-          // Mock data if failed
           setPackages([
             { id: 1, name: "Foam Wash", price: "500.00" },
             { id: 2, name: "Deep Detail", price: "1200.00" },
@@ -132,8 +123,6 @@ export default function ExpressPOSPage() {
 
       const resultData = await res.json();
       setCompletedBookingId(resultData.booking_id);
-
-      // Show success checkmark
       setSuccessMode(true);
     } catch (error) {
       alert("Error processing walk-in. Ensure you have proper permissions (Washer/Tech/Manager).");
@@ -143,22 +132,22 @@ export default function ExpressPOSPage() {
 
   const downloadInvoice = async (bookingId: number) => {
     try {
-        const res = await fetch(`http://127.0.0.1:8001/api/finance/invoice/${bookingId}/pdf/`, {
-            headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
-        });
-        if (!res.ok) throw new Error('Failed to generate PDF');
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Kallayi_Invoice_${bookingId}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        toast.success('Invoice Downloaded');
+      const res = await fetch(`http://127.0.0.1:8001/api/finance/invoice/${bookingId}/pdf/`, {
+        headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
+      });
+      if (!res.ok) throw new Error('Failed to generate PDF');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Kallayi_Invoice_${bookingId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success('Invoice Downloaded');
     } catch (e) {
-        toast.error('Failed to download invoice.');
+      toast.error('Failed to download invoice.');
     }
   };
 
@@ -170,14 +159,14 @@ export default function ExpressPOSPage() {
           Vehicle Logged
         </h1>
         <div className="flex flex-col sm:flex-row gap-4 mt-8">
-          <button 
-            onClick={() => completedBookingId && downloadInvoice(completedBookingId)} 
+          <button
+            onClick={() => completedBookingId && downloadInvoice(completedBookingId)}
             className="flex items-center justify-center gap-2 bg-[#01FFFF] text-black font-syncopate font-bold uppercase tracking-widest px-8 py-4 rounded-xl hover:bg-white transition-all shadow-[0_0_30px_rgba(1,255,255,0.3)] active:scale-95 text-sm"
           >
             <Download className="w-5 h-5" /> Print/Download Invoice
           </button>
-          
-          <button 
+
+          <button
             onClick={() => {
               setSuccessMode(false);
               setCompletedBookingId(null);
@@ -213,13 +202,10 @@ export default function ExpressPOSPage() {
             </p>
           </div>
           <button
-            onClick={() => {
-              localStorage.removeItem('auth_token');
-              router.replace('/login');
-            }}
-            className="flex items-center gap-2 text-[#E52323] hover:text-red-400 transition-colors"
+            onClick={() => router.push('/admin/dashboard')}
+            className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors"
           >
-            <LogOut className="w-5 h-5" /> Secure Logout
+            <ArrowLeft className="w-5 h-5" /> Exit to Dashboard
           </button>
         </header>
 
