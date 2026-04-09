@@ -242,3 +242,46 @@ def settle_daily_pay(request, staff_id):
         
     return Response({'status': 'success', 'message': f'Settled pay for {staff_user.username}'})
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_staff_advance(request, staff_id):
+    """
+    Grants a cash advance to a staff member and records it as a GeneralExpense.
+    This ensures it deducts correctly from their daily settlement.
+    """
+    user = request.user
+    # Ensure only Admin/Manager can grant advances
+    if not user.is_staff and not (hasattr(user, 'staff_profile') and user.staff_profile.role in ['ADMIN', 'MANAGER']):
+        return Response({'error': 'Forbidden'}, status=403)
+        
+    from django.contrib.auth.models import User
+    from finance.models import GeneralExpense, ExpenseCategory
+    
+    try:
+        staff_user = User.objects.get(id=staff_id)
+    except User.DoesNotExist:
+        return Response({'error': 'Staff not found'}, status=404)
+        
+    amount = request.data.get('amount')
+    description = request.data.get('description', f'Cash Advance for {staff_user.get_full_name() or staff_user.username}')
+    
+    if not amount or float(amount) <= 0:
+        return Response({'error': 'A valid positive amount is required'}, status=400)
+        
+    # Get or create the 'Advances' category so the ledger finds it
+    category, _ = ExpenseCategory.objects.get_or_create(name='Advances')
+    
+    # Create the expense. 
+    # NOTE: We set recorded_by=staff_user so the daily_settlement_ledger math picks it up!
+    GeneralExpense.objects.create(
+        category=category,
+        amount=amount,
+        description=description,
+        date=timezone.localdate(),
+        recorded_by=staff_user 
+    )
+    
+    return Response({
+        'status': 'success', 
+        'message': f'Advance of ₹{amount} successfully added for {staff_user.username}'
+    })

@@ -65,6 +65,8 @@ export default function AdminDashboard() {
     const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
     const [editingStaff, setEditingStaff] = useState<any | null>(null);
     const [staffForm, setStaffForm] = useState({ first_name: '', phone_number: '', role: 'WASHER', base_salary: '', commission_rate: '' });
+    const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
+    const [advanceForm, setAdvanceForm] = useState({ staff_id: '', amount: '', description: '' });
 
     const [customerCredits, setCustomerCredits] = useState<any[]>([]);
     const [analyticsData, setAnalyticsData] = useState<any>({
@@ -385,7 +387,7 @@ export default function AdminDashboard() {
     // Single consolidated invoice download function (downloadInvoicePDF removed — duplicate)
     const downloadInvoice = useCallback(async (bookingId: number) => {
         try {
-            const res = await fetch(`${API_BASE}/finance/generate_invoice_pdf/${bookingId}/`, {
+            const res = await fetch(`${API_BASE}/finance/invoice/${bookingId}/pdf/`, {
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
             });
             if (!res.ok) throw new Error('Failed to generate PDF');
@@ -502,6 +504,38 @@ export default function AdminDashboard() {
             }
         } catch (e) {
             toast.error("Network error settling worker pay");
+        }
+    };
+    const handleAddAdvance = async () => {
+        if (!advanceForm.staff_id || !advanceForm.amount) {
+            toast.error("Please select a worker and enter an amount.");
+            return;
+        }
+        try {
+            const token = localStorage.getItem('auth_token');
+            const res = await fetch(`${API_BASE}/staff/advance/${advanceForm.staff_id}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Token ${token}`
+                },
+                body: JSON.stringify({
+                    amount: advanceForm.amount,
+                    description: advanceForm.description || 'Cash Advance'
+                })
+            });
+
+            if (res.ok) {
+                toast.success("Advance added and deducted from ledger!");
+                setIsAdvanceModalOpen(false);
+                setAdvanceForm({ staff_id: '', amount: '', description: '' });
+                fetchDashboardData(); // Refresh the table!
+            } else {
+                const err = await res.json();
+                toast.error(err.error || "Failed to add advance");
+            }
+        } catch (e) {
+            toast.error("Network error adding advance");
         }
     };
 
@@ -909,7 +943,10 @@ export default function AdminDashboard() {
                         {/* PAYROLL SUB-TAB */}
                         {staffSubTab === 'payroll' && (
                             <>
-                        <button className="flex items-center gap-2 bg-white/10 text-white border border-white/20 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition mb-6">
+                        <button 
+                            onClick={() => setIsAdvanceModalOpen(true)} 
+                            className="flex items-center gap-2 bg-white/10 text-white border border-white/20 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition mb-6"
+                        >
                             <PlusCircle className="w-4 h-4" /> Add Expense/Advance
                         </button>
 
@@ -1878,6 +1915,62 @@ export default function AdminDashboard() {
                             className="w-full bg-purple-500 text-white font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:bg-purple-400 hover:text-black transition-all flex items-center justify-center gap-2"
                         >
                             <BadgeDollarSign className="w-5 h-5" /> SUBMIT CHARGE
+                        </button>
+                    </div>
+                </div>
+            )}
+            {/* 👇 PASTE THE ADVANCE MODAL HERE 👇 */}
+            {isAdvanceModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">RECORD CASH ADVANCE</h3>
+                            <button onClick={() => setIsAdvanceModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors">
+                                <PlusCircle className="w-6 h-6 rotate-45" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Select Staff Member</label>
+                                <select
+                                    value={advanceForm.staff_id}
+                                    onChange={(e) => setAdvanceForm({ ...advanceForm, staff_id: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
+                                >
+                                    <option value="" className="bg-[#141518]">-- Select Worker --</option>
+                                    {payrollData.map(worker => (
+                                        <option key={worker.id} value={worker.id} className="bg-[#141518]">{worker.name} ({worker.role})</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Amount (₹)</label>
+                                    <input
+                                        type="number" value={advanceForm.amount}
+                                        onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                        placeholder="500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Description</label>
+                                    <input
+                                        type="text" value={advanceForm.description}
+                                        onChange={(e) => setAdvanceForm({ ...advanceForm, description: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                        placeholder="Food/Lunch"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleAddAdvance}
+                            className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] hover:bg-white transition-all flex items-center justify-center gap-2"
+                        >
+                            <BadgeDollarSign className="w-5 h-5" /> CONFIRM ADVANCE
                         </button>
                     </div>
                 </div>

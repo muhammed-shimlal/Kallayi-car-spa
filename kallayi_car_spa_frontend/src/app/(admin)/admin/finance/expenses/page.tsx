@@ -6,9 +6,8 @@ import toast from 'react-hot-toast';
 import {
     Receipt, ChevronLeft, LayoutDashboard, PlusCircle,
     IndianRupee, Calendar, Tag, FileText, Upload,
-    CheckCircle, Clock, XCircle, AlertCircle, Loader2,
-    TrendingDown, Filter, RefreshCw, Image as ImageIcon,
-    X, BadgeCheck,
+    Loader2, TrendingDown, RefreshCw, Image as ImageIcon,
+    X
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
@@ -27,38 +26,9 @@ interface GeneralExpense {
     amount: string;
     description: string;
     date: string;
-    status: 'PENDING' | 'APPROVED' | 'REJECTED';
     receipt_image: string | null;
     recorded_by: string | null;
     created_at: string;
-}
-
-// ─── Status Badge ─────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: GeneralExpense['status'] }) {
-    const config = {
-        PENDING: {
-            icon: <Clock className="w-3 h-3" />,
-            label: 'Pending',
-            classes: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30 shadow-[0_0_10px_rgba(234,179,8,0.15)]',
-        },
-        APPROVED: {
-            icon: <BadgeCheck className="w-3 h-3" />,
-            label: 'Approved',
-            classes: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.15)]',
-        },
-        REJECTED: {
-            icon: <XCircle className="w-3 h-3" />,
-            label: 'Rejected',
-            classes: 'bg-red-500/15 text-[#FF2A6D] border-red-500/30 shadow-[0_0_10px_rgba(255,42,109,0.15)]',
-        },
-    };
-    const { icon, label, classes } = config[status] ?? config.PENDING;
-    return (
-        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full border ${classes}`}>
-            {icon} {label}
-        </span>
-    );
 }
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
@@ -85,7 +55,6 @@ export default function ExpensesPage() {
     const [categories, setCategories] = useState<ExpenseCategory[]>([]);
     const [expenses, setExpenses] = useState<GeneralExpense[]>([]);
     const [isLoadingExpenses, setIsLoadingExpenses] = useState(true);
-    const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
     // Form states
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,7 +70,7 @@ export default function ExpensesPage() {
 
     // ─── Fetchers ─────────────────────────────────────────────────────────────
 
-    const getToken = () => localStorage.getItem('auth_token');
+    const getToken = () => typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
 
     const fetchCategories = useCallback(async () => {
         try {
@@ -109,6 +78,16 @@ export default function ExpensesPage() {
                 headers: { Authorization: `Token ${getToken()}` },
             });
             if (res.ok) setCategories(await res.json());
+            else {
+                // Default fallback categories
+                setCategories([
+                    { id: 1, name: 'Chemicals', description: '' },
+                    { id: 2, name: 'Rent', description: '' },
+                    { id: 3, name: 'Utilities', description: '' },
+                    { id: 4, name: 'Maintenance', description: '' },
+                    { id: 5, name: 'General', description: '' }
+                ]);
+            }
         } catch { /* silent */ }
     }, []);
 
@@ -165,7 +144,6 @@ export default function ExpensesPage() {
 
         setIsSubmitting(true);
         try {
-            // MUST use FormData for multipart (receipt image upload)
             const fd = new FormData();
             fd.append('category', form.category);
             fd.append('amount', form.amount);
@@ -175,7 +153,7 @@ export default function ExpensesPage() {
 
             const res = await fetch(`${API_BASE}/finance/general-expenses/`, {
                 method: 'POST',
-                headers: { Authorization: `Token ${getToken()}` }, // NO Content-Type — browser sets multipart boundary
+                headers: { Authorization: `Token ${getToken()}` },
                 body: fd,
             });
 
@@ -197,10 +175,13 @@ export default function ExpensesPage() {
 
     // ─── Derived Data ──────────────────────────────────────────────────────────
 
-    const filtered = statusFilter === 'ALL' ? expenses : expenses.filter(e => e.status === statusFilter);
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayExpenses = expenses.filter(e => e.date === todayStr);
+    const thisMonthExpenses = expenses.filter(e => e.date.substring(0, 7) === todayStr.substring(0, 7));
+
     const totalAmount = expenses.reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
-    const pendingCount = expenses.filter(e => e.status === 'PENDING').length;
-    const approvedTotal = expenses.filter(e => e.status === 'APPROVED').reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+    const totalToday = todayExpenses.reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
+    const totalThisMonth = thisMonthExpenses.reduce((s, e) => s + parseFloat(e.amount || '0'), 0);
 
     // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -247,23 +228,23 @@ export default function ExpensesPage() {
                     <StatCard
                         label="Total Recorded"
                         value={`₹${totalAmount.toLocaleString('en-IN')}`}
-                        sub={`${expenses.length} entries`}
+                        sub={`${expenses.length} total entries`}
                         accent="text-[#FF2A6D]"
                         glow="hover:shadow-[0_0_30px_rgba(255,42,109,0.08)]"
                     />
                     <StatCard
-                        label="Approved Spend"
-                        value={`₹${approvedTotal.toLocaleString('en-IN')}`}
-                        sub="Cleared by admin"
-                        accent="text-emerald-400"
-                        glow="hover:shadow-[0_0_30px_rgba(52,211,153,0.08)]"
+                        label="Spent Today"
+                        value={`₹${totalToday.toLocaleString('en-IN')}`}
+                        sub="Current day"
+                        accent="text-[#01FFFF]"
+                        glow="hover:shadow-[0_0_30px_rgba(1,255,255,0.08)]"
                     />
                     <StatCard
-                        label="Awaiting Approval"
-                        value={`${pendingCount}`}
-                        sub="Pending review"
-                        accent="text-yellow-400"
-                        glow="hover:shadow-[0_0_30px_rgba(234,179,8,0.08)]"
+                        label="Spent This Month"
+                        value={`₹${totalThisMonth.toLocaleString('en-IN')}`}
+                        sub="Current month"
+                        accent="text-white"
+                        glow="hover:shadow-[0_0_30px_rgba(255,255,255,0.08)]"
                     />
                 </div>
 
@@ -300,7 +281,7 @@ export default function ExpensesPage() {
                                         >
                                             <option value="" disabled className="text-[#8E939B]">Select a category…</option>
                                             {categories.map(cat => (
-                                                <option key={cat.id} value={cat.id} className="bg-[#141518]">{cat.name}</option>
+                                                <option key={cat.id} value={cat.id || cat.name} className="bg-[#141518]">{cat.name}</option>
                                             ))}
                                             {categories.length === 0 && (
                                                 <option disabled className="text-[#8E939B]">No categories configured</option>
@@ -425,7 +406,7 @@ export default function ExpensesPage() {
                     {/* ── RIGHT: Expense Table ──────────────────────────── */}
                     <div className="xl:col-span-3 space-y-6">
 
-                        {/* Table Header & Filter */}
+                        {/* Table Header */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                             <div>
                                 <h2 className="font-syncopate font-bold text-lg tracking-widest flex items-center gap-3">
@@ -433,30 +414,8 @@ export default function ExpensesPage() {
                                     RECENT EXPENSES
                                 </h2>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] mt-1">
-                                    {filtered.length} of {expenses.length} records shown
+                                    {expenses.length} records shown
                                 </p>
-                            </div>
-
-                            {/* Status Filter Pills */}
-                            <div className="flex items-center gap-2 bg-[#141518]/60 border border-white/5 rounded-full p-1">
-                                {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map(s => {
-                                    const active = statusFilter === s;
-                                    const colors: Record<string, string> = {
-                                        ALL: active ? 'bg-white/10 text-white' : 'text-[#8E939B] hover:text-white',
-                                        PENDING: active ? 'bg-yellow-500/20 text-yellow-400' : 'text-[#8E939B] hover:text-yellow-400',
-                                        APPROVED: active ? 'bg-emerald-500/20 text-emerald-400' : 'text-[#8E939B] hover:text-emerald-400',
-                                        REJECTED: active ? 'bg-red-500/20 text-[#FF2A6D]' : 'text-[#8E939B] hover:text-[#FF2A6D]',
-                                    };
-                                    return (
-                                        <button
-                                            key={s}
-                                            onClick={() => setStatusFilter(s)}
-                                            className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all ${colors[s]}`}
-                                        >
-                                            {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
-                                        </button>
-                                    );
-                                })}
                             </div>
                         </div>
 
@@ -467,7 +426,7 @@ export default function ExpensesPage() {
                                     <Loader2 className="w-10 h-10 text-[#FF2A6D] animate-spin" />
                                     <p className="text-[#8E939B] text-xs uppercase font-bold tracking-widest">Loading expenses…</p>
                                 </div>
-                            ) : filtered.length === 0 ? (
+                            ) : expenses.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-24 gap-4 opacity-50">
                                     <Receipt className="w-12 h-12 text-[#8E939B]" />
                                     <p className="text-[#8E939B] text-xs uppercase font-bold tracking-widest">No expenses found</p>
@@ -482,12 +441,11 @@ export default function ExpensesPage() {
                                                 <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Category</th>
                                                 <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B] hidden md:table-cell">Description</th>
                                                 <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Amount</th>
-                                                <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Status</th>
                                                 <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Receipt</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {filtered.map((exp, i) => (
+                                            {expenses.map((exp, i) => (
                                                 <tr
                                                     key={exp.id}
                                                     className="border-b border-white/5 last:border-0 hover:bg-white/[0.02] transition-colors group"
@@ -521,10 +479,6 @@ export default function ExpensesPage() {
                                                     </td>
 
                                                     <td className="px-6 py-4 text-center">
-                                                        <StatusBadge status={exp.status} />
-                                                    </td>
-
-                                                    <td className="px-6 py-4 text-center">
                                                         {exp.receipt_image ? (
                                                             <a
                                                                 href={exp.receipt_image}
@@ -547,13 +501,13 @@ export default function ExpensesPage() {
                         </div>
 
                         {/* Summary Footer */}
-                        {filtered.length > 0 && (
+                        {expenses.length > 0 && (
                             <div className="bg-[#141518]/40 border border-white/5 rounded-2xl px-6 py-4 flex items-center justify-between">
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest font-bold">
-                                    Showing {filtered.length} expense{filtered.length !== 1 ? 's' : ''}
+                                    Showing {expenses.length} expense{expenses.length !== 1 ? 's' : ''}
                                 </p>
                                 <p className="text-sm font-syncopate font-bold text-[#FF2A6D]">
-                                    Total: ₹{filtered.reduce((s, e) => s + parseFloat(e.amount || '0'), 0).toLocaleString('en-IN')}
+                                    Total: ₹{expenses.reduce((s, e) => s + parseFloat(e.amount || '0'), 0).toLocaleString('en-IN')}
                                 </p>
                             </div>
                         )}

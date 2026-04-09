@@ -1,155 +1,357 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Kallayi Car Spa — Tax Invoice</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Premium Invoice - Kallayi Car Spa</title>
+    <style>
+        /* Import Elegant Fonts */
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap');
+
+        :root {
+            --gold: #D4AF37; /* Metallic Gold */
+            --gold-light: #F3E5AB;
+            --bg-dark: #0a0a0a;
+            --card-bg: #141414;
+            --text-main: #EAEAEA;
+            --text-muted: #888888;
+            --border-color: #333333;
+        }
+
+        /* WeasyPrint Page Setup */
+        @page {
+            size: A4 portrait;
+            margin: 0;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .invoice-container {
+            background-color: var(--card-bg);
+            width: 100%;
+            max-width: 850px;
+            padding: 60px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            border: 1px solid #222;
+            position: relative;
+        }
+
+        /* Gold Top Border */
+        .invoice-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #8a7322, var(--gold), #8a7322);
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 40px;
+            margin-bottom: 40px;
+        }
+
+        .brand-section h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: 38px;
+            color: var(--gold);
+            margin: 0 0 10px 0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .brand-section p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 13px;
+            line-height: 1.6;
+            max-width: 250px;
+            font-weight: 300;
+        }
+
+        .invoice-details {
+            text-align: right;
+        }
+
+        .invoice-details h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 28px;
+            color: var(--text-main);
+            margin: 0 0 5px 0;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+        }
+        
+        .invoice-id {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+
+        .rating {
+            color: var(--gold);
+            font-size: 20px;
+            letter-spacing: 5px;
+        }
+
+        /* Client Info Section */
+        .client-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 50px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            width: 30%;
+        }
+
+        .form-group label {
+            font-size: 11px;
+            color: var(--gold);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+        }
+
+        .form-group .value {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+            font-size: 14px;
+            color: var(--text-main);
+            min-height: 20px;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 40px;
+        }
+
+        th {
+            font-family: 'Playfair Display', serif;
+            color: var(--gold);
+            text-align: left;
+            padding: 15px 10px;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--gold);
+        }
+
+        th.text-right, td.text-right {
+            text-align: right;
+        }
+
+        td {
+            padding: 20px 10px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+            font-weight: 300;
+            color: var(--text-main);
+        }
+
+        /* Total Section */
+        .total-wrapper {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 60px;
+        }
+
+        .total-box {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 350px;
+            background-color: #1a1a1a;
+            padding: 20px 25px;
+            border-left: 3px solid var(--gold);
+        }
+
+        .total-box span {
+            font-size: 14px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        .total-box .amount {
+            font-family: 'Playfair Display', serif;
+            font-size: 32px;
+            color: var(--gold);
+            font-weight: 600;
+        }
+
+        /* Footer */
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding-top: 40px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .footer-message h4 {
+            font-family: 'Playfair Display', serif;
+            color: var(--text-main);
+            font-size: 18px;
+            margin: 0 0 10px 0;
+            font-style: italic;
+            font-weight: 500;
+        }
+
+        .footer-message p {
+            color: var(--text-muted);
+            font-size: 12px;
+            margin: 0 0 15px 0;
+            font-weight: 300;
+        }
+
+        .payment-method {
+            display: flex;
+            align-items: flex-end;
+            font-size: 12px;
+            color: var(--gold);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .payment-method .value {
+            border-bottom: 1px solid var(--border-color);
+            margin-left: 10px;
+            padding-bottom: 2px;
+            color: var(--text-main);
+            min-width: 100px;
+        }
+
+        .contact-info {
+            text-align: right;
+        }
+
+        .contact-info p {
+            margin: 6px 0;
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 300;
+            letter-spacing: 0.5px;
+        }
+    </style>
 </head>
-<body style="margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; background: #ffffff;">
+<body>
 
-    <!-- OUTER WRAPPER -->
-    <div style="max-width: 680px; margin: 0 auto; padding: 40px 36px;">
+    <div class="invoice-container">
+        
+        <div class="header">
+            <div class="brand-section">
+                <h1>Kallayi Car Spa</h1>
+                <p>Mullampara-Pattarkulam Rd,<br>Mullampara Town, Manjeri,<br>Kerala 676121</p>
+            </div>
+            <div class="invoice-details">
+                <h2>Invoice</h2>
+                <div class="invoice-id">INV-{{ booking.id|stringformat:"04d" }}</div>
+                <div class="rating">★★★★★</div>
+            </div>
+        </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- HEADER                                                  -->
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
-            <tr>
-                <td style="vertical-align: top;">
-                    <h1 style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 3px; color: #111;">
-                        KALLAYI<span style="color: #E52323;">.</span> CAR SPA
-                    </h1>
-                    <p style="margin: 4px 0 0 0; font-size: 9px; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; color: #999;">
-                        Premium Auto Care
-                    </p>
-                </td>
-                <td style="vertical-align: top; text-align: right;">
-                    <span style="display: inline-block; background-color: #E52323; color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 3px; padding: 6px 16px; text-transform: uppercase;">
-                        TAX INVOICE
-                    </span>
-                </td>
-            </tr>
-        </table>
-
-        <!-- DIVIDER -->
-        <div style="border-top: 3px solid #E52323; margin-bottom: 28px;"></div>
-
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- INVOICE META + CUSTOMER INFO                            -->
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
-            <tr>
-                <td style="vertical-align: top; width: 50%;">
-                    <p style="margin: 0 0 4px 0; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999;">Invoice Number</p>
-                    <p style="margin: 0 0 16px 0; font-size: 18px; font-weight: 800; color: #111;">#INV-{{ booking.id|stringformat:"04d" }}</p>
-
-                    <p style="margin: 0 0 4px 0; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999;">Date Issued</p>
-                    <p style="margin: 0; font-size: 13px; font-weight: 600; color: #333;">{{ booking.created_at|date:"M d, Y" }}</p>
-                </td>
-                <td style="vertical-align: top; width: 50%; text-align: right;">
-                    <p style="margin: 0 0 4px 0; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999;">Billed To</p>
-                    <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 700; color: #111;">
-                        {{ booking.customer.user.first_name }} {{ booking.customer.user.last_name }}
-                    </p>
-                    {% if customer_phone %}
-                    <p style="margin: 0 0 4px 0; font-size: 12px; color: #555;">Phone: {{ customer_phone }}</p>
+        <div class="client-info">
+            <div class="form-group">
+                <label>Date</label>
+                <div class="value">{{ booking.created_at|date:"M d, Y" }}</div>
+            </div>
+            <div class="form-group">
+                <label>Phone No</label>
+                <div class="value">{{ customer_phone|default:"Walk-in" }}</div>
+            </div>
+            <div class="form-group">
+                <label>Vehicle No</label>
+                <div class="value">
+                    {% if booking and booking.vehicle %}
+                        {{ booking.vehicle.plate_number }}
+                    {% else %}
+                        Walk-in
                     {% endif %}
-                    <p style="margin: 0; font-size: 12px; color: #555;">
-                        Vehicle: <strong style="color: #111;">{{ booking.vehicle.plate_number }}</strong>
-                    </p>
-                </td>
-            </tr>
-        </table>
+                </div>
+            </div>
+        </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- SERVICE DETAILS TABLE                                   -->
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+        <table>
             <thead>
                 <tr>
-                    <th style="text-align: left; padding: 10px 12px; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999; border-bottom: 2px solid #e0e0e0;">Description</th>
-                    <th style="text-align: center; padding: 10px 12px; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999; border-bottom: 2px solid #e0e0e0;">Vehicle</th>
-                    <th style="text-align: right; padding: 10px 12px; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999; border-bottom: 2px solid #e0e0e0;">Amount</th>
+                    <th>Service Description</th>
+                    <th class="text-right">Unit Price</th>
+                    <th class="text-right">Total Price</th>
                 </tr>
             </thead>
             <tbody>
+                {% if booking and booking.service_package %}
                 <tr>
-                    <td style="padding: 14px 12px; font-size: 14px; font-weight: 600; color: #111; border-bottom: 1px solid #f0f0f0;">
-                        {{ booking.service_package.name }}
-                        <br>
-                        <span style="font-size: 11px; font-weight: 400; color: #888;">Booking #{{ booking.id }}</span>
-                    </td>
-                    <td style="padding: 14px 12px; font-size: 12px; color: #555; text-align: center; border-bottom: 1px solid #f0f0f0;">
-                        {{ booking.vehicle.plate_number }}
-                    </td>
-                    <td style="padding: 14px 12px; font-size: 14px; font-weight: 700; color: #111; text-align: right; border-bottom: 1px solid #f0f0f0;">
-                        ₹{{ booking.service_package.price }}
-                    </td>
+                    <td>{{ booking.service_package.name }}</td>
+                    <td class="text-right">₹{{ booking.service_package.price }}</td>
+                    <td class="text-right">₹{{ booking.service_package.price }}</td>
                 </tr>
+                {% else %}
+                <tr>
+                    <td>Custom Service</td>
+                    <td class="text-right">₹{{ invoice.amount|default:"0" }}</td>
+                    <td class="text-right">₹{{ invoice.amount|default:"0" }}</td>
+                </tr>
+                {% endif %}
             </tbody>
         </table>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- TOTALS SECTION                                          -->
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <table style="width: 100%; border-collapse: collapse; margin-top: 0;">
-            <tr>
-                <td style="width: 60%;"></td>
-                <td style="width: 40%;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <tr>
-                            <td style="padding: 8px 12px; font-size: 12px; color: #777;">Subtotal</td>
-                            <td style="padding: 8px 12px; font-size: 12px; color: #333; text-align: right; font-weight: 600;">₹{{ booking.service_package.price }}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 12px; font-size: 12px; color: #777;">GST (Inclusive)</td>
-                            <td style="padding: 8px 12px; font-size: 12px; color: #333; text-align: right;">Included</td>
-                        </tr>
-                        <tr>
-                            <td colspan="2" style="border-top: 2px solid #E52323;"></td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 12px 12px; font-size: 15px; font-weight: 800; color: #111; letter-spacing: 1px;">TOTAL PAID</td>
-                            <td style="padding: 12px 12px; font-size: 18px; font-weight: 900; color: #E52323; text-align: right;">₹{{ booking.service_package.price }}</td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-        </table>
-
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- PAYMENT METHOD BADGE                                    -->
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <div style="margin-top: 24px; padding: 14px 20px; background-color: #f7f7f7; border-left: 4px solid #E52323;">
-            <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                    <td style="vertical-align: middle;">
-                        <p style="margin: 0 0 2px 0; font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #999;">Payment Method</p>
-                        <p style="margin: 0; font-size: 14px; font-weight: 700; color: #111;">
-                            {% if invoice and invoice.payment_method %}
-                                {{ invoice.get_payment_method_display }}
-                            {% else %}
-                                Cash
-                            {% endif %}
-                        </p>
-                    </td>
-                    <td style="vertical-align: middle; text-align: right;">
-                        <span style="display: inline-block; background-color: {% if invoice and invoice.is_paid %}#16a34a{% else %}#f59e0b{% endif %}; color: #ffffff; font-size: 10px; font-weight: 800; letter-spacing: 2px; padding: 5px 14px; text-transform: uppercase;">
-                            {% if invoice and invoice.is_paid %}PAID{% else %}PENDING{% endif %}
-                        </span>
-                    </td>
-                </tr>
-            </table>
+        <div class="total-wrapper">
+            <div class="total-box">
+                <span>Total Amount Due</span>
+                <span class="amount">
+                    {% if booking and booking.service_package %}
+                        ₹{{ booking.service_package.price }}
+                    {% else %}
+                        ₹{{ invoice.amount|default:"0" }}
+                    {% endif %}
+                </span>
+            </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- FOOTER                                                  -->
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0; text-align: center;">
-            <p style="margin: 0 0 4px 0; font-size: 11px; color: #555; font-weight: 600;">Thank you for choosing Kallayi Car Spa!</p>
-            <p style="margin: 0 0 4px 0; font-size: 10px; color: #999;">Kozhikode, Kerala, India &nbsp;|&nbsp; GSTIN: 32XXXXX1234X1ZX</p>
-            <p style="margin: 0; font-size: 9px; color: #bbb; letter-spacing: 1px;">This is a computer-generated invoice and does not require a signature.</p>
+        <div class="footer">
+            <div class="footer-message">
+                <h4>Thank you for choosing Kallayi Car Spa.</h4>
+                <p>Contact us for any questions or requests.</p>
+                <div class="payment-method">
+                    Payment Method 
+                    <div class="value">
+                        {% if invoice and invoice.payment_method %}
+                            {{ invoice.get_payment_method_display }}
+                        {% else %}
+                            Cash
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="contact-info">
+                <p>hello@kallayicarspa.com</p>
+                <p>+91 8089735500</p>
+                <p>www.kallayicarspa.com</p>
+            </div>
         </div>
 
     </div>
+
 </body>
 </html>

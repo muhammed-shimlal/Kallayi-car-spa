@@ -574,6 +574,52 @@ def analytics_dashboard(request):
 def generate_invoice_pdf(request, booking_id):
     """
     Generate a beautifully branded PDF invoice for a given booking.
+    Uses WeasyPrint for modern CSS and Flexbox support.
+    """
+    from django.template.loader import get_template
+    from django.http import HttpResponse
+
+    try:
+        from weasyprint import HTML
+    except ImportError:
+        return HttpResponse("PDF generation not available (WeasyPrint not installed).", status=503)
+
+    try:
+        booking = Booking.objects.select_related(
+            'customer__user', 'vehicle', 'service_package'
+        ).get(pk=booking_id)
+    except Booking.DoesNotExist:
+        return HttpResponse("Booking not found.", status=404)
+
+    # Try to get associated invoice for payment info
+    invoice = None
+    try:
+        invoice = Invoice.objects.get(booking=booking)
+    except Invoice.DoesNotExist:
+        pass
+
+    customer_phone = booking.customer.phone_number if booking and booking.customer else ''
+
+    context = {
+        'booking': booking,
+        'invoice': invoice,
+        'customer_phone': customer_phone,
+    }
+
+    template = get_template('finance/invoice_pdf.html')
+    html_string = template.render(context)
+
+    try:
+        # WeasyPrint flawlessly renders Flexbox, CSS Variables, and Google Fonts
+        pdf_file = HTML(string=html_string).write_pdf()
+
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="Kallayi_Invoice_{booking.id}.pdf"'
+        return response
+    except Exception as e:
+        return HttpResponse(f"Error generating PDF: {str(e)}", status=500)
+    """
+    Generate a beautifully branded PDF invoice for a given booking.
     Uses xhtml2pdf (pure Python, no GTK dependency).
     """
     from io import BytesIO
