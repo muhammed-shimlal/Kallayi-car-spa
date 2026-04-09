@@ -111,7 +111,7 @@ function ElapsedTimer({ since }: { since: string | null }) {
 
 // ─── Booking Card ─────────────────────────────────────────────────────────────
 
-function BookingCard({ card, index, col, onCheckout }: { card: BookingCard; index: number; col: Column; onCheckout?: (bookingId: number) => void }) {
+function BookingCard({ card, index, col, onCheckout, staffMembers, onAssignStaff }: { card: BookingCard; index: number; col: Column; onCheckout?: (bookingId: number) => void; staffMembers?: any[]; onAssignStaff?: (bookingId: number, staffId: number) => void; }) {
     return (
         <Draggable draggableId={`card-${card.id}`} index={index}>
             {(provided, snapshot) => (
@@ -146,15 +146,32 @@ function BookingCard({ card, index, col, onCheckout }: { card: BookingCard; inde
 
                     <div className="flex items-center justify-between pt-3 border-t border-white/5">
                         <div className="flex items-center gap-1.5">
-                            {card.technician_name ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded-full font-bold">
-                                    <User className="w-3 h-3" /> {card.technician_name}
-                                </span>
-                            ) : (
-                                <span className="inline-flex items-center gap-1 text-[10px] bg-white/5 text-[#8E939B] border border-white/10 px-2 py-0.5 rounded-full font-bold">
-                                    <User className="w-3 h-3" /> Unassigned
-                                </span>
-                            )}
+                            <div className="relative inline-flex items-center">
+                                <User className="w-3 h-3 absolute left-2 pointer-events-none text-purple-400" />
+                                <select 
+                                    className="appearance-none bg-purple-500/10 text-purple-400 border border-purple-500/30 pl-6 pr-6 py-0.5 rounded-full text-[10px] font-bold cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400/50"
+                                    onClick={(e) => e.stopPropagation()}
+                                    value={card.technician_name || ""}
+                                    onChange={(e) => {
+                                        if (onAssignStaff && e.target.value) {
+                                            const staffId = parseInt(e.target.value);
+                                            if (!isNaN(staffId)) onAssignStaff(card.id, staffId);
+                                        }
+                                    }}
+                                >
+                                    <option value="" disabled className="bg-[#141518] text-[#8E939B]">Assign Worker</option>
+                                    {card.technician_name && (
+                                        <option value={card.technician_name} disabled className="bg-[#141518] text-purple-300">
+                                            Current: {card.technician_name}
+                                        </option>
+                                    )}
+                                    {staffMembers?.map(s => (
+                                        <option key={s.id} value={s.id} className="bg-[#141518] text-white">
+                                            {s.first_name} ({s.role})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                         <ElapsedTimer since={card.time_slot || card.created_at} />
                     </div>
@@ -181,6 +198,7 @@ export default function AdminQueueBoard() {
     const [columns, setColumns] = useState<Record<string, BookingCard[]>>({
         WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
     });
+    const [staffMembers, setStaffMembers] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isConnected, setIsConnected] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -215,6 +233,19 @@ export default function AdminQueueBoard() {
             setColumns(newCols);
             setIsConnected(true);
             setLastUpdated(new Date());
+
+            if (!silent) {
+                try {
+                    const staffRes = await fetch(`${API_BASE}/staff/directory/`, {
+                        headers: { 'Authorization': `Token ${token}` }
+                    });
+                    if (staffRes.ok) {
+                        const staffData = await staffRes.json();
+                        const list = Array.isArray(staffData) ? staffData : (staffData.results || []);
+                        setStaffMembers(list.filter((s: any) => s.role === 'WASHER' || s.role === 'TECHNICIAN'));
+                    }
+                } catch { /* ignore staff error */ }
+            }
         } catch {
             setIsConnected(false);
         } finally {
@@ -227,6 +258,22 @@ export default function AdminQueueBoard() {
         const interval = setInterval(() => fetchQueue(true), 30000);
         return () => clearInterval(interval);
     }, [fetchQueue]);
+
+    const handleAssignStaff = async (bookingId: number, staffId: number) => {
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_BASE}/bookings/update-stage/${bookingId}/`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ assigned_technician_id: staffId }),
+            });
+            if (!res.ok) throw new Error('API failed');
+            toast.success('Worker assigned!');
+            fetchQueue(true); // silent refresh
+        } catch {
+            toast.error('Failed to assign worker.');
+        }
+    };
 
     const handleCheckout = (bookingId: number) => {
         let foundCard = null;
@@ -423,7 +470,7 @@ export default function AdminQueueBoard() {
                                                     </div>
                                                 )}
                                                 {cards.map((card, index) => (
-                                                    <BookingCard key={card.id} card={card} index={index} col={col} onCheckout={handleCheckout} />
+                                                    <BookingCard key={card.id} card={card} index={index} col={col} onCheckout={handleCheckout} staffMembers={staffMembers} onAssignStaff={handleAssignStaff} />
                                                 ))}
                                                 {provided.placeholder}
                                             </div>

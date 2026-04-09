@@ -18,6 +18,7 @@ const posSchema = z.object({
   package_id: z.number().refine((val) => val !== undefined, {
     message: "Please select a service package",
   }),
+  technician_id: z.number().optional(),
 });
 
 type POSFormValues = z.infer<typeof posSchema>;
@@ -26,6 +27,7 @@ export default function AdminExpressPOSPage() {
   const router = useRouter();
   const [packages, setPackages] = useState<any[]>([]);
   const [isLoadingPackages, setIsLoadingPackages] = useState(true);
+  const [staffMembers, setStaffMembers] = useState<any[]>([]);
 
   const {
     control,
@@ -41,10 +43,12 @@ export default function AdminExpressPOSPage() {
       plate_number: "",
       phone: "",
       package_id: undefined,
+      technician_id: undefined,
     },
   });
 
   const selectedPackageId = watch("package_id");
+  const selectedTechId = watch("technician_id");
   const plateNumber = watch("plate_number");
 
   // AUTO-FILL WATCHER
@@ -74,14 +78,15 @@ export default function AdminExpressPOSPage() {
   }, [plateNumber, setValue]);
 
   useEffect(() => {
-    const fetchPackages = async () => {
+    const fetchPackagesAndStaff = async () => {
       try {
         const token = localStorage.getItem("auth_token");
-        const res = await fetch("http://127.0.0.1:8001/api/service-packages/", {
+        
+        const pkgRes = await fetch("http://127.0.0.1:8001/api/service-packages/", {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
-        if (res.ok) {
-          const data = await res.json();
+        if (pkgRes.ok) {
+          const data = await pkgRes.json();
           setPackages(data.results || data);
         } else {
           setPackages([
@@ -89,6 +94,16 @@ export default function AdminExpressPOSPage() {
             { id: 2, name: "Deep Detail", price: "1200.00" },
             { id: 3, name: "Interior Polish", price: "800.00" },
           ]);
+        }
+
+        const staffRes = await fetch("http://127.0.0.1:8001/api/staff/directory/", {
+          headers: token ? { Authorization: `Token ${token}` } : {},
+        });
+        if (staffRes.ok) {
+          const staffData = await staffRes.json();
+          const list = Array.isArray(staffData) ? staffData : (staffData.results || []);
+          const workers = list.filter((s: any) => s.role === 'WASHER' || s.role === 'TECHNICIAN');
+          setStaffMembers(workers);
         }
       } catch (err) {
         setPackages([
@@ -100,7 +115,7 @@ export default function AdminExpressPOSPage() {
         setIsLoadingPackages(false);
       }
     };
-    fetchPackages();
+    fetchPackagesAndStaff();
   }, []);
 
   const onSubmit = async (data: POSFormValues) => {
@@ -239,6 +254,50 @@ export default function AdminExpressPOSPage() {
                 </p>
               )}
             </div>
+
+            {/* Assign Washer (Optional) */}
+            {staffMembers.length > 0 && (
+              <div>
+                <div className="flex justify-between items-center mb-6">
+                  <label className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 block">
+                    Assign Washer (Optional)
+                  </label>
+                  {selectedTechId && (
+                    <button
+                      type="button"
+                      onClick={() => setValue("technician_id", undefined, { shouldValidate: true })}
+                      className="text-[#E52323] hover:text-[#ff4d84] text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-1"
+                    >
+                      Clear Selection
+                    </button>
+                  )}
+                </div>
+                <div className="flex overflow-x-auto gap-4 pb-4 snap-x no-scrollbar" style={{ scrollbarWidth: 'none' }}>
+                  {staffMembers.map((staff) => {
+                    const isSelected = selectedTechId === staff.id;
+                    return (
+                      <button
+                        type="button"
+                        key={staff.id}
+                        onClick={() => setValue("technician_id", staff.id, { shouldValidate: true })}
+                        className={`flex-none snap-start p-4 rounded-2xl min-w-[140px] text-center transition-all duration-300 ${
+                          isSelected
+                            ? "bg-[#01FFFF]/10 border-2 border-[#01FFFF] shadow-[0_0_20px_rgba(1,255,255,0.15)] scale-105"
+                            : "bg-[#141518]/60 border border-white/5 hover:border-white/20 hover:bg-[#141518]"
+                        }`}
+                      >
+                        <h3 className={`font-syncopate font-bold text-xs tracking-wide mb-1 truncate ${isSelected ? "text-white" : "text-zinc-300"}`}>
+                          {staff.first_name}
+                        </h3>
+                        <p className={`text-[10px] uppercase font-bold tracking-widest ${isSelected ? "text-[#01FFFF]" : "text-zinc-500"}`}>
+                          {staff.role}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Massive Submit Button */}
