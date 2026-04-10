@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
@@ -9,7 +9,8 @@ import {
     CreditCard, FileText, FlaskConical, CheckCircle, PlusCircle,
     Clock, AlertCircle, Check, BadgeDollarSign, UserCog, Lock,
     AlertTriangle, IndianRupee, Landmark, BookOpen, BarChart2, Trophy,
-    Search, MapPin, Star, Calendar, Wrench, Trash2, Pencil, UserMinus
+    Search, MapPin, Star, Calendar, Wrench, Trash2, Pencil, UserPlus, UserMinus,
+    Upload, Tag, Image as ImageIcon, X
 } from 'lucide-react';
 import {
     LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -41,11 +42,22 @@ export default function AdminDashboard() {
     const [chartData, setChartData] = useState<any[]>(generateDemoChartData());
     const [recentBookings, setRecentBookings] = useState<any[]>([]);
     const [expenses, setExpenses] = useState<any[]>([]);
+    const [expenseCategories, setExpenseCategories] = useState<any[]>([]);
+    const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
+    const [expenseForm, setExpenseForm] = useState({ category: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
+    const [receiptFile, setReceiptFile] = useState<File | null>(null);
+    const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+    const [editingExpense, setEditingExpense] = useState<any | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [payrollData, setPayrollData] = useState<any[]>([]);
     const [khataCustomers, setKhataCustomers] = useState<any[]>([]);
     const [khataLedger, setKhataLedger] = useState<any[]>([]);
     const [selectedKhataCustomer, setSelectedKhataCustomer] = useState<any | null>(null);
     const [isKhataModalOpen, setIsKhataModalOpen] = useState(false);
+    const [isKhataCustomerModalOpen, setIsKhataCustomerModalOpen] = useState(false);
+    const [editingKhataCustomer, setEditingKhataCustomer] = useState<any | null>(null);
+    const [khataCustomerForm, setKhataCustomerForm] = useState({ name: '', phone_number: '', credit_limit: '' });
+    const [isKhataLedgerModalOpen, setIsKhataLedgerModalOpen] = useState(false);
     const [khataPaymentAmount, setKhataPaymentAmount] = useState<string>('');
     const [eodData, setEodData] = useState<any>(null);
 
@@ -82,6 +94,9 @@ export default function AdminDashboard() {
     const [crmError, setCrmError] = useState('');
     const [globalHistory, setGlobalHistory] = useState<any | null>(null);
     const [globalHistoryDate, setGlobalHistoryDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
+    const [editingLedgerEntry, setEditingLedgerEntry] = useState<any | null>(null);
+    const [ledgerForm, setLedgerForm] = useState({ plate_number: '', phone_number: '', service_package_id: '', technician_id: '', price: '', date: '' });
     const [invoiceList, setInvoiceList] = useState<any[]>([]);
     useEffect(() => {
         // Only fetch when the user clicks the "PDF Invoices" sub-tab
@@ -322,21 +337,80 @@ export default function AdminDashboard() {
 
     // Effect for re-fetching Global History ONLY when the date changes AND crm tab is active.
     // Does NOT depend on activeTab or vehicleData to avoid firing on every tab switch.
-    useEffect(() => {
-        if (activeTab !== 'crm' || vehicleData) return;
+    const fetchGlobalHistory = useCallback(async () => {
         const token = localStorage.getItem('auth_token');
         if (!token) return;
-        const controller = new AbortController();
-        fetch(`${API_BASE}/bookings/global-history/?date=${globalHistoryDate}`, {
-            headers: { 'Authorization': `Token ${token}` },
-            signal: controller.signal,
-        })
-            .then(res => res.ok ? res.json() : null)
-            .then(data => { if (data) setGlobalHistory(data); })
-            .catch(() => {});
-        return () => controller.abort();
+        try {
+            const res = await fetch(`${API_BASE}/bookings/global-history/?date=${globalHistoryDate}`, {
+                headers: { 'Authorization': `Token ${token}` },
+            });
+            if (res.ok) {
+                setGlobalHistory(await res.json());
+            } else {
+                setGlobalHistory(null);
+            }
+        } catch (e) {
+            setGlobalHistory(null);
+        }
+    }, [globalHistoryDate]);
+
+    useEffect(() => {
+        if (activeTab !== 'crm' || vehicleData) return;
+        fetchGlobalHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [globalHistoryDate]);
+
+    const saveLedgerEntry = async () => {
+        if (!ledgerForm.plate_number || !ledgerForm.service_package_id || !ledgerForm.technician_id || !ledgerForm.price || !ledgerForm.date) {
+            toast.error('Please fill in plate number, service, technician, price, and date.');
+            return;
+        }
+        
+        const token = localStorage.getItem('auth_token');
+        const url = editingLedgerEntry 
+            ? `${API_BASE}/bookings/${editingLedgerEntry.booking_id}/` 
+            : `${API_BASE}/bookings/`;
+        const method = editingLedgerEntry ? 'PATCH' : 'POST';
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(ledgerForm)
+            });
+
+            if (res.ok) {
+                toast.success(editingLedgerEntry ? 'Ledger entry updated successfully!' : 'Ledger entry created successfully!');
+                setIsLedgerModalOpen(false);
+                setEditingLedgerEntry(null);
+                fetchGlobalHistory();
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Failed to save ledger entry.');
+            }
+        } catch (error) {
+            toast.error('Network error while saving ledger entry.');
+        }
+    };
+
+    const deleteLedgerEntry = async (id: number) => {
+        if (!window.confirm('Are you sure you want to delete this specific ledger entry? This cannot be undone.')) return;
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_BASE}/bookings/${id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok || res.status === 204) {
+                toast.success('Ledger entry deleted successfully.');
+                fetchGlobalHistory();
+            } else {
+                toast.error('Failed to delete ledger entry.');
+            }
+        } catch (error) {
+            toast.error('Network error deleting ledger entry.');
+        }
+    };
 
     const handleCrmSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -368,7 +442,112 @@ export default function AdminDashboard() {
         }
     };
 
-    useEffect(() => { fetchDashboardData(); fetchServices(); fetchStaffDirectory(); }, [fetchDashboardData, fetchServices, fetchStaffDirectory]);
+    // --- Expense Functions ---
+    const fetchExpenseCategories = useCallback(async () => {
+        const token = localStorage.getItem('auth_token');
+        if (!token) return;
+        try {
+            const res = await fetch(`${API_BASE}/finance/expense-categories/`, {
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok) {
+                setExpenseCategories(await res.json());
+            }
+        } catch (e) { console.error('Failed to load expense categories'); }
+    }, []);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setReceiptFile(file);
+            setReceiptPreview(URL.createObjectURL(file));
+        }
+    };
+
+    const clearFile = () => {
+        setReceiptFile(null);
+        setReceiptPreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleExpenseSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!expenseForm.category || !expenseForm.amount || !expenseForm.date || !expenseForm.description) {
+            toast.error('All fields except Receipt are required.');
+            return;
+        }
+        setIsSubmittingExpense(true);
+        const token = localStorage.getItem('auth_token');
+        try {
+            const formData = new FormData();
+            formData.append('category', expenseForm.category);
+            formData.append('amount', expenseForm.amount);
+            formData.append('date', expenseForm.date);
+            formData.append('description', expenseForm.description);
+            if (receiptFile) formData.append('receipt_image', receiptFile);
+
+            const url = editingExpense ? `${API_BASE}/finance/general-expenses/${editingExpense.id}/` : `${API_BASE}/finance/general-expenses/`;
+            const method = editingExpense ? 'PATCH' : 'POST';
+
+            const res = await fetch(url, {
+                method,
+                headers: { 'Authorization': `Token ${token}` },
+                body: formData
+            });
+            if (res.ok) {
+                toast.success(editingExpense ? 'Expense updated successfully!' : 'Expense recorded successfully!');
+                cancelEditingExpense();
+                fetchDashboardData();
+            } else {
+                const err = await res.json();
+                toast.error(err.error || `Failed to ${editingExpense ? 'update' : 'record'} expense.`);
+            }
+        } catch (error) {
+            toast.error(`Network error while ${editingExpense ? 'updating' : 'recording'} expense.`);
+        } finally {
+            setIsSubmittingExpense(false);
+        }
+    };
+
+    const startEditingExpense = (expense: any) => {
+        setEditingExpense(expense);
+        setExpenseForm({
+            category: expense.category?.id || expense.category,
+            amount: expense.amount,
+            date: expense.date,
+            description: expense.description
+        });
+        setReceiptFile(null);
+        setReceiptPreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const cancelEditingExpense = () => {
+        setEditingExpense(null);
+        setExpenseForm({ category: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
+        clearFile();
+    };
+
+    const deleteExpense = async (id: number) => {
+        if (!window.confirm('Are you sure you want to delete this expense? This action cannot be undone.')) return;
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_BASE}/finance/general-expenses/${id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok) {
+                toast.success('Expense deleted successfully!');
+                fetchDashboardData();
+            } else {
+                toast.error('Failed to delete expense.');
+            }
+        } catch (error) {
+            toast.error('Network error while deleting expense.');
+        }
+    };
+
+    useEffect(() => { fetchDashboardData(); fetchServices(); fetchStaffDirectory(); fetchExpenseCategories(); }, [fetchDashboardData, fetchServices, fetchStaffDirectory, fetchExpenseCategories]);
 
     // --- Actions ---
     const handleLogout = () => { localStorage.removeItem('auth_token'); router.push('/login'); };
@@ -440,14 +619,91 @@ export default function AdminDashboard() {
         }
     };
 
+    const openKhataCustomerModal = (customer: any | null = null) => {
+        if (customer) {
+            setEditingKhataCustomer(customer);
+            setKhataCustomerForm({
+                name: customer.name || '',
+                phone_number: customer.phone_number || '',
+                credit_limit: String(customer.credit_limit || '')
+            });
+        } else {
+            setEditingKhataCustomer(null);
+            setKhataCustomerForm({ name: '', phone_number: '', credit_limit: '' });
+        }
+        setIsKhataCustomerModalOpen(true);
+    };
+
+    const saveKhataCustomer = async () => {
+        if (!khataCustomerForm.name || !khataCustomerForm.phone_number || !khataCustomerForm.credit_limit) {
+            toast.error('Name, phone number and credit limit are required.');
+            return;
+        }
+        const token = localStorage.getItem('auth_token');
+        const url = editingKhataCustomer ? `${API_BASE}/customers/${editingKhataCustomer.id}/` : `${API_BASE}/customers/`;
+        const method = editingKhataCustomer ? 'PATCH' : 'POST';
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: khataCustomerForm.name,
+                    phone_number: khataCustomerForm.phone_number,
+                    credit_limit: parseFloat(khataCustomerForm.credit_limit) || 0
+                })
+            });
+
+            if (res.ok) {
+                toast.success('Customer saved successfully!');
+                setIsKhataCustomerModalOpen(false);
+                setEditingKhataCustomer(null);
+                setKhataCustomerForm({ name: '', phone_number: '', credit_limit: '' });
+                fetchDashboardData();
+            } else {
+                const err = await res.json();
+                toast.error(err.error || 'Failed to save customer.');
+            }
+        } catch (error) {
+            toast.error('Network error while saving customer.');
+        }
+    };
+
+    const deleteKhataCustomer = async (id: number) => {
+        if (!window.confirm('Delete this Khata customer? This action cannot be undone.')) return;
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_BASE}/customers/${id}/`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Token ${token}` }
+            });
+            if (res.ok) {
+                toast.success('Khata customer deleted successfully!');
+                fetchDashboardData();
+            } else {
+                toast.error('Failed to delete customer.');
+            }
+        } catch (error) {
+            toast.error('Network error while deleting customer.');
+        }
+    };
+
     const loadKhataLedger = async (customer: any) => {
         setSelectedKhataCustomer(customer);
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/finance/khata/${customer.id}/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            const res = await fetch(`${API_BASE}/finance/khata/${customer.id}/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
             if (res.ok) {
                 setKhataLedger(await res.json());
+                setIsKhataLedgerModalOpen(true);
+            } else {
+                toast.error('Failed to load Khata ledger.');
             }
-        } catch (e) { console.error("Failed to load Khata ledger"); }
+        } catch (e) {
+            toast.error('Network error while loading Khata ledger.');
+        }
     };
 
     const handleKhataSettle = async () => {
@@ -583,9 +839,6 @@ export default function AdminDashboard() {
                     </button>
                     <button onClick={() => router.push('/admin/queue')} className="w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-[#8E939B] hover:text-[#01FFFF] hover:bg-[#01FFFF]/5 hover:border hover:border-[#01FFFF]/20">
                         <Activity className="w-4 h-4" /> Live Queue
-                    </button>
-                    <button onClick={() => router.push('/admin/finance/expenses')} className="w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-[#8E939B] hover:text-[#FF2A6D] hover:bg-[#FF2A6D]/5 hover:border hover:border-[#FF2A6D]/20">
-                        <Receipt className="w-4 h-4" /> Expense Manager
                     </button>
 
 
@@ -781,12 +1034,18 @@ export default function AdminDashboard() {
                 <p className="text-purple-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1 flex items-center gap-2"><Clock className="w-4 h-4" /> Total Outstanding Debt</p>
                 <h2 className="text-3xl font-syncopate font-bold text-white tracking-tighter">₹{totalOutstandingCredit.toLocaleString()}</h2>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
                 <button
                     onClick={() => setIsManualKhataOpen(true)}
                     className="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-purple-500 hover:text-black transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)]"
                 >
                     <PlusCircle className="w-4 h-4" /> Add Khata Charge
+                </button>
+                <button
+                    onClick={() => openKhataCustomerModal(null)}
+                    className="bg-transparent text-white border border-white/10 px-4 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white/10 hover:text-[#A855F7] transition-all"
+                >
+                    <UserPlus className="w-4 h-4" /> Register Customer
                 </button>
             </div>
         </div>
@@ -811,9 +1070,39 @@ export default function AdminDashboard() {
                                     {khata.outstanding_balance >= khata.credit_limit && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
                                 </td>
                                 <td className="p-4 text-right pr-6">
-                                    <button onClick={() => { setSelectedKhataCustomer(khata); setIsKhataModalOpen(true); }} className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-emerald-500 hover:text-black transition">
-                                        <Check className="w-3 h-3" /> Settle Khata
-                                    </button>
+                                    <div className="flex flex-wrap justify-end items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => loadKhataLedger(khata)}
+                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-2 rounded-lg bg-white/5 hover:bg-white/10"
+                                            title="View history"
+                                        >
+                                            <FileText className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => openKhataCustomerModal(khata)}
+                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-2 rounded-lg bg-white/5 hover:bg-white/10"
+                                            title="Edit customer"
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => deleteKhataCustomer(khata.id)}
+                                            className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-2 rounded-lg bg-white/5 hover:bg-[#FF2A6D]/10"
+                                            title="Delete customer"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSelectedKhataCustomer(khata); setIsKhataModalOpen(true); }}
+                                            className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 items-center hover:bg-emerald-500 hover:text-black transition"
+                                        >
+                                            <Check className="w-3 h-3" /> Settle
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         )))}
@@ -853,24 +1142,185 @@ export default function AdminDashboard() {
 )}
 
                         {financeSubTab === 'expenses' && (
-                            <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
-                                        <tr><th className="p-4 pl-6">Date</th><th className="p-4">Description</th><th className="p-4">Amount</th><th className="p-4 text-right pr-6">Action</th></tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/5">
-                                        {expenses.map((exp: any) => (
-                                            <tr key={exp.id} className="hover:bg-white/5">
-                                                <td className="p-4 pl-6 font-mono text-xs">{new Date(exp.date).toLocaleDateString()}</td>
-                                                <td className="p-4">{exp.description}</td>
-                                                <td className="p-4 font-bold text-[#FF2A6D]">₹{exp.amount}</td>
-                                                <td className="p-4 text-right pr-6">
-                                                    {exp.is_approved ? <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-sm uppercase tracking-widest font-bold">Approved</span> : <button onClick={() => approveExpense(exp.id)} className="text-[9px] bg-[#FF2A6D] text-white px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center"><CheckCircle className="w-3 h-3" /> Approve</button>}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-[fadeIn_0.3s_ease-out]">
+                                {/* LEFT COLUMN: Record Expense */}
+                                <div className="xl:col-span-2 bg-[#141518]/60 backdrop-blur-xl border border-white/5 rounded-3xl p-6 shadow-2xl h-fit">
+                                    <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#FF2A6D] mb-6 flex items-center gap-2">
+                                        <PlusCircle className="w-4 h-4" /> {editingExpense ? 'UPDATE EXPENSE' : 'RECORD EXPENSE'}
+                                    </h4>
+                                    <form onSubmit={handleExpenseSubmit} className="space-y-4">
+                                        <div>
+                                            <label className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1 block">Category</label>
+                                            <div className="relative">
+                                                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8E939B]" />
+                                                <select
+                                                    value={expenseForm.category}
+                                                    onChange={e => setExpenseForm({...expenseForm, category: e.target.value})}
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white text-sm outline-none focus:border-[#FF2A6D] transition-all appearance-none"
+                                                >
+                                                    <option value="">Select Category...</option>
+                                                    {expenseCategories.map(cat => (
+                                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1 block">Amount (₹)</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={expenseForm.amount}
+                                                        onChange={e => setExpenseForm({...expenseForm, amount: e.target.value})}
+                                                        placeholder="0.00"
+                                                        className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white text-sm outline-none focus:border-[#FF2A6D] transition-all"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1 block">Date</label>
+                                                <div className="relative">
+                                                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8E939B]" />
+                                                    <input
+                                                        type="date"
+                                                        value={expenseForm.date}
+                                                        onChange={e => setExpenseForm({...expenseForm, date: e.target.value})}
+                                                        className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white text-sm outline-none focus:border-[#FF2A6D] transition-all"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1 block">Description</label>
+                                            <textarea
+                                                value={expenseForm.description}
+                                                onChange={e => setExpenseForm({...expenseForm, description: e.target.value})}
+                                                placeholder="What was this expense for?"
+                                                rows={3}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl py-3 px-4 text-white text-sm outline-none focus:border-[#FF2A6D] transition-all resize-none"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1 block">Receipt Image (Optional)</label>
+                                            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-white/10 border-dashed rounded-xl hover:border-[#FF2A6D]/50 transition-colors relative">
+                                                {receiptPreview ? (
+                                                    <div className="relative w-full aspect-video rounded-lg overflow-hidden flex items-center justify-center bg-black/50">
+                                                        <img src={receiptPreview} alt="Receipt preview" className="max-h-full object-contain" />
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={clearFile}
+                                                            className="absolute top-2 right-2 bg-black/70 hover:bg-[#FF2A6D] text-white p-1.5 rounded-full backdrop-blur-sm transition-colors"
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-1 text-center">
+                                                        <ImageIcon className="mx-auto h-8 w-8 text-[#8E939B]" />
+                                                        <div className="flex text-sm text-gray-400 justify-center">
+                                                            <label htmlFor="file-upload" className="relative cursor-pointer rounded-md font-bold text-[#FF2A6D] hover:text-[#01FFFF] focus-within:outline-none transition-colors">
+                                                                <span>Upload a file</span>
+                                                                <input id="file-upload" name="file-upload" type="file" ref={fileInputRef} className="sr-only" onChange={handleFileChange} accept="image/*" />
+                                                            </label>
+                                                        </div>
+                                                        <p className="text-xs text-gray-500">PNG, JPG, GIF up to 5MB</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <button
+                                                type="submit"
+                                                disabled={isSubmittingExpense}
+                                                className="flex-1 bg-[#FF2A6D] text-white font-syncopate font-bold text-xs tracking-widest py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-white hover:text-black transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,42,109,0.3)]"
+                                            >
+                                                {isSubmittingExpense ? (editingExpense ? 'Updating...' : 'Recording...') : (editingExpense ? 'UPDATE EXPENSE' : 'RECORD EXPENSE')}
+                                            </button>
+                                            {editingExpense && (
+                                                <button
+                                                    type="button"
+                                                    onClick={cancelEditingExpense}
+                                                    className="px-4 py-4 bg-transparent border border-white/20 text-[#8E939B] font-syncopate font-bold text-xs tracking-widest rounded-xl hover:bg-white/10 hover:text-white transition-all"
+                                                >
+                                                    CANCEL EDIT
+                                                </button>
+                                            )}
+                                        </div>
+                                    </form>
+                                </div>
+                                
+                                {/* RIGHT COLUMN: Recent Expenses Table */}
+                                <div className="xl:col-span-3 bg-[#141518]/60 backdrop-blur-xl border border-white/5 rounded-3xl overflow-hidden flex flex-col h-[600px]">
+                                    <div className="p-6 border-b border-white/5 flex justify-between items-center">
+                                        <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#8E939B]">RECENT EXPENSES</h4>
+                                        <span className="text-[10px] bg-white/10 text-white px-3 py-1 rounded-full uppercase tracking-widest font-bold">
+                                            Total: ₹{expenses.reduce((sum, exp) => sum + Number(exp.amount), 0).toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div className="flex-1 overflow-auto">
+                                        <table className="w-full text-left text-sm relative">
+                                            <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest sticky top-0 z-10 backdrop-blur-md">
+                                                <tr>
+                                                    <th className="p-4 pl-6">Date</th>
+                                                    <th className="p-4">Category</th>
+                                                    <th className="p-4">Description</th>
+                                                    <th className="p-4 text-right">Amount</th>
+                                                    <th className="p-4 text-center">Receipt</th>
+                                                    <th className="p-4 text-center pr-6">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-white/5">
+                                                {expenses.length === 0 ? (
+                                                    <tr><td colSpan={6} className="p-8 text-center text-[#8E939B]">No expenses recorded yet.</td></tr>
+                                                ) : (
+                                                    expenses.map((exp: any) => (
+                                                        <tr key={exp.id} className="hover:bg-white/5">
+                                                            <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{new Date(exp.date).toLocaleDateString()}</td>
+                                                            <td className="p-4">
+                                                                <span className="bg-white/5 border border-white/10 px-2 py-1 rounded text-xs font-bold text-white">
+                                                                    {exp.category_name || exp.category || 'General'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-4 text-gray-300 max-w-[200px] truncate" title={exp.description}>{exp.description}</td>
+                                                            <td className="p-4 text-right font-bold text-[#FF2A6D]">₹{exp.amount}</td>
+                                                            <td className="p-4 text-center">
+                                                                {exp.receipt_image ? (
+                                                                    <a href={exp.receipt_image} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30 hover:bg-[#01FFFF] hover:text-black transition px-2 py-1 rounded-sm uppercase tracking-widest font-bold">
+                                                                        <ImageIcon className="w-3 h-3" /> View
+                                                                    </a>
+                                                                ) : (
+                                                                    <span className="text-[#8E939B] text-xs">—</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="p-4 text-center pr-6">
+                                                                <div className="flex items-center justify-center gap-2">
+                                                                    <button
+                                                                        onClick={() => startEditingExpense(exp)}
+                                                                        className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-1"
+                                                                        title="Edit expense"
+                                                                    >
+                                                                        <Pencil className="w-4 h-4" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => deleteExpense(exp.id)}
+                                                                        className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-1"
+                                                                        title="Delete expense"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
@@ -1356,16 +1806,28 @@ export default function AdminDashboard() {
                     <div className="animate-[fadeIn_0.5s_ease-out] space-y-6">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-white/5 pb-4">
                             <h3 className="font-syncopate font-bold tracking-widest text-xl">DAILY SHOP LEDGER</h3>
-                            <div className="relative">
-                                <label className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E939B] pointer-events-none">
-                                    <Calendar className="w-4 h-4" />
-                                </label>
-                                <input 
-                                    type="date"
-                                    value={globalHistoryDate}
-                                    onChange={(e) => setGlobalHistoryDate(e.target.value)}
-                                    className="bg-[#141518]/60 border border-white/10 text-white text-xs font-bold font-mono py-2 pl-9 pr-4 rounded-xl outline-none focus:border-[#01FFFF] transition-all cursor-pointer"
-                                />
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={() => {
+                                        setEditingLedgerEntry(null);
+                                        setLedgerForm({ plate_number: '', phone_number: '', service_package_id: '', technician_id: '', price: '', date: globalHistoryDate });
+                                        setIsLedgerModalOpen(true);
+                                    }}
+                                    className="bg-transparent text-[#01FFFF] border border-[#01FFFF]/30 hover:bg-[#01FFFF] hover:text-black transition-all px-4 py-2 flex items-center justify-center gap-2 text-xs uppercase font-bold tracking-widest rounded-xl"
+                                >
+                                    <PlusCircle className="w-4 h-4" /> Add Entry
+                                </button>
+                                <div className="relative">
+                                    <label className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E939B] pointer-events-none">
+                                        <Calendar className="w-4 h-4" />
+                                    </label>
+                                    <input 
+                                        type="date"
+                                        value={globalHistoryDate}
+                                        onChange={(e) => setGlobalHistoryDate(e.target.value)}
+                                        className="bg-[#141518]/60 border border-white/10 text-white text-xs font-bold font-mono py-2 pl-9 pr-4 rounded-xl outline-none focus:border-[#01FFFF] transition-all cursor-pointer"
+                                    />
+                                </div>
                             </div>
                         </div>
 
@@ -1413,13 +1875,40 @@ export default function AdminDashboard() {
                                                     <span className="text-[10px] text-[#8E939B] uppercase tracking-widest">By {entry.technician_name}</span>
                                                     <span className="font-syncopate font-bold text-[#FF2A6D] text-sm hidden sm:inline-block">₹{entry.price}</span>
                                                     {entry.booking_id && (
-                                                        <button
-                                                            onClick={() => downloadInvoice(entry.booking_id)}
-                                                            title="Download PDF Receipt"
-                                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors"
-                                                        >
-                                                            <Download className="w-4 h-4" />
-                                                        </button>
+                                                        <div className="flex items-center gap-2 border-l border-white/10 pl-4 ml-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setEditingLedgerEntry(entry);
+                                                                    setLedgerForm({
+                                                                        plate_number: entry.plate_number,
+                                                                        phone_number: entry.phone_number || '', // May not be directly available, left empty or populated if API returns
+                                                                        service_package_id: entry.service_package_id || '',
+                                                                        technician_id: entry.technician_id || '',
+                                                                        price: String(entry.price),
+                                                                        date: entry.date
+                                                                    });
+                                                                    setIsLedgerModalOpen(true);
+                                                                }}
+                                                                title="Edit Entry"
+                                                                className="text-[#8E939B] hover:text-blue-400 transition-colors p-1"
+                                                            >
+                                                                <Pencil className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => deleteLedgerEntry(entry.booking_id)}
+                                                                title="Delete Entry"
+                                                                className="text-[#8E939B] hover:text-red-500 transition-colors p-1"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => downloadInvoice(entry.booking_id)}
+                                                                title="Download PDF Receipt"
+                                                                className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-1"
+                                                            >
+                                                                <Download className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </div>
                                             </div>
@@ -1711,6 +2200,103 @@ export default function AdminDashboard() {
                 </div>
             )}
 
+            {/* KHATA CUSTOMER MODAL */}
+            {isKhataCustomerModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518]/95 border border-white/10 p-8 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-[#A855F7]">{editingKhataCustomer ? 'EDIT KHATA CUSTOMER' : 'REGISTER KHATA CUSTOMER'}</h3>
+                            <button onClick={() => { setIsKhataCustomerModalOpen(false); setEditingKhataCustomer(null); }} className="text-[#8E939B] hover:text-white transition-colors"><PlusCircle className="w-6 h-6 rotate-45" /></button>
+                        </div>
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Customer Name</label>
+                                <input
+                                    type="text"
+                                    value={khataCustomerForm.name}
+                                    onChange={(e) => setKhataCustomerForm({ ...khataCustomerForm, name: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#A855F7] focus:ring-1 focus:ring-[#A855F7] transition-all mt-2"
+                                    placeholder="e.g. Anjali Sharma"
+                                />
+                            </div>
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Phone Number</label>
+                                <input
+                                    type="tel"
+                                    value={khataCustomerForm.phone_number}
+                                    onChange={(e) => setKhataCustomerForm({ ...khataCustomerForm, phone_number: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#A855F7] focus:ring-1 focus:ring-[#A855F7] transition-all mt-2"
+                                    placeholder="e.g. 9876543210"
+                                />
+                            </div>
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Credit Limit (₹)</label>
+                                <input
+                                    type="number"
+                                    value={khataCustomerForm.credit_limit}
+                                    onChange={(e) => setKhataCustomerForm({ ...khataCustomerForm, credit_limit: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#A855F7] focus:ring-1 focus:ring-[#A855F7] transition-all mt-2"
+                                    placeholder="e.g. 5000"
+                                />
+                            </div>
+                        </div>
+                        <button
+                            onClick={saveKhataCustomer}
+                            className="w-full bg-[#A855F7] text-white font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.35)] hover:bg-[#C084FC] transition-all flex items-center justify-center gap-2"
+                        >
+                            <UserPlus className="w-5 h-5" /> SAVE CUSTOMER
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* KHATA LEDGER HISTORY MODAL */}
+            {isKhataLedgerModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518]/95 border border-white/10 p-8 rounded-[2.5rem] w-full max-w-3xl shadow-[0_0_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">KHATA LEDGER HISTORY</h3>
+                                <p className="text-[#8E939B] text-sm">Showing transactions for <strong className="text-white">{selectedKhataCustomer?.name}</strong>.</p>
+                            </div>
+                            <button onClick={() => setIsKhataLedgerModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors"><PlusCircle className="w-6 h-6 rotate-45" /></button>
+                        </div>
+                        <div className="max-h-[60vh] overflow-auto rounded-3xl border border-white/10 bg-black/30">
+                            <table className="w-full text-left text-sm">
+                                <thead className="sticky top-0 bg-[#0b0c0f]/95 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                    <tr>
+                                        <th className="p-4 pl-6">Date</th>
+                                        <th className="p-4">Description</th>
+                                        <th className="p-4">Type</th>
+                                        <th className="p-4 text-right pr-6">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {khataLedger.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
+                                        </tr>
+                                    ) : (
+                                        khataLedger.map((entry: any) => (
+                                            <tr key={entry.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
+                                                <td className="p-4 text-gray-300 max-w-[320px] truncate" title={entry.description}>{entry.description}</td>
+                                                <td className="p-4">
+                                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${entry.transaction_type === 'SETTLEMENT' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-[#FF2A6D]/10 text-[#FF2A6D]'}`}>
+                                                        {entry.transaction_type === 'SETTLEMENT' ? 'Payment' : 'Credit'}
+                                                    </span>
+                                                </td>
+                                                <td className={`p-4 text-right font-bold ${entry.transaction_type === 'SETTLEMENT' ? 'text-emerald-400' : 'text-[#FF2A6D]'}`}>₹{entry.amount}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* SERVICE CREATE/EDIT MODAL */}
             {isServiceModalOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
@@ -1971,6 +2557,101 @@ export default function AdminDashboard() {
                             className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] hover:bg-white transition-all flex items-center justify-center gap-2"
                         >
                             <BadgeDollarSign className="w-5 h-5" /> CONFIRM ADVANCE
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* LEDGER ENTRY MODAL */}
+            {isLedgerModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">
+                                {editingLedgerEntry ? 'EDIT ENTRY' : 'RECORD MANUAL ENTRY'}
+                            </h3>
+                            <button onClick={() => setIsLedgerModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors">
+                                <PlusCircle className="w-6 h-6 rotate-45" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 mb-8">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">License Plate</label>
+                                    <input
+                                        type="text" value={ledgerForm.plate_number}
+                                        onChange={(e) => setLedgerForm({ ...ledgerForm, plate_number: e.target.value.toUpperCase() })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono uppercase focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                        placeholder="KL-11-AA"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Customer Phone</label>
+                                    <input
+                                        type="tel" value={ledgerForm.phone_number}
+                                        onChange={(e) => setLedgerForm({ ...ledgerForm, phone_number: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                        placeholder="+91 9876543210"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Service Package</label>
+                                    <select
+                                        value={ledgerForm.service_package_id}
+                                        onChange={(e) => setLedgerForm({ ...ledgerForm, service_package_id: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
+                                    >
+                                        <option value="" className="bg-[#141518]">-- Select Service --</option>
+                                        {services.map(svc => (
+                                            <option key={svc.id} value={svc.id} className="bg-[#141518]">{svc.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Technician</label>
+                                    <select
+                                        value={ledgerForm.technician_id}
+                                        onChange={(e) => setLedgerForm({ ...ledgerForm, technician_id: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
+                                    >
+                                        <option value="" className="bg-[#141518]">-- Select Tech --</option>
+                                        {staffDirectory.map(tech => (
+                                            <option key={tech.id} value={tech.id} className="bg-[#141518]">{tech.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Price Override (₹)</label>
+                                    <input
+                                        type="number" value={ledgerForm.price}
+                                        onChange={(e) => setLedgerForm({ ...ledgerForm, price: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                        placeholder="500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Date</label>
+                                    <input
+                                        type="date" value={ledgerForm.date}
+                                        onChange={(e) => setLedgerForm({ ...ledgerForm, date: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={saveLedgerEntry}
+                            className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] hover:bg-white transition-all flex items-center justify-center gap-2 tracking-widest text-sm"
+                        >
+                            <CheckCircle className="w-5 h-5" /> SAVE ENTRY
                         </button>
                     </div>
                 </div>
