@@ -399,16 +399,11 @@ export default function AdminQueueBoard() {
     };
 
     const submitPayment = async () => {
-        if (!checkoutModal.bookingId) return;
-        
-        const cash = checkoutModal.cash || 0;
-        const upi = checkoutModal.upi || 0;
-        const khata = checkoutModal.khata || 0;
-        const sum = cash + upi + khata;
-
-        if (sum !== checkoutModal.totalAmount) {
-            toast.error("Payment split does not match the total amount.");
-            return;
+        const totalTendered = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0);
+        let finalCashAmount = checkoutModal.cash || 0;
+        if (totalTendered > checkoutModal.totalAmount) {
+            const changeToGiveBack = totalTendered - checkoutModal.totalAmount;
+            finalCashAmount = finalCashAmount - changeToGiveBack; 
         }
 
         const token = localStorage.getItem('auth_token');
@@ -419,9 +414,9 @@ export default function AdminQueueBoard() {
                 body: JSON.stringify({ 
                     new_status: 'COMPLETED', 
                     bay_assignment: null,
-                    payment_cash: cash,
-                    payment_upi: upi,
-                    payment_khata: khata
+                    payment_cash: checkoutModal.cash,
+                    payment_upi: checkoutModal.upi,
+                    payment_khata: checkoutModal.khata
                 }),
             });
             if (!res.ok) throw new Error('API failed');
@@ -604,99 +599,61 @@ export default function AdminQueueBoard() {
                 )}
             </footer>
 
-            {/* ── CHECKOUT MODAL ───────────────────────────────────────────── */}
-            {checkoutModal.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-                        <div className="p-6 border-b border-white/5 bg-white/5">
-                            <h2 className="font-syncopate font-black text-xl tracking-widest text-white uppercase">Checkout</h2>
-                            <p className="text-xs text-[#8E939B] uppercase font-bold tracking-widest mt-1">
-                                {checkoutModal.customerName}
-                            </p>
-                        </div>
-                        <div className="p-6 space-y-6">
-                            <div className="flex justify-between items-center bg-[#0C0D0F] p-4 rounded-2xl border border-white/5">
-                                <span className="text-xs text-[#8E939B] uppercase font-bold tracking-widest">Total Amount</span>
-                                <span className="text-[#01FFFF] font-mono font-bold text-2xl">₹{checkoutModal.totalAmount}</span>
+            {/* Modal Footer & Actions */}
+            <div className="p-6 bg-[#0B0C10] border-t border-white/5 flex items-center justify-between">
+                
+                {/* Dynamic Remaining / Change Calculator */}
+                {(() => {
+                    const sum = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0);
+                    const diff = checkoutModal.totalAmount - sum;
+                    
+                    if (diff > 0) {
+                        return (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-[#8E939B] uppercase tracking-wider">Remaining</span>
+                                <span className="text-xl font-black text-white transition-colors">
+                                    ₹{diff.toFixed(2)}
+                                </span>
                             </div>
-                            
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-xs text-[#8E939B] uppercase font-bold tracking-widest block mb-2">Cash (₹)</label>
-                                    <input 
-                                        type="number" 
-                                        min="0"
-                                        value={checkoutModal.cash}
-                                        onChange={(e) => setCheckoutModal(prev => ({...prev, cash: Number(e.target.value)}))}
-                                        className="w-full bg-[#0C0D0F] border border-white/10 rounded-xl px-4 py-3 text-white font-mono focus:border-[#01FFFF] focus:outline-none transition-colors"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-[#8E939B] uppercase font-bold tracking-widest block mb-2">UPI (₹)</label>
-                                    <input 
-                                        type="number" 
-                                        min="0"
-                                        value={checkoutModal.upi}
-                                        onChange={(e) => setCheckoutModal(prev => ({...prev, upi: Number(e.target.value)}))}
-                                        className="w-full bg-[#0C0D0F] border border-white/10 rounded-xl px-4 py-3 text-white font-mono focus:border-[#01FFFF] focus:outline-none transition-colors"
-                                    />
-                                </div>
-                                {checkoutModal.customerId === null ? (
-                                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
-                                        <p className="text-red-400 text-[10px] uppercase font-bold tracking-widest text-center">Khata unavailable for Walk-In customers</p>
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <label className="text-xs text-yellow-500 uppercase font-bold tracking-widest block mb-2">Khata/Credit (₹)</label>
-                                        <input 
-                                            type="number" 
-                                            min="0"
-                                            value={checkoutModal.khata}
-                                            onChange={(e) => setCheckoutModal(prev => ({...prev, khata: Number(e.target.value)}))}
-                                            className="w-full bg-[#0C0D0F] border border-yellow-500/30 rounded-xl px-4 py-3 text-white font-mono focus:border-yellow-500 focus:outline-none transition-colors"
-                                        />
-                                    </div>
-                                )}
+                        );
+                    } else if (diff < 0) {
+                        return (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-[#FF2A6D] uppercase tracking-wider animate-pulse">Give Back (Change)</span>
+                                <span className="text-xl font-black text-[#FF2A6D] transition-colors shadow-red-500/50 drop-shadow-md">
+                                    ₹{Math.abs(diff).toFixed(2)}
+                                </span>
                             </div>
-                            
-                            {(() => {
-                                const cash = checkoutModal.cash || 0;
-                                const upi = checkoutModal.upi || 0;
-                                const khata = checkoutModal.khata || 0;
-                                const sum = cash + upi + khata;
-                                const diff = checkoutModal.totalAmount - sum;
-                                return (
-                                    <div className="text-center">
-                                        {diff === 0 ? (
-                                            <p className="text-emerald-400 text-xs uppercase font-bold tracking-widest">Math Checks Out!</p>
-                                        ) : diff > 0 ? (
-                                            <p className="text-[#FF2A6D] text-xs uppercase font-bold tracking-widest">Remaining to assign: ₹{diff}</p>
-                                        ) : (
-                                            <p className="text-[#FF2A6D] text-xs uppercase font-bold tracking-widest">Over-assigned by: ₹{Math.abs(diff)}</p>
-                                        )}
-                                    </div>
-                                );
-                            })()}
-                        </div>
-                        
-                        <div className="p-6 bg-white/5 border-t border-white/5 flex gap-4">
-                            <button 
-                                onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))}
-                                className="flex-1 px-4 py-3 rounded-xl border border-white/10 text-[#8E939B] hover:text-white hover:bg-white/5 transition-all text-xs uppercase font-bold tracking-widest"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={submitPayment}
-                                disabled={((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0)) !== checkoutModal.totalAmount}
-                                className="flex-1 px-4 py-3 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-xs uppercase font-bold tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Confirm Payment
-                            </button>
-                        </div>
-                    </div>
+                        );
+                    } else {
+                        return (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Balance</span>
+                                <span className="text-xl font-black text-emerald-400 transition-colors">
+                                    Exact (₹0.00)
+                                </span>
+                            </div>
+                        );
+                    }
+                })()}
+                
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))}
+                        className="px-5 py-3 rounded-full font-bold text-sm text-[#8E939B] hover:text-white hover:bg-white/5 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    {/* CHANGED: Now only disabled if they haven't paid ENOUGH. Overpaying is allowed! */}
+                    <button 
+                        onClick={submitPayment}
+                        disabled={((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0)) < checkoutModal.totalAmount}
+                        className="px-6 py-3 rounded-full font-bold text-sm bg-emerald-500 text-black hover:bg-emerald-400 transition-all disabled:opacity-20 disabled:hover:bg-emerald-500 disabled:cursor-not-allowed flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                    >
+                        Confirm Payment
+                    </button>
                 </div>
-            )}
+            </div>      
 
             {/* ── EDIT SERVICE MODAL ───────────────────────────────────────── */}
             {isEditModalOpen && (

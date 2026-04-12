@@ -153,14 +153,13 @@ def daily_settlement_ledger(request):
         )
         
         jobs_completed = completed_bookings.count()
-        commission_earned = 0.0
         
-        for booking in completed_bookings:
-            if booking.service_package and booking.service_package.commission_rule:
-                rule = booking.service_package.commission_rule
-                commission_earned += float(rule.flat_amount)
-                commission_earned += float(booking.service_package.price) * (float(rule.percentage) / 100.0)
-                
+        # --- NEW: Fetch exact math from database ---
+        payroll_entry = PayrollEntry.objects.filter(staff_user=staff.user, date=today).first()
+        commission_earned = float(payroll_entry.commission_earned) if payroll_entry else 0.0
+        status = 'Paid' if (payroll_entry and payroll_entry.is_settled) else 'Pending'
+        # -------------------------------------------
+        
         advances = GeneralExpense.objects.filter(
             recorded_by=staff.user,
             category__name='Advances',
@@ -169,9 +168,6 @@ def daily_settlement_ledger(request):
         
         advances = float(advances)
         final_payout = base_salary + commission_earned - advances
-        
-        payroll_entry = PayrollEntry.objects.filter(staff_user=staff.user, date=today).first()
-        status = 'Paid' if (payroll_entry and payroll_entry.is_settled) else 'Pending'
         
         ledger.append({
             'id': staff.user.id,
