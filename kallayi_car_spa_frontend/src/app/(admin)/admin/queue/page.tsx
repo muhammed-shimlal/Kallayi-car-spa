@@ -6,7 +6,8 @@ import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea
 import { 
     Activity, Car, Clock, RefreshCw, 
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
-    AlertCircle, User, Wifi, WifiOff, LayoutDashboard
+    AlertCircle, User, Wifi, WifiOff, LayoutDashboard,
+    Pencil, Trash2, X
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
@@ -25,6 +26,7 @@ interface BookingCard {
     customer_id: number | null;
     price: number;
     technician_name: string | null;
+    technician_id: number | null;
     created_at: string | null;
     time_slot: string | null;
     bay_assignment: string | null;
@@ -111,7 +113,16 @@ function ElapsedTimer({ since }: { since: string | null }) {
 
 // ─── Booking Card ─────────────────────────────────────────────────────────────
 
-function BookingCard({ card, index, col, onCheckout, staffMembers, onAssignStaff }: { card: BookingCard; index: number; col: Column; onCheckout?: (bookingId: number) => void; staffMembers?: any[]; onAssignStaff?: (bookingId: number, staffId: number) => void; }) {
+function BookingCard({ 
+    card, index, col, onCheckout, staffMembers, onAssignStaff, onCancel, onEditService 
+}: { 
+    card: BookingCard; index: number; col: Column; 
+    onCheckout?: (bookingId: number) => void; 
+    staffMembers?: any[]; 
+    onAssignStaff?: (bookingId: number, staffId: number) => void; 
+    onCancel?: (bookingId: number) => void;
+    onEditService?: (bookingId: number) => void;
+}) {
     return (
         <Draggable draggableId={`card-${card.id}`} index={index}>
             {(provided, snapshot) => (
@@ -127,9 +138,30 @@ function BookingCard({ card, index, col, onCheckout, staffMembers, onAssignStaff
                             : 'border-white/8 hover:border-white/20 hover:bg-white/5'}
                     `}
                 >
-                    {/* License Plate */}
-                    <div className={`font-syncopate font-black text-3xl tracking-[0.15em] mb-3 ${col.accent}`}>
-                        {card.plate_number}
+                    <div className="flex items-center justify-between mb-3">
+                        <div className={`font-syncopate font-black text-3xl tracking-[0.15em] ${col.accent}`}>
+                            {card.plate_number}
+                        </div>
+                        <div className="flex items-center gap-1">
+                            {onEditService && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onEditService(card.id); }}
+                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#8E939B] hover:text-blue-400 transition-colors"
+                                    title="Change Service"
+                                >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                            {onCancel && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onCancel(card.id); }}
+                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#8E939B] hover:text-red-500 transition-colors"
+                                    title="Cancel Wash"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Customer name — admin-specific extra info */}
@@ -151,7 +183,7 @@ function BookingCard({ card, index, col, onCheckout, staffMembers, onAssignStaff
                                 <select 
                                     className="appearance-none bg-purple-500/10 text-purple-400 border border-purple-500/30 pl-6 pr-6 py-0.5 rounded-full text-[10px] font-bold cursor-pointer focus:outline-none focus:ring-1 focus:ring-purple-400/50"
                                     onClick={(e) => e.stopPropagation()}
-                                    value={card.technician_name || ""}
+                                    value={card.technician_id || ""}
                                     onChange={(e) => {
                                         if (onAssignStaff && e.target.value) {
                                             const staffId = parseInt(e.target.value);
@@ -160,11 +192,6 @@ function BookingCard({ card, index, col, onCheckout, staffMembers, onAssignStaff
                                     }}
                                 >
                                     <option value="" disabled className="bg-[#141518] text-[#8E939B]">Assign Worker</option>
-                                    {card.technician_name && (
-                                        <option value={card.technician_name} disabled className="bg-[#141518] text-purple-300">
-                                            Current: {card.technician_name}
-                                        </option>
-                                    )}
                                     {staffMembers?.map(s => (
                                         <option key={s.id} value={s.id} className="bg-[#141518] text-white">
                                             {s.first_name} ({s.role})
@@ -213,6 +240,11 @@ export default function AdminQueueBoard() {
         customerId: null as number | null
     });
 
+    const [servicePackages, setServicePackages] = useState<any[]>([]);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editBookingId, setEditBookingId] = useState<number | null>(null);
+    const [newPackageId, setNewPackageId] = useState('');
+
     const fetchQueue = useCallback(async (silent = false) => {
         const token = localStorage.getItem('auth_token');
         if (!token) return router.push('/login');
@@ -227,7 +259,13 @@ export default function AdminQueueBoard() {
             const data: BookingCard[] = await res.json();
             const newCols: Record<string, BookingCard[]> = { WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [] };
             data.forEach(card => {
-                const colKey = newCols[card.status] !== undefined ? card.status : 'WAITING';
+                let targetCol = card.status;
+                if (card.status === 'IN_PROGRESS') {
+                    if (card.bay_assignment === 'Bay 1') targetCol = 'IN_BAY_1';
+                    else if (card.bay_assignment === 'Bay 2') targetCol = 'IN_BAY_2';
+                    else targetCol = 'IN_BAY_1';
+                }
+                const colKey = newCols[targetCol] !== undefined ? targetCol : 'WAITING';
                 newCols[colKey].push(card);
             });
             setColumns(newCols);
@@ -245,6 +283,17 @@ export default function AdminQueueBoard() {
                         setStaffMembers(list.filter((s: any) => s.role === 'WASHER' || s.role === 'TECHNICIAN'));
                     }
                 } catch { /* ignore staff error */ }
+
+                try {
+                    const svcRes = await fetch(`${API_BASE}/service-packages/`, {
+                        headers: { 'Authorization': `Token ${token}` }
+                    });
+                    if (svcRes.ok) {
+                        const svcData = await svcRes.json();
+                        const svcList = Array.isArray(svcData) ? svcData : (svcData.results || []);
+                        setServicePackages(svcList);
+                    }
+                } catch { /* ignore err */ }
             }
         } catch {
             setIsConnected(false);
@@ -258,6 +307,51 @@ export default function AdminQueueBoard() {
         const interval = setInterval(() => fetchQueue(true), 30000);
         return () => clearInterval(interval);
     }, [fetchQueue]);
+
+    const handleCancelBooking = async (id: number) => {
+        if (!window.confirm("Are you sure you want to cancel this wash?")) return;
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_BASE}/bookings/${id}/`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'CANCELLED' })
+            });
+            if (!res.ok) throw new Error('API failed');
+            toast.success("Booking cancelled successfully.");
+            fetchQueue(true);
+        } catch {
+            toast.error("Failed to cancel booking.");
+        }
+    };
+
+    const openEditServiceModal = (id: number) => {
+        setEditBookingId(id);
+        setNewPackageId('');
+        setIsEditModalOpen(true);
+    };
+
+    const handleChangeServiceSubmit = async () => {
+        if (!editBookingId || !newPackageId) {
+            toast.error("Please select a service package.");
+            return;
+        }
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_BASE}/bookings/${editBookingId}/`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service_package: parseInt(newPackageId) })
+            });
+            if (!res.ok) throw new Error('API failed');
+            toast.success("Service package updated!");
+            setIsEditModalOpen(false);
+            setEditBookingId(null);
+            fetchQueue(true);
+        } catch {
+            toast.error("Failed to change service package.");
+        }
+    };
 
     const handleAssignStaff = async (bookingId: number, staffId: number) => {
         const token = localStorage.getItem('auth_token');
@@ -470,7 +564,17 @@ export default function AdminQueueBoard() {
                                                     </div>
                                                 )}
                                                 {cards.map((card, index) => (
-                                                    <BookingCard key={card.id} card={card} index={index} col={col} onCheckout={handleCheckout} staffMembers={staffMembers} onAssignStaff={handleAssignStaff} />
+                                                    <BookingCard 
+                                                        key={card.id} 
+                                                        card={card} 
+                                                        index={index} 
+                                                        col={col} 
+                                                        onCheckout={handleCheckout} 
+                                                        staffMembers={staffMembers} 
+                                                        onAssignStaff={handleAssignStaff} 
+                                                        onCancel={handleCancelBooking} 
+                                                        onEditService={openEditServiceModal} 
+                                                    />
                                                 ))}
                                                 {provided.placeholder}
                                             </div>
@@ -582,6 +686,55 @@ export default function AdminQueueBoard() {
                                 className="flex-1 px-4 py-3 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-xs uppercase font-bold tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Confirm Payment
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── EDIT SERVICE MODAL ───────────────────────────────────────── */}
+            {isEditModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
+                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-sm overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] p-6">
+                        <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
+                            <h2 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF]">
+                                CHANGE SERVICE PACKAGE
+                            </h2>
+                            <button onClick={() => setIsEditModalOpen(false)} className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-1">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="text-[10px] text-[#8E939B] uppercase font-bold tracking-[0.2em] ml-2">New Package</label>
+                                <select
+                                    value={newPackageId}
+                                    onChange={(e) => setNewPackageId(e.target.value)}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all appearance-none mt-2"
+                                >
+                                    <option value="" className="bg-[#141518]">-- Select New Service --</option>
+                                    {servicePackages.map(pkg => (
+                                        <option key={pkg.id} value={pkg.id} className="bg-[#141518]">
+                                            {pkg.name} (₹{pkg.price})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => setIsEditModalOpen(false)}
+                                className="flex-1 px-4 py-3.5 rounded-xl border border-white/10 text-[#8E939B] hover:text-white hover:bg-white/5 transition-all text-xs uppercase font-bold tracking-widest"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleChangeServiceSubmit}
+                                className="flex-1 px-4 py-3.5 rounded-xl bg-[#01FFFF] text-black shadow-[0_0_15px_rgba(1,255,255,0.4)] hover:bg-white transition-all text-xs uppercase font-bold tracking-widest"
+                            >
+                                Update Service
                             </button>
                         </div>
                     </div>

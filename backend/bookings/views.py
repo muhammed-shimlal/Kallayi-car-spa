@@ -349,9 +349,8 @@ def update_booking_stage(request, booking_id):
 @permission_classes([IsAuthenticated])
 def live_queue(request):
     """Fetch all active bookings for the Kanban board (excludes COMPLETED & CANCELLED)."""
-    active_statuses = ['WAITING', 'IN_BAY_1', 'IN_BAY_2', 'DETAILING', 'READY', 'PENDING', 'CONFIRMED']
-    bookings = Booking.objects.filter(
-        status__in=active_statuses
+    bookings = Booking.objects.exclude(
+        status__in=['COMPLETED', 'CANCELLED']
     ).select_related('vehicle', 'customer', 'service_package', 'technician').order_by('time_slot')
 
     data = []
@@ -367,6 +366,7 @@ def live_queue(request):
             'customer_id': b.customer.id if b.customer else None,
             'price': float(b.service_package.price) if b.service_package else 0.0,
             'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else None,
+            'technician_id': b.technician.id if b.technician else None,
             'created_at': b.created_at.isoformat() if b.created_at else None,
             'time_slot': b.time_slot.isoformat() if b.time_slot else None,
         })

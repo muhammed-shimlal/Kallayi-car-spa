@@ -96,7 +96,7 @@ export default function AdminDashboard() {
     const [globalHistoryDate, setGlobalHistoryDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
     const [editingLedgerEntry, setEditingLedgerEntry] = useState<any | null>(null);
-    const [ledgerForm, setLedgerForm] = useState({ plate_number: '', phone_number: '', service_package_id: '', technician_id: '', price: '', date: '' });
+    const [ledgerForm, setLedgerForm] = useState({ technician_id: '', status: 'COMPLETED' });
     const [invoiceList, setInvoiceList] = useState<any[]>([]);
     useEffect(() => {
         // Only fetch when the user clicks the "PDF Invoices" sub-tab
@@ -360,36 +360,33 @@ export default function AdminDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [globalHistoryDate]);
 
-    const saveLedgerEntry = async () => {
-        if (!ledgerForm.plate_number || !ledgerForm.service_package_id || !ledgerForm.technician_id || !ledgerForm.price || !ledgerForm.date) {
-            toast.error('Please fill in plate number, service, technician, price, and date.');
+    const updateLedgerEntry = async () => {
+        if (!editingLedgerEntry || !ledgerForm.technician_id || !ledgerForm.status) {
+            toast.error('Technician and Status are required.');
             return;
         }
         
         const token = localStorage.getItem('auth_token');
-        const url = editingLedgerEntry 
-            ? `${API_BASE}/bookings/${editingLedgerEntry.booking_id}/` 
-            : `${API_BASE}/bookings/`;
-        const method = editingLedgerEntry ? 'PATCH' : 'POST';
+        const url = `${API_BASE}/bookings/${editingLedgerEntry.id || editingLedgerEntry.booking_id}/`;
 
         try {
             const res = await fetch(url, {
-                method,
+                method: 'PATCH',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(ledgerForm)
             });
 
             if (res.ok) {
-                toast.success(editingLedgerEntry ? 'Ledger entry updated successfully!' : 'Ledger entry created successfully!');
+                toast.success('Ledger entry updated successfully!');
                 setIsLedgerModalOpen(false);
                 setEditingLedgerEntry(null);
                 fetchGlobalHistory();
             } else {
                 const err = await res.json();
-                toast.error(err.error || 'Failed to save ledger entry.');
+                toast.error(err.error || 'Failed to update ledger entry.');
             }
         } catch (error) {
-            toast.error('Network error while saving ledger entry.');
+            toast.error('Network error while updating ledger entry.');
         }
     };
 
@@ -1807,16 +1804,6 @@ export default function AdminDashboard() {
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-white/5 pb-4">
                             <h3 className="font-syncopate font-bold tracking-widest text-xl">DAILY SHOP LEDGER</h3>
                             <div className="flex items-center gap-4">
-                                <button
-                                    onClick={() => {
-                                        setEditingLedgerEntry(null);
-                                        setLedgerForm({ plate_number: '', phone_number: '', service_package_id: '', technician_id: '', price: '', date: globalHistoryDate });
-                                        setIsLedgerModalOpen(true);
-                                    }}
-                                    className="bg-transparent text-[#01FFFF] border border-[#01FFFF]/30 hover:bg-[#01FFFF] hover:text-black transition-all px-4 py-2 flex items-center justify-center gap-2 text-xs uppercase font-bold tracking-widest rounded-xl"
-                                >
-                                    <PlusCircle className="w-4 h-4" /> Add Entry
-                                </button>
                                 <div className="relative">
                                     <label className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E939B] pointer-events-none">
                                         <Calendar className="w-4 h-4" />
@@ -1880,12 +1867,8 @@ export default function AdminDashboard() {
                                                                 onClick={() => {
                                                                     setEditingLedgerEntry(entry);
                                                                     setLedgerForm({
-                                                                        plate_number: entry.plate_number,
-                                                                        phone_number: entry.phone_number || '', // May not be directly available, left empty or populated if API returns
-                                                                        service_package_id: entry.service_package_id || '',
                                                                         technician_id: entry.technician_id || '',
-                                                                        price: String(entry.price),
-                                                                        date: entry.date
+                                                                        status: entry.status || 'COMPLETED'
                                                                     });
                                                                     setIsLedgerModalOpen(true);
                                                                 }}
@@ -1895,7 +1878,7 @@ export default function AdminDashboard() {
                                                                 <Pencil className="w-4 h-4" />
                                                             </button>
                                                             <button
-                                                                onClick={() => deleteLedgerEntry(entry.booking_id)}
+                                                                onClick={() => deleteLedgerEntry(entry.id || entry.booking_id)}
                                                                 title="Delete Entry"
                                                                 className="text-[#8E939B] hover:text-red-500 transition-colors p-1"
                                                             >
@@ -2563,95 +2546,59 @@ export default function AdminDashboard() {
             )}
 
             {/* LEDGER ENTRY MODAL */}
+            {/* LEDGER EDIT MODAL */}
             {isLedgerModalOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
                     <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.5)]">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">
-                                {editingLedgerEntry ? 'EDIT ENTRY' : 'RECORD MANUAL ENTRY'}
-                            </h3>
+                            <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">EDIT LEDGER ENTRY</h3>
                             <button onClick={() => setIsLedgerModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors">
                                 <PlusCircle className="w-6 h-6 rotate-45" />
                             </button>
                         </div>
 
-                        <div className="space-y-4 mb-8">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">License Plate</label>
-                                    <input
-                                        type="text" value={ledgerForm.plate_number}
-                                        onChange={(e) => setLedgerForm({ ...ledgerForm, plate_number: e.target.value.toUpperCase() })}
-                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono uppercase focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
-                                        placeholder="KL-11-AA"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Customer Phone</label>
-                                    <input
-                                        type="tel" value={ledgerForm.phone_number}
-                                        onChange={(e) => setLedgerForm({ ...ledgerForm, phone_number: e.target.value })}
-                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
-                                        placeholder="+91 9876543210"
-                                    />
-                                </div>
+                        {editingLedgerEntry && (
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6">
+                                <p className="text-[10px] uppercase tracking-widest text-[#8E939B] mb-2 font-bold">Vehicle Details</p>
+                                <p className="font-mono text-white text-lg font-bold mb-1">{editingLedgerEntry.plate_number}</p>
+                                <p className="text-[#01FFFF] text-sm uppercase tracking-widest font-bold">{editingLedgerEntry.service_package_name}</p>
                             </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Service Package</label>
-                                    <select
-                                        value={ledgerForm.service_package_id}
-                                        onChange={(e) => setLedgerForm({ ...ledgerForm, service_package_id: e.target.value })}
-                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
-                                    >
-                                        <option value="" className="bg-[#141518]">-- Select Service --</option>
-                                        {services.map(svc => (
-                                            <option key={svc.id} value={svc.id} className="bg-[#141518]">{svc.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Technician</label>
-                                    <select
-                                        value={ledgerForm.technician_id}
-                                        onChange={(e) => setLedgerForm({ ...ledgerForm, technician_id: e.target.value })}
-                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
-                                    >
-                                        <option value="" className="bg-[#141518]">-- Select Tech --</option>
-                                        {staffDirectory.map(tech => (
-                                            <option key={tech.id} value={tech.id} className="bg-[#141518]">{tech.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                        )}
+
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Reassign Technician</label>
+                                <select
+                                    value={ledgerForm.technician_id}
+                                    onChange={(e) => setLedgerForm({ ...ledgerForm, technician_id: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
+                                >
+                                    <option value="" className="bg-[#141518]">-- Select Tech --</option>
+                                    {staffDirectory.map(tech => (
+                                        <option key={tech.id} value={tech.id} className="bg-[#141518]">{tech.name}</option>
+                                    ))}
+                                </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Price Override (₹)</label>
-                                    <input
-                                        type="number" value={ledgerForm.price}
-                                        onChange={(e) => setLedgerForm({ ...ledgerForm, price: e.target.value })}
-                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
-                                        placeholder="500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Date</label>
-                                    <input
-                                        type="date" value={ledgerForm.date}
-                                        onChange={(e) => setLedgerForm({ ...ledgerForm, date: e.target.value })}
-                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 cursor-pointer"
-                                    />
-                                </div>
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Status</label>
+                                <select
+                                    value={ledgerForm.status}
+                                    onChange={(e) => setLedgerForm({ ...ledgerForm, status: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
+                                >
+                                    <option value="COMPLETED" className="bg-[#141518]">COMPLETED</option>
+                                    <option value="PENDING" className="bg-[#141518]">PENDING</option>
+                                    <option value="CANCELLED" className="bg-[#141518]">CANCELLED</option>
+                                </select>
                             </div>
                         </div>
 
                         <button
-                            onClick={saveLedgerEntry}
+                            onClick={updateLedgerEntry}
                             className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] hover:bg-white transition-all flex items-center justify-center gap-2 tracking-widest text-sm"
                         >
-                            <CheckCircle className="w-5 h-5" /> SAVE ENTRY
+                            <CheckCircle className="w-5 h-5" /> UPDATE ENTRY
                         </button>
                     </div>
                 </div>
