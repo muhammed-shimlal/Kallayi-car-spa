@@ -182,11 +182,11 @@ function BookingCard({
                                 <User className="w-3 h-3 absolute left-2 pointer-events-none text-purple-400" />
                                 <select 
                                     className={`appearance-none border pl-6 pr-6 py-0.5 rounded-full text-[10px] font-bold cursor-pointer focus:outline-none focus:ring-1 
-                                        ${card.technician_id 
+                                        ${card.technician_id
                                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 focus:ring-emerald-400/50' 
                                             : 'bg-purple-500/10 text-purple-400 border-purple-500/30 focus:ring-purple-400/50'}`}
                                     onClick={(e) => e.stopPropagation()}
-                                    value={card.technician_id || ""}
+                                    value={card.technician_id || ""} 
                                     onChange={(e) => {
                                         if (onAssignStaff && e.target.value) {
                                             const staffId = parseInt(e.target.value);
@@ -194,14 +194,13 @@ function BookingCard({
                                         }
                                     }}
                                 >
-                                    {/* If technician is assigned, show their name as the first option, else show "Assign Worker" */}
                                     <option value="" disabled className="bg-[#141518] text-[#8E939B]">
                                         {card.technician_name ? `Assigned: ${card.technician_name}` : "Assign Worker"}
                                     </option>
                                     
                                     {staffMembers?.map(s => (
-                                        <option key={s.id} value={s.id} className="bg-[#141518] text-white">
-                                            {s.first_name} ({s.role})
+                                        <option key={s.id} value={s.user_id} className="bg-[#141518] text-white">
+                                            {s.first_name || s.username} ({s.role})
                                         </option>
                                     ))}
                                 </select>

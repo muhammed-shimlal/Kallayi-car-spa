@@ -30,6 +30,7 @@ class StaffDirectorySerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source='user.first_name')
     username = serializers.CharField(source='user.username', read_only=True)
     is_active = serializers.BooleanField(source='user.is_active', read_only=True)
+    user_id = serializers.ReadOnlyField(source='user.id')
 
     class Meta:
         model = StaffProfile

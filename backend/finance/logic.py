@@ -45,6 +45,49 @@ def process_payroll_event(booking):
         return
 
     package = booking.service_package
+    if not package:
+        return
+
+    rule = package.commission_rule if hasattr(package, 'commission_rule') else None
+    
+    commission_amount = Decimal('0.00')
+    
+    if rule:
+        # Flat rate
+        commission_amount += Decimal(str(rule.flat_amount))
+        
+        # Percentage based rule on the package
+        if rule.percentage > 0:
+            commission_amount += Decimal(str(package.price)) * (Decimal(str(rule.percentage)) / Decimal('100.0'))
+    else:
+        # FALLBACK: Use the worker's default commission rate from their StaffProfile
+        try:
+            if technician.staff_profile and technician.staff_profile.commission_rate > 0:
+                rate = Decimal(str(technician.staff_profile.commission_rate))
+                commission_amount += Decimal(str(package.price)) * (rate / Decimal('100.0'))
+        except Exception as e:
+            print(f"Could not calculate staff commission fallback: {e}")
+
+    # Always get or create the payroll entry for today
+    today = timezone.localdate()
+    entry, created = PayrollEntry.objects.get_or_create(
+        staff_user=technician,
+        date=today,
+        defaults={'base_wage': Decimal('0.00'), 'commission_earned': Decimal('0.00'), 'tips_earned': Decimal('0.00')}
+    )
+    
+    # Add the earned amount
+    if commission_amount > 0:
+        entry.commission_earned += commission_amount
+        entry.save()
+    """
+    Calculates commission for the technician upon job completion.
+    """
+    technician = booking.technician
+    if not technician:
+        return
+
+    package = booking.service_package
     rule = package.commission_rule if hasattr(package, 'commission_rule') else None
     
     commission_amount = Decimal('0.00')
