@@ -39,6 +39,7 @@ def calculate_wash_cost(booking):
 def process_payroll_event(booking):
     """
     Calculates commission for the technician upon job completion.
+    Uses the worker's individual commission percentage from their StaffProfile.
     """
     technician = booking.technician
     if not technician:
@@ -48,66 +49,43 @@ def process_payroll_event(booking):
     if not package:
         return
 
+    commission_amount = Decimal('0.00')
+
+    # 1. Check if the package has a specific override rule
     rule = package.commission_rule if hasattr(package, 'commission_rule') else None
     
-    commission_amount = Decimal('0.00')
-    
-    if rule:
-        # Flat rate
+    if rule and (rule.flat_amount > 0 or rule.percentage > 0):
         commission_amount += Decimal(str(rule.flat_amount))
-        
-        # Percentage based rule on the package
         if rule.percentage > 0:
             commission_amount += Decimal(str(package.price)) * (Decimal(str(rule.percentage)) / Decimal('100.0'))
     else:
-        # FALLBACK: Use the worker's default commission rate from their StaffProfile
+        # 2. STANDARD BEHAVIOR: Use the individual worker's profile percentage
         try:
-            if technician.staff_profile and technician.staff_profile.commission_rate > 0:
-                rate = Decimal(str(technician.staff_profile.commission_rate))
-                commission_amount += Decimal(str(package.price)) * (rate / Decimal('100.0'))
+            # E.g., if package is 500, and worker rate is 50.0, commission = 250
+            if hasattr(technician, 'staff_profile') and technician.staff_profile.commission_rate > 0:
+                worker_rate = Decimal(str(technician.staff_profile.commission_rate))
+                commission_amount += Decimal(str(package.price)) * (worker_rate / Decimal('100.0'))
         except Exception as e:
-            print(f"Could not calculate staff commission fallback: {e}")
+            print(f"Could not calculate individual staff commission: {e}")
 
-    # Always get or create the payroll entry for today
+    # Always ensure a payroll entry exists for today so the worker shows up in the table
     today = timezone.localdate()
+    
+    # We must handle is_settled safely in case the migration hasn't fully applied
+    defaults_dict = {
+        'base_wage': Decimal('0.00'), 
+        'commission_earned': Decimal('0.00'), 
+        'tips_earned': Decimal('0.00')
+    }
+    
     entry, created = PayrollEntry.objects.get_or_create(
         staff_user=technician,
         date=today,
-        defaults={'base_wage': Decimal('0.00'), 'commission_earned': Decimal('0.00'), 'tips_earned': Decimal('0.00')}
+        defaults=defaults_dict
     )
     
-    # Add the earned amount
+    # Add the earned amount to their total for the day
     if commission_amount > 0:
-        entry.commission_earned += commission_amount
-        entry.save()
-    """
-    Calculates commission for the technician upon job completion.
-    """
-    technician = booking.technician
-    if not technician:
-        return
-
-    package = booking.service_package
-    rule = package.commission_rule if hasattr(package, 'commission_rule') else None
-    
-    commission_amount = Decimal('0.00')
-    
-    if rule:
-        # Flat rate
-        commission_amount += rule.flat_amount
-        
-        # Percentage based
-        if rule.percentage > 0:
-            commission_amount += package.price * (rule.percentage / Decimal('100.0'))
-
-    if commission_amount > 0:
-        # Get or create today's payroll entry for this user
-        today = timezone.localdate()
-        entry, created = PayrollEntry.objects.get_or_create(
-            staff_user=technician,
-            date=today,
-            defaults={'base_wage': Decimal('0.00'), 'commission_earned': Decimal('0.00'), 'tips_earned': Decimal('0.00')}
-        )
         entry.commission_earned += commission_amount
         entry.save()
 
