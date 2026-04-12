@@ -35,7 +35,7 @@ class StaffDirectorySerializer(serializers.ModelSerializer):
     class Meta:
         model = StaffProfile
         fields = [
-            'id', 'first_name', 'username', 'phone_number',
+            'id', 'user_id','first_name', 'username', 'phone_number',
             'role', 'base_salary', 'commission_rate', 'is_active', 'joining_date',
         ]
 

@@ -171,7 +171,7 @@ def daily_settlement_ledger(request):
         final_payout = base_salary + commission_earned - advances
         
         payroll_entry = PayrollEntry.objects.filter(staff_user=staff.user, date=today).first()
-        status = 'Paid' if payroll_entry else 'Pending'
+        status = 'Paid' if (payroll_entry and payroll_entry.is_settled) else 'Pending'
         
         ledger.append({
             'id': staff.user.id,
@@ -285,3 +285,53 @@ def add_staff_advance(request, staff_id):
         'status': 'success', 
         'message': f'Advance of ₹{amount} successfully added for {staff_user.username}'
     })
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def settle_staff_payroll(request, payroll_id):
+    user = request.user
+    if not user.is_staff and not (hasattr(user, 'staff_profile') and user.staff_profile.role in ['ADMIN', 'MANAGER']):
+        return Response({'error': 'Forbidden'}, status=403)
+        
+    from finance.models import PayrollEntry
+    from django.utils import timezone
+    
+    try:
+        # Since the frontend sends the staff user's ID as payroll_id, check for today's entry
+        payroll_entry = PayrollEntry.objects.filter(staff_user_id=payroll_id, date=timezone.localdate()).first()
+        
+        if not payroll_entry:
+            # If it doesn't exist yet, we create it dynamically for today
+            from django.contrib.auth.models import User
+            from bookings.models import Booking
+            staff_user = User.objects.get(id=payroll_id)
+            today = timezone.localdate()
+            completed_bookings = Booking.objects.filter(
+                technician=staff_user,
+                status='COMPLETED',
+                time_slot__date=today
+            )
+            commission = 0.0
+            for booking in completed_bookings:
+                if booking.service_package and booking.service_package.commission_rule:
+                    rule = booking.service_package.commission_rule
+                    commission += float(rule.flat_amount)
+                    commission += float(booking.service_package.price) * (float(rule.percentage) / 100.0)
+            
+            base_wage = getattr(staff_user.staff_profile, 'base_salary', 0.0)
+            payroll_entry = PayrollEntry.objects.create(
+                staff_user=staff_user,
+                date=today,
+                base_wage=base_wage,
+                commission_earned=commission,
+                tips_earned=0.0
+            )
+            
+    except Exception as e:
+        return Response({'error': str(e)}, status=404)
+        
+    payroll_entry.is_settled = True
+    payroll_entry.settled_at = timezone.now()
+    payroll_entry.save()
+    
+    return Response({'status': 'success', 'message': f'Settled payroll for {payroll_entry.staff_user.username}'})

@@ -742,7 +742,7 @@ export default function AdminDashboard() {
     const settleWorkerPay = async (id: number) => {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`http://127.0.0.1:8001/api/staff/settle-pay/${id}/`, {
+            const res = await fetch(`${API_BASE}/staff/payroll/${id}/settle/`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Token ${token}`,
@@ -750,8 +750,8 @@ export default function AdminDashboard() {
                 }
             });
             if (res.ok) {
-                setPayrollData(prev => prev.map(worker => worker.id === id ? { ...worker, status: 'Paid' } : worker));
                 toast.success('Worker paid successfully.');
+                fetchDashboardData();
             } else {
                 toast.error("Failed to settle worker pay");
             }

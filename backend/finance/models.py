@@ -80,6 +80,8 @@ class PayrollEntry(models.Model):
     base_wage = models.DecimalField(max_digits=8, decimal_places=2, default=0.00)
     commission_earned = models.DecimalField(max_digits=8, decimal_places=2, default=0.00)
     tips_earned = models.DecimalField(max_digits=8, decimal_places=2, default=0.00)
+    is_settled = models.BooleanField(default=False)
+    settled_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         unique_together = ('staff_user', 'date')
