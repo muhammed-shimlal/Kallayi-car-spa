@@ -11,6 +11,9 @@ import {
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
+import { StaffMember, ServicePackage } from '@/types/admin';
+import { Skeleton } from '@/components/ui/Skeleton';
+
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
 
@@ -118,7 +121,7 @@ function BookingCard({
 }: { 
     card: BookingCard; index: number; col: Column; 
     onCheckout?: (bookingId: number) => void; 
-    staffMembers?: any[]; 
+    staffMembers?: StaffMember[]; 
     onAssignStaff?: (bookingId: number, staffId: number) => void; 
     onCancel?: (bookingId: number) => void;
     onEditService?: (bookingId: number) => void;
@@ -231,7 +234,7 @@ export default function AdminQueueBoard() {
     const [columns, setColumns] = useState<Record<string, BookingCard[]>>({
         WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
     });
-    const [staffMembers, setStaffMembers] = useState<any[]>([]);
+    const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isConnected, setIsConnected] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -246,7 +249,7 @@ export default function AdminQueueBoard() {
         customerId: null as number | null
     });
 
-    const [servicePackages, setServicePackages] = useState<any[]>([]);
+    const [servicePackages, setServicePackages] = useState<ServicePackage[]>([]);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editBookingId, setEditBookingId] = useState<number | null>(null);
     const [newPackageId, setNewPackageId] = useState('');
@@ -286,7 +289,7 @@ export default function AdminQueueBoard() {
                     if (staffRes.ok) {
                         const staffData = await staffRes.json();
                         const list = Array.isArray(staffData) ? staffData : (staffData.results || []);
-                        setStaffMembers(list.filter((s: any) => s.role === 'WASHER' || s.role === 'TECHNICIAN'));
+                        setStaffMembers(list.filter((s: StaffMember) => s.role === 'WASHER' || s.role === 'TECHNICIAN'));
                     }
                 } catch { /* ignore staff error */ }
 
@@ -520,11 +523,22 @@ export default function AdminQueueBoard() {
 
             {/* ── KANBAN BOARD ─────────────────────────────────────────────── */}
             {isLoading ? (
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-4">
-                        <Activity className="w-12 h-12 text-[#01FFFF] animate-spin" />
-                        <p className="text-[#8E939B] text-sm uppercase tracking-widest font-bold">Loading Live Queue...</p>
-                    </div>
+                <div className="flex-1 flex gap-6 p-6 overflow-x-auto overflow-y-hidden">
+                    {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="flex flex-col flex-shrink-0 w-80 xl:w-96 bg-[#0C0D0F] border border-white/5 rounded-3xl overflow-hidden shadow-[0_0_20px_rgba(255,255,255,0.02)]">
+                            <div className="bg-white/5 border-b border-white/5 p-5">
+                                <div className="flex items-center justify-between">
+                                    <Skeleton className="h-5 w-32" />
+                                    <Skeleton className="h-7 w-7 rounded-full" />
+                                </div>
+                            </div>
+                            <div className="flex-1 p-4 space-y-3">
+                                <Skeleton className="h-44 w-full" />
+                                <Skeleton className="h-44 w-full" />
+                                <Skeleton className="h-44 w-full opacity-50" />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             ) : (
                 <DragDropContext onDragEnd={onDragEnd}>
@@ -599,61 +613,129 @@ export default function AdminQueueBoard() {
                 )}
             </footer>
 
-            {/* Modal Footer & Actions */}
-            <div className="p-6 bg-[#0B0C10] border-t border-white/5 flex items-center justify-between">
-                
-                {/* Dynamic Remaining / Change Calculator */}
-                {(() => {
-                    const sum = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0);
-                    const diff = checkoutModal.totalAmount - sum;
-                    
-                    if (diff > 0) {
-                        return (
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-[#8E939B] uppercase tracking-wider">Remaining</span>
-                                <span className="text-xl font-black text-white transition-colors">
-                                    ₹{diff.toFixed(2)}
-                                </span>
+            {/* ── CHECKOUT MODAL ────────────────────────────────────────────── */}
+            {checkoutModal.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
+                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                        {/* Modal Header */}
+                        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#0C0D0F]">
+                            <div>
+                                <h2 className="font-syncopate font-black text-lg tracking-widest text-emerald-400">
+                                    CHECKOUT
+                                </h2>
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-1">
+                                    {checkoutModal.customerName || "Walk-in"} • Total: ₹{checkoutModal.totalAmount}
+                                </p>
                             </div>
-                        );
-                    } else if (diff < 0) {
-                        return (
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-[#FF2A6D] uppercase tracking-wider animate-pulse">Give Back (Change)</span>
-                                <span className="text-xl font-black text-[#FF2A6D] transition-colors shadow-red-500/50 drop-shadow-md">
-                                    ₹{Math.abs(diff).toFixed(2)}
-                                </span>
+                            <button 
+                                onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))} 
+                                className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-2 rounded-full hover:bg-white/5"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Payment Inputs */}
+                        <div className="p-6 space-y-5">
+                            <div>
+                                <label className="text-[10px] text-emerald-400 uppercase font-bold tracking-[0.2em] ml-2">Cash Tendered</label>
+                                <div className="relative mt-2">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
+                                    <input
+                                        type="number"
+                                        value={checkoutModal.cash || ''}
+                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, cash: parseFloat(e.target.value) || 0 }))}
+                                        className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                                        placeholder="0.00"
+                                    />
+                                </div>
                             </div>
-                        );
-                    } else {
-                        return (
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Balance</span>
-                                <span className="text-xl font-black text-emerald-400 transition-colors">
-                                    Exact (₹0.00)
-                                </span>
+                            
+                            <div>
+                                <label className="text-[10px] text-blue-400 uppercase font-bold tracking-[0.2em] ml-2">UPI / Card</label>
+                                <div className="relative mt-2">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
+                                    <input
+                                        type="number"
+                                        value={checkoutModal.upi || ''}
+                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, upi: parseFloat(e.target.value) || 0 }))}
+                                        className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                                        placeholder="0.00"
+                                    />
+                                </div>
                             </div>
-                        );
-                    }
-                })()}
-                
-                <div className="flex gap-3">
-                    <button 
-                        onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))}
-                        className="px-5 py-3 rounded-full font-bold text-sm text-[#8E939B] hover:text-white hover:bg-white/5 transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    {/* CHANGED: Now only disabled if they haven't paid ENOUGH. Overpaying is allowed! */}
-                    <button 
-                        onClick={submitPayment}
-                        disabled={((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0)) < checkoutModal.totalAmount}
-                        className="px-6 py-3 rounded-full font-bold text-sm bg-emerald-500 text-black hover:bg-emerald-400 transition-all disabled:opacity-20 disabled:hover:bg-emerald-500 disabled:cursor-not-allowed flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                    >
-                        Confirm Payment
-                    </button>
+
+                            <div>
+                                <label className="text-[10px] text-purple-400 uppercase font-bold tracking-[0.2em] ml-2">Add to Khata (Credit)</label>
+                                <div className="relative mt-2">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
+                                    <input
+                                        type="number"
+                                        value={checkoutModal.khata || ''}
+                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, khata: parseFloat(e.target.value) || 0 }))}
+                                        className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer & Actions */}
+                        <div className="p-6 bg-[#0B0C10] border-t border-white/5 flex items-center justify-between">
+                            {/* Dynamic Remaining / Change Calculator */}
+                            {(() => {
+                                const sum = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0);
+                                const diff = checkoutModal.totalAmount - sum;
+                                
+                                if (diff > 0) {
+                                    return (
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-[#8E939B] uppercase tracking-wider">Remaining</span>
+                                            <span className="text-xl font-black text-white transition-colors font-mono">
+                                                ₹{diff.toFixed(2)}
+                                            </span>
+                                        </div>
+                                    );
+                                } else if (diff < 0) {
+                                    return (
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-[#FF2A6D] uppercase tracking-wider animate-pulse">Change (Give Back)</span>
+                                            <span className="text-xl font-black text-[#FF2A6D] transition-colors shadow-red-500/50 drop-shadow-md font-mono">
+                                                ₹{Math.abs(diff).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    );
+                                } else {
+                                    return (
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Balance</span>
+                                            <span className="text-xl font-black text-emerald-400 transition-colors font-mono">
+                                                Exact (₹0.00)
+                                            </span>
+                                        </div>
+                                    );
+                                }
+                            })()}
+                            
+                            <div className="flex gap-3">
+                                <button 
+                                    onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))}
+                                    className="px-5 py-3 rounded-xl font-bold text-sm text-[#8E939B] hover:text-white hover:bg-white/5 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={submitPayment}
+                                    disabled={((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0)) < checkoutModal.totalAmount}
+                                    className="px-6 py-3 rounded-xl font-bold text-sm bg-emerald-500 text-black hover:bg-emerald-400 transition-all disabled:opacity-20 disabled:hover:bg-emerald-500 disabled:cursor-not-allowed flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                                >
+                                    Confirm Payment
+                                </button>
+                            </div>
+                        </div>      
+                    </div>
                 </div>
-            </div>      
+            )}       
 
             {/* ── EDIT SERVICE MODAL ───────────────────────────────────────── */}
             {isEditModalOpen && (

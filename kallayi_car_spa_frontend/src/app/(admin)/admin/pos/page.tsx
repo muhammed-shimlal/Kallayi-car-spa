@@ -9,6 +9,9 @@ import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { ServicePackage } from '@/types/admin';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
 
 const posSchema = z.object({
   plate_number: z.string().min(1, "License plate is required"),
@@ -26,7 +29,7 @@ type POSFormValues = z.infer<typeof posSchema>;
 
 export default function AdminExpressPOSPage() {
   const router = useRouter();
-  const [packages, setPackages] = useState<any[]>([]);
+  const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [isLoadingPackages, setIsLoadingPackages] = useState(true);
 
   const {
@@ -56,7 +59,7 @@ export default function AdminExpressPOSPage() {
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("auth_token");
-        const res = await fetch(`http://127.0.0.1:8001/api/vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`, {
+        const res = await fetch(`${API_BASE}/vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`, {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
 
@@ -79,7 +82,7 @@ export default function AdminExpressPOSPage() {
     const fetchPackages = async () => {
       try {
         const token = localStorage.getItem("auth_token");
-        const res = await fetch("http://127.0.0.1:8001/api/service-packages/", {
+        const res = await fetch(`${API_BASE}/service-packages/`, {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
         if (res.ok) {
@@ -108,7 +111,7 @@ export default function AdminExpressPOSPage() {
   const onSubmit = async (data: POSFormValues) => {
     try {
       const token = localStorage.getItem("auth_token");
-      const res = await fetch("http://127.0.0.1:8001/api/bookings/express-walkin/", {
+      const res = await fetch(`${API_BASE}/bookings/express-walkin/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Syncopate, Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 import { Toaster } from "react-hot-toast";
+import QueryProvider from "@/components/providers/QueryProvider";
 import "./globals.css";
 
 const syncopate = Syncopate({
@@ -37,7 +38,9 @@ export default function RootLayout({
         className={`${syncopate.variable} ${jakarta.variable} ${grotesk.variable} antialiased bg-obsidian text-white`}
       >
         <Toaster toastOptions={{ style: { background: '#141518', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' } }} />
-        {children}
+        <QueryProvider>
+          {children}
+        </QueryProvider>
       </body>
     </html>
   );
