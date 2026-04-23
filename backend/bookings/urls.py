@@ -7,7 +7,6 @@ router.register(r'services', ServicePackageViewSet, basename='services')
 router.register(r'', BookingViewSet, basename='bookings')
 
 urlpatterns = [
-    path('', include(router.urls)),
     path('express-walkin/', express_walkin, name='express-walkin'),
     path('update-stage/<int:booking_id>/', update_booking_stage, name='update-booking-stage'),
     path('live-queue/', live_queue, name='live-queue'),
@@ -16,4 +15,5 @@ urlpatterns = [
     path('my-tasks/', my_assigned_tasks, name='my-tasks'),
     path('task/<int:booking_id>/start/', start_task, name='start-task'),
     path('task/<int:booking_id>/finish/', finish_task, name='finish-task'),
+    path('', include(router.urls)),
 ]

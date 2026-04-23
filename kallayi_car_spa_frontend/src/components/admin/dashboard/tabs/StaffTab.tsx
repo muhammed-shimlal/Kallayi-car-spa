@@ -6,7 +6,7 @@ import { useDashboard } from '../context/DashboardContext';
 
 export default function StaffTab() {
     const { uiState, staffState, financeState } = useDashboard();
-    const { staffSubTab, setStaffSubTab, setIsAdvanceModalOpen, openStaffModal } = uiState;
+    const { staffSubTab, setStaffSubTab, isAdvanceModalOpen, setIsAdvanceModalOpen, openStaffModal } = uiState;
     const { totalDailyPayout } = financeState;
     const { 
         payrollData, staffDirectory, editingStaff, staffForm, advanceForm, setStaffForm, setAdvanceForm,
@@ -201,6 +201,62 @@ export default function StaffTab() {
                                     </div>
                                 </div>
                             </>
+                        )}
+                        {/* RECORD CASH ADVANCE MODAL */}
+                        {isAdvanceModalOpen && (
+                            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                                <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">RECORD CASH ADVANCE</h3>
+                                        <button onClick={() => setIsAdvanceModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors">
+                                            <PlusCircle className="w-6 h-6 rotate-45" />
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4 mb-8">
+                                        <div>
+                                            <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Select Staff Member</label>
+                                            <select
+                                                value={advanceForm.staff_id}
+                                                onChange={(e) => setAdvanceForm({ ...advanceForm, staff_id: e.target.value })}
+                                                className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
+                                            >
+                                                <option value="" className="bg-[#141518]">-- Select Worker --</option>
+                                                {payrollData.map(worker => (
+                                                    <option key={worker.id} value={worker.id} className="bg-[#141518]">{worker.name} ({worker.role})</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Amount (₹)</label>
+                                                <input
+                                                    type="number" value={advanceForm.amount}
+                                                    onChange={(e) => setAdvanceForm({ ...advanceForm, amount: e.target.value })}
+                                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                                    placeholder="500"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Description</label>
+                                                <input
+                                                    type="text" value={advanceForm.description}
+                                                    onChange={(e) => setAdvanceForm({ ...advanceForm, description: e.target.value })}
+                                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                                    placeholder="Food/Lunch"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={handleAddAdvance}
+                                        className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] hover:bg-white transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <BadgeDollarSign className="w-5 h-5" /> CONFIRM ADVANCE
+                                    </button>
+                                </div>
+                            </div>
                         )}
                     </div>
     );

@@ -386,8 +386,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
                 headers: { 'Authorization': `Token ${token}` }
             });
             if (res.ok || res.status === 204) {
-                toast.success('Staff member terminated.');
                 queryClient.invalidateQueries({ queryKey: ['staff'] });
+                queryClient.invalidateQueries({ queryKey: ['payrollData'] });
+                toast.success("Staff member terminated.");
             } else { toast.error('Failed to terminate.'); }
         } catch (e) { toast.error('Network error'); }
     };

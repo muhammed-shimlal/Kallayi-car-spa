@@ -134,7 +134,11 @@ def daily_settlement_ledger(request):
     if not user.is_staff and not (hasattr(user, 'staff_profile') and user.staff_profile.role in ['ADMIN', 'MANAGER']):
         return Response({'error': 'Forbidden'}, status=403)
         
-    staff_users = StaffProfile.objects.filter(role__in=['WASHER', 'TECHNICIAN', 'DRIVER'])
+    staff_users = StaffProfile.objects.filter(
+        role__in=['WASHER', 'TECHNICIAN', 'DRIVER'],
+        is_active=True,
+        user__is_active=True
+    )
     
     today = timezone.localdate()
     ledger = []
