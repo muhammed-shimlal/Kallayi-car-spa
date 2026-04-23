@@ -642,24 +642,42 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     };
 
     // Single consolidated invoice download function (downloadInvoicePDF removed — duplicate)
-    const downloadInvoice = useCallback(async (bookingId: number) => {
+    const downloadInvoice = useCallback(async (bookingId: string | number) => {
         try {
+            const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+            
             const res = await fetch(`${API_BASE}/finance/invoice/${bookingId}/pdf/`, {
-                headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
+                method: 'GET',
+                headers: {
+                    'Authorization': `Token ${token}`,
+                },
             });
-            if (!res.ok) throw new Error('Failed to generate PDF');
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`Failed to download (${res.status}): ${errorText}`);
+            }
+
+            // Convert the response to a Blob to handle the binary PDF data
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
+            
+            // Create a temporary hidden link to trigger the browser's download behavior
             const a = document.createElement('a');
+            a.style.display = 'none';
             a.href = url;
-            a.download = `Kallayi_Invoice_${bookingId}.pdf`;
+            a.download = `Invoice_${bookingId}.pdf`;
             document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            
+            // Clean up
             window.URL.revokeObjectURL(url);
-            toast.success('Invoice Downloaded');
-        } catch (e) {
-            toast.error('Failed to download invoice.');
+            document.body.removeChild(a);
+            
+            toast.success("Invoice downloaded successfully!");
+        } catch (error) {
+            console.error("Download Error:", error);
+            toast.error("Failed to download PDF invoice. Check console.");
         }
     }, []);
 

@@ -52,10 +52,16 @@ class BookingViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def completed(self, request):
         """
-        Returns all bookings ready for invoicing (Checkout or Completed)
+        Returns all bookings ready for invoicing.
+        Queries Booking.objects directly to bypass any active-only queue filters.
         """
-        completed_bookings = self.queryset.filter(
-            status__in=['CHECKOUT', 'COMPLETED', 'DELIVERED']
+        completed_bookings = Booking.objects.filter(
+            status__in=[
+                'CHECKOUT', 'Checkout', 'checkout', 
+                'COMPLETED', 'Completed', 'completed', 
+                'DELIVERED', 'Delivered', 'delivered',
+                'PICK UP', 'Pick Up', 'pick up', 'PICKUP', 'Pickup'
+            ]
         ).select_related('customer', 'technician', 'service_package', 'vehicle').order_by('-created_at')
         
         serializer = self.get_serializer(completed_bookings, many=True)
