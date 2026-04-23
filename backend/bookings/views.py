@@ -51,28 +51,15 @@ class BookingViewSet(viewsets.ModelViewSet):
  
     @action(detail=False, methods=['get'])
     def completed(self, request):
-        """Fetch the 100 most recent completed bookings specifically for the PDF Invoices table."""
-        # Use select_related to efficiently grab the nested database tables
-        completed_bookings = Booking.objects.filter(status='COMPLETED').select_related(
-            'customer__user', 'vehicle', 'service_package'
-        ).order_by('-id')[:100]
+        """
+        Returns all bookings ready for invoicing (Checkout or Completed)
+        """
+        completed_bookings = self.queryset.filter(
+            status__in=['CHECKOUT', 'COMPLETED', 'DELIVERED']
+        ).select_related('customer', 'technician', 'service_package', 'vehicle').order_by('-created_at')
         
-        data = []
-        for b in completed_bookings:
-            # Prioritize the actual Invoice amount if it exists, otherwise fall back to package price
-            amount = b.service_package.price if b.service_package else 0.0
-            if hasattr(b, 'invoice') and b.invoice:
-                amount = b.invoice.amount
-
-            # Pack the dictionary EXACTLY how the frontend expects to read it
-            data.append({
-                'id': b.id,
-                'vehicle_info': b.vehicle.plate_number if b.vehicle else 'Walk-In Customer',
-                'customer_phone': b.customer.phone_number if b.customer else 'N/A',
-                'final_price': amount,
-            })
-            
-        return Response(data)
+        serializer = self.get_serializer(completed_bookings, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def available_slots(self, request):

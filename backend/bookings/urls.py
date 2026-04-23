@@ -1,9 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import express_walkin, update_booking_stage, live_queue, vehicle_crm_history, global_service_history, my_assigned_tasks, start_task, finish_task, ServicePackageViewSet
+from .views import express_walkin, update_booking_stage, live_queue, vehicle_crm_history, global_service_history, my_assigned_tasks, start_task, finish_task, ServicePackageViewSet, BookingViewSet
 
 router = DefaultRouter()
 router.register(r'services', ServicePackageViewSet, basename='services')
+router.register(r'', BookingViewSet, basename='bookings')
 
 urlpatterns = [
     path('', include(router.urls)),
