@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { EyeOff, Eye, Lock, ShieldCheck, Loader2 } from "lucide-react";
+import { EyeOff, Eye, Lock, ShieldCheck, Loader2, User } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -10,7 +10,8 @@ import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import Link from "next/link";
 
-const loginSchema = z.object({
+const signupSchema = z.object({
+  name: z.string().min(2, "Full Name is required"),
   phone: z.string()
     .min(1, "Phone number is required")
     .refine((val) => val && isValidPhoneNumber(val), {
@@ -19,9 +20,9 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-type LoginFormValues = z.infer<typeof loginSchema>;
+type SignupFormValues = z.infer<typeof signupSchema>;
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -32,64 +33,46 @@ export default function LoginPage() {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
+  } = useForm<SignupFormValues>({
+    resolver: zodResolver(signupSchema),
     defaultValues: {
+      name: "",
       phone: "",
       password: "",
     },
   });
 
-  const onSubmit = async (data: LoginFormValues) => {
+  const onSubmit = async (data: SignupFormValues) => {
     setError("");
     setIsLoading(true);
 
-    // Logs the E.164 phone number as requested for the backend
-    console.log("Attempting login with E.164 Identity:", data.phone);
-
     try {
       // 1. Authenticate with Django Backend API
-      const authRes = await fetch("http://127.0.0.1:8001/api/api-token-auth/", {
+      const authRes = await fetch("http://127.0.0.1:8001/api/customers/register/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: data.phone, password: data.password }),
+        body: JSON.stringify({ name: data.name, phone: data.phone, password: data.password }),
       });
 
       if (!authRes.ok) {
-        throw new Error("Invalid phone number or password");
+        const errorData = await authRes.json();
+        throw new Error(errorData.error || "Failed to register. Please try again.");
       }
 
       const authData = await authRes.json();
       const token = authData.token;
 
-      // Force save to Local Storage (This is what the Admin page looks for!)
+      if (!token) throw new Error("No token received from the server.");
+
+      // Force save to Local Storage (This is what the Dashboard looks for!)
       localStorage.setItem("auth_token", token);
 
       // Keep the cookie if you want, but localStorage is mandatory.
       document.cookie = `auth_token=${token}; path=/;`;
 
-      // 2. Fetch User Profile
-      const meRes = await fetch("http://127.0.0.1:8001/api/core/users/me/", {
-        headers: {
-          Authorization: `Token ${token}`,
-        },
-      });
-
-      if (!meRes.ok) {
-        throw new Error("Failed to fetch user profile data");
-      }
-
-      const meData = await meRes.json();
-      const role = meData.role;
-
-      // 3. Routing Based on Role
-      if (role === "ADMIN" || role === "MANAGER") {
-        router.push("/admin/dashboard");
-      } else if (role === "WASHER" || role === "DRIVER" || role === "TECHNICIAN") {
-        router.push("/staff/queue");
-      } else {
-        router.push("/customer/dashboard");
-      }
+      // 2. Routing to Customer Dashboard
+      router.push("/customer/dashboard");
+      
     } catch (err: any) {
       setError(err.message || "An authentication error occurred.");
     } finally {
@@ -113,12 +96,35 @@ export default function LoginPage() {
               <ShieldCheck className="w-8 h-8 text-cyan relative z-10" />
             </div>
           </div>
-          <h2 className="font-grotesk text-xs text-cyan uppercase tracking-[0.3em] font-semibold mb-3">SECURE PORTAL</h2>
-          <h1 className="font-syncopate text-3xl md:text-4xl text-white font-bold tracking-tight">AUTHORIZATION</h1>
+          <h2 className="font-grotesk text-xs text-cyan uppercase tracking-[0.3em] font-semibold mb-3">NEW USER PROTOCOL</h2>
+          <h1 className="font-syncopate text-3xl md:text-4xl text-white font-bold tracking-tight">REGISTRATION</h1>
         </div>
 
-        {/* Login Form */}
+        {/* Signup Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          
+          {/* Full Name Input */}
+          <div className="space-y-2 relative group w-full">
+            <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Full Name</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <User className="h-5 w-5 text-tungsten group-focus-within:text-cyan transition-colors" />
+              </div>
+              <input
+                type="text"
+                {...register("name")}
+                disabled={isLoading}
+                className={`w-full bg-white/5 border ${errors.name ? 'border-[#E52323]' : 'border-white/10'} py-4 pl-12 pr-4 rounded-xl text-white font-mono focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan transition-all placeholder:text-tungsten/40`}
+                placeholder="Enter full name..."
+              />
+            </div>
+            {errors.name && (
+              <p className="text-[10px] text-[#E52323] font-bold tracking-widest uppercase ml-1 mt-2">
+                {errors.name.message}
+              </p>
+            )}
+          </div>
+
           {/* Phone Input */}
           <div className="space-y-2 relative group w-full">
             <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Secure Phone ID</label>
@@ -140,7 +146,7 @@ export default function LoginPage() {
 
           {/* Password Input */}
           <div className="space-y-2 relative group w-full">
-            <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Password</label>
+            <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Secure Access Code</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Lock className="h-5 w-5 text-tungsten group-focus-within:text-cyan transition-colors" />
@@ -150,7 +156,7 @@ export default function LoginPage() {
                 {...register("password")}
                 disabled={isLoading}
                 className={`w-full bg-white/5 border ${errors.password ? 'border-[#E52323]' : 'border-white/10'} py-4 pl-12 pr-12 rounded-xl text-white font-mono focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan transition-all placeholder:text-tungsten/40`}
-                placeholder="Enter access code..."
+                placeholder="Create access code..."
               />
               <button
                 type="button"
@@ -173,7 +179,7 @@ export default function LoginPage() {
             {error && `> ERR: ${error}`}
           </div>
 
-          {/* Login Button */}
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={isLoading}
@@ -182,19 +188,19 @@ export default function LoginPage() {
             {isLoading ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                AUTHENTICATING...
+                AUTHORIZING...
               </>
             ) : (
               <>
-                INITIALIZE <ShieldCheck className="w-5 h-5" />
+                CREATE ACCOUNT <ShieldCheck className="w-5 h-5" />
               </>
             )}
           </button>
 
-          {/* Link to Signup */}
+          {/* Link back to Login */}
           <div className="text-center mt-6">
-            <Link href="/signup" className="font-grotesk text-[11px] text-tungsten hover:text-cyan transition-colors tracking-widest uppercase">
-              Request Access? Register Here
+            <Link href="/login" className="font-grotesk text-[11px] text-tungsten hover:text-cyan transition-colors tracking-widest uppercase">
+              Already registered? Authorize Here
             </Link>
           </div>
         </form>

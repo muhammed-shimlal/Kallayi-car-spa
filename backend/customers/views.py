@@ -207,25 +207,27 @@ class CouponViewSet(viewsets.ModelViewSet):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_customer(request):
-    username = request.data.get('username')
-    email = request.data.get('email')
+    name = request.data.get('name', '').strip()
+    phone = request.data.get('phone', '').strip()
     password = request.data.get('password')
 
-    if not username or not password:
-        return Response({'error': 'Username and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not name or not phone or not password:
+        return Response({'error': 'Name, phone, and password are required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if User.objects.filter(username=username).exists():
-        return Response({'error': 'Username already taken'}, status=status.HTTP_400_BAD_REQUEST)
+    # Username is strictly the phone number
+    if User.objects.filter(username=phone).exists():
+        return Response({'error': 'Phone number already registered'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        user = User.objects.create_user(username=username, email=email, password=password)
-        Customer.objects.create(user=user)
+        user = User.objects.create_user(username=phone, password=password, first_name=name)
+        Customer.objects.create(user=user, phone_number=phone)
         token, _ = Token.objects.get_or_create(user=user)
         
         return Response({
             'token': token.key,
             'user_id': user.id,
             'username': user.username,
+            'name': user.first_name,
             'role': 'customer'
         }, status=status.HTTP_201_CREATED)
     except Exception as e:

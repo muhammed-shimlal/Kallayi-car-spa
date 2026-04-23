@@ -15,6 +15,7 @@ const staffSchema = z.object({
         .string()
         .min(10, 'Phone number must be at least 10 digits')
         .regex(/^\+?[0-9\s\-()]{10,15}$/, 'Enter a valid phone number'),
+    password: z.string().optional(),
     role: z.enum(['WASHER', 'TECHNICIAN', 'MANAGER', 'DRIVER'], {
         required_error: 'Please select a role',
     }),
@@ -72,6 +73,7 @@ export default function StaffModal() {
         defaultValues: {
             first_name: '',
             phone_number: '',
+            password: '',
             role: 'WASHER',
             base_salary: '',
             commission_rate: '',
@@ -84,6 +86,7 @@ export default function StaffModal() {
             reset({
                 first_name: editingStaff.first_name ?? '',
                 phone_number: editingStaff.phone_number ?? '',
+                password: '',
                 role: (editingStaff.role as StaffFormValues['role']) ?? 'WASHER',
                 base_salary: String(editingStaff.base_salary ?? ''),
                 commission_rate: String(editingStaff.commission_rate ?? ''),
@@ -92,6 +95,7 @@ export default function StaffModal() {
             reset({
                 first_name: '',
                 phone_number: '',
+                password: '',
                 role: 'WASHER',
                 base_salary: '',
                 commission_rate: '',
@@ -123,12 +127,19 @@ export default function StaffModal() {
                     </button>
                 </div>
 
-                {/* Default password notice */}
+                {/* Initial Access Code */}
                 {!editingStaff && (
-                    <div className="bg-[#01FFFF]/5 border border-[#01FFFF]/20 px-4 py-3 rounded-xl mb-6">
-                        <p className="text-[10px] text-[#01FFFF] uppercase tracking-widest font-bold">
-                            Default login password: Kallayi123!
-                        </p>
+                    <div className="mb-6">
+                        <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">
+                            Initial Access Code (Password)
+                        </label>
+                        <input
+                            type="text"
+                            {...register('password')}
+                            className={inputClass(!!errors.password)}
+                            placeholder="e.g. Kallayi123!"
+                        />
+                        <FieldError message={errors.password?.message} />
                     </div>
                 )}
 

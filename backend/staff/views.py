@@ -2,6 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
+from django.db import transaction
+from django.contrib.auth.models import User
 from .models import StaffProfile, TimeEntry, SOPChecklist, JobInspection
 from .serializers import StaffProfileSerializer, TimeEntrySerializer, SOPChecklistSerializer, JobInspectionSerializer, StaffDirectorySerializer
 from django.utils import timezone
@@ -10,6 +12,41 @@ from django.utils import timezone
 class StaffDirectoryViewSet(viewsets.ModelViewSet):
     """Full CRUD for admin to manage staff members."""
     serializer_class = StaffDirectorySerializer
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        phone_number = request.data.get('phone_number', '').strip()
+        first_name = request.data.get('first_name', '').strip()
+        password = request.data.get('password')
+        role = request.data.get('role', 'WASHER')
+        base_salary = request.data.get('base_salary', 0)
+        commission_rate = request.data.get('commission_rate', 0)
+
+        if not phone_number or not password or not first_name:
+            return Response({'error': 'First name, phone number, and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if User.objects.filter(username=phone_number).exists():
+            return Response({'error': 'A user with this phone number already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.create_user(
+                username=phone_number,
+                password=password,
+                first_name=first_name
+            )
+            
+            staff_profile = StaffProfile.objects.create(
+                user=user,
+                role=role,
+                base_salary=base_salary,
+                commission_rate=commission_rate,
+                is_active=True
+            )
+            
+            serializer = self.get_serializer(staff_profile)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def get_queryset(self):
         return StaffProfile.objects.filter(
