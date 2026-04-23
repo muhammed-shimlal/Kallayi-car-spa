@@ -261,28 +261,19 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
     const [editingLedgerEntry, setEditingLedgerEntry] = useState<GenericData | null>(null);
     const [ledgerForm, setLedgerForm] = useState({ technician_id: '', status: 'COMPLETED' });
-    const [invoiceList, setInvoiceList] = useState<Invoice[]>([]);
-    useEffect(() => {
-        // Only fetch when the user clicks the "PDF Invoices" sub-tab
-        if (activeTab !== 'finance' || financeSubTab !== 'invoices') return;
-        
-        const fetchInvoices = async () => {
-            const token = localStorage.getItem('auth_token');
-            if (!token) return;
-            try {
-                const res = await fetch(`${API_BASE}/bookings/completed/`, {
-                    headers: { 'Authorization': `Token ${token}` }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setInvoiceList(Array.isArray(data) ? data : (data.results || []));
-                }
-            } catch (e) { 
-                console.error("Failed to load invoice list", e); 
-            }
-        };
-        fetchInvoices();
-    }, [activeTab, financeSubTab]);
+    const invoiceQuery = useQuery({
+        queryKey: ['invoiceData'],
+        queryFn: async () => {
+            const res = await fetch(`${API_BASE}/bookings/completed/`, { headers: fetchHeaders });
+            if (!res.ok) throw new Error('Failed to fetch invoices');
+            const data = await res.json();
+            return Array.isArray(data) ? data : (data.results || []);
+        },
+        enabled: !!token,
+        refetchOnMount: true,
+        refetchOnWindowFocus: true
+    });
+    const invoiceList = invoiceQuery.data || [];
 
 
     // --- Service Menu CRUD ---
