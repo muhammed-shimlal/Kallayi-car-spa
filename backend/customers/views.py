@@ -11,6 +11,55 @@ from django.utils import timezone
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
+
+    def create(self, request, *args, **kwargs):
+        name = request.data.get('name', '').strip()
+        phone_number = request.data.get('phone_number', '')
+        credit_limit = request.data.get('credit_limit', 0)
+
+        if not name:
+            return Response({'error': 'Name is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Auto-generate a unique username based on the provided name
+        base_username = name.lower().replace(' ', '_')
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}_{counter}"
+            counter += 1
+
+        # Create the underlying User object first
+        new_user = User.objects.create_user(
+            username=username,
+            password='Kallayi123!',
+            first_name=name
+        )
+
+        # Create the Customer profile linked to the new user
+        customer = Customer.objects.create(
+            user=new_user,
+            phone_number=phone_number,
+            credit_limit=credit_limit
+        )
+
+        serializer = self.get_serializer(customer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+
+        # Update the underlying User's first_name if a new name is provided
+        name = request.data.get('name')
+        if name is not None:
+            instance.user.first_name = name.strip()
+            instance.user.save()
+
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response(serializer.data)
     
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def redeem_points(self, request):

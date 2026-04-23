@@ -909,7 +909,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             fetchExpenseCategories, handleFileChange, clearFile, handleExpenseSubmit, startEditingExpense,
             cancelEditingExpense, deleteExpense, downloadTaxReport, downloadInvoice, approveExpense, settleCredit,
             openKhataCustomerModal, saveKhataCustomer, deleteKhataCustomer, loadKhataLedger, handleKhataSettle,
-            handleCloseRegister, submitManualKhataCharge
+            handleCloseRegister, submitManualKhataCharge, setSelectedKhataCustomer, setEditingKhataCustomer
         },
         staffState: {
             payrollData, staffDirectory, editingStaff, staffForm, advanceForm, setStaffForm, setAdvanceForm,

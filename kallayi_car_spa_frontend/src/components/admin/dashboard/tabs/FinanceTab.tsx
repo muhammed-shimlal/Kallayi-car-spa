@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { Download, TrendingUp, Clock, PlusCircle, UserPlus, AlertCircle, FileText, Pencil, Trash2, Check, Tag, Calendar, Image as ImageIcon, X } from 'lucide-react';
+import { Download, TrendingUp, Clock, PlusCircle, UserPlus, AlertCircle, FileText, Pencil, Trash2, Check, Tag, Calendar, Image as ImageIcon, X, BadgeDollarSign } from 'lucide-react';
 import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Line } from 'recharts';
 import { useDashboard } from '../context/DashboardContext';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -11,7 +11,8 @@ export default function FinanceTab() {
     const { uiState, financeState } = useDashboard();
     const { 
         isLoading, financeSubTab, setFinanceSubTab, setIsManualKhataOpen,
-        setIsKhataCustomerModalOpen, setIsKhataLedgerModalOpen, setIsKhataModalOpen
+        setIsKhataCustomerModalOpen, setIsKhataLedgerModalOpen, setIsKhataModalOpen,
+        isManualKhataOpen, isKhataModalOpen, isKhataCustomerModalOpen, isKhataLedgerModalOpen
     } = uiState;
     
     const { 
@@ -22,7 +23,7 @@ export default function FinanceTab() {
         setKhataCustomerForm, setKhataPaymentAmount, setManualKhataForm, handleFileChange, clearFile, 
         handleExpenseSubmit, startEditingExpense, cancelEditingExpense, deleteExpense, downloadTaxReport, 
         downloadInvoice, settleCredit, openKhataCustomerModal, saveKhataCustomer, deleteKhataCustomer, 
-        loadKhataLedger, handleKhataSettle, submitManualKhataCharge
+        loadKhataLedger, handleKhataSettle, submitManualKhataCharge, setSelectedKhataCustomer, setEditingKhataCustomer
     } = financeState;
 
     return (
@@ -451,6 +452,215 @@ export default function FinanceTab() {
                                 </table>
                             </div>
                         )}
+\n\n            {/* MANUAL KHATA CHARGE MODAL */}
+            {isManualKhataOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-purple-400">ADD KHATA CHARGE</h3>
+                            <button onClick={() => setIsManualKhataOpen(false)} className="text-[#8E939B] hover:text-white transition-colors">
+                                <PlusCircle className="w-6 h-6 rotate-45" />
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Phone Number</label>
+                                <input
+                                    type="tel" value={manualKhataForm.phone}
+                                    onChange={(e) => setManualKhataForm({ ...manualKhataForm, phone: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-all mt-2"
+                                    placeholder="+91 9876543210"
+                                />
+                            </div>
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Customer Name</label>
+                                <input
+                                    type="text" 
+                                    list="khata-customers-list"
+                                    value={manualKhataForm.name}
+                                    onChange={(e) => {
+                                        const typedName = e.target.value;
+                                        // Use the existing khataCustomers array for the lookup
+                                        const matchedCustomer = khataCustomers.find((c: any) => c.name.toLowerCase() === typedName.toLowerCase());
+                                        
+                                        setManualKhataForm({ 
+                                            ...manualKhataForm, 
+                                            name: typedName,
+                                            ...(matchedCustomer && matchedCustomer.phone_number ? { phone: matchedCustomer.phone_number } : {})
+                                        });
+                                    }}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-all mt-2"
+                                    placeholder="e.g. Rahul Kumar"
+                                />
+                                <datalist id="khata-customers-list">
+                                    {khataCustomers.map((c: any) => (
+                                        <option key={c.id} value={c.name} />
+                                    ))}
+                                </datalist>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Amount (₹)</label>
+                                    <input
+                                        type="number" value={manualKhataForm.amount}
+                                        onChange={(e) => setManualKhataForm({ ...manualKhataForm, amount: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-all mt-2"
+                                        placeholder="500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Description</label>
+                                    <input
+                                        type="text" value={manualKhataForm.description}
+                                        onChange={(e) => setManualKhataForm({ ...manualKhataForm, description: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 transition-all mt-2"
+                                        placeholder="Credit"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={submitManualKhataCharge}
+                            className="w-full bg-purple-500 text-white font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:bg-purple-400 transition-all flex items-center justify-center gap-2"
+                        >
+                            <PlusCircle className="w-5 h-5" /> CONFIRM CHARGE
+                        </button>
                     </div>
+                </div>
+            )}
+
+            {/* KHATA PAYMENT MODAL */}
+            {isKhataModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out]">
+                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">RECEIVE PAYMENT</h3>
+                            <button onClick={() => setIsKhataModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors"><PlusCircle className="w-6 h-6 rotate-45" /></button>
+                        </div>
+                        <p className="text-sm text-[#8E939B] mb-6">Record a partial or full settlement for <strong className="text-white">{selectedKhataCustomer?.name}</strong>.</p>
+
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Payment Amount (₹)</label>
+                                <input
+                                    type="number"
+                                    value={khataPaymentAmount}
+                                    onChange={(e) => setKhataPaymentAmount(e.target.value)}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white font-mono focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2"
+                                    placeholder="e.g. 500"
+                                />
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleKhataSettle}
+                            className="w-full bg-[#01FFFF] text-black font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(1,255,255,0.4)] justify-center hover:bg-white transition-all flex items-center gap-2"
+                        >
+                            <BadgeDollarSign className="w-5 h-5" /> CONFIRM SETTLEMENT
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* KHATA CUSTOMER MODAL */}
+            {isKhataCustomerModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518]/95 border border-white/10 p-8 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="font-syncopate font-bold tracking-widest text-[#A855F7]">{editingKhataCustomer ? 'EDIT KHATA CUSTOMER' : 'REGISTER KHATA CUSTOMER'}</h3>
+                            <button onClick={() => { setIsKhataCustomerModalOpen(false); setEditingKhataCustomer(null); }} className="text-[#8E939B] hover:text-white transition-colors"><PlusCircle className="w-6 h-6 rotate-45" /></button>
+                        </div>
+                        <div className="space-y-4 mb-8">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Customer Name</label>
+                                <input
+                                    type="text"
+                                    value={khataCustomerForm.name}
+                                    onChange={(e) => setKhataCustomerForm({ ...khataCustomerForm, name: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#A855F7] focus:ring-1 focus:ring-[#A855F7] transition-all mt-2"
+                                    placeholder="e.g. Anjali Sharma"
+                                />
+                            </div>
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Phone Number</label>
+                                <input
+                                    type="tel"
+                                    value={khataCustomerForm.phone_number}
+                                    onChange={(e) => setKhataCustomerForm({ ...khataCustomerForm, phone_number: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#A855F7] focus:ring-1 focus:ring-[#A855F7] transition-all mt-2"
+                                    placeholder="e.g. 9876543210"
+                                />
+                            </div>
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Credit Limit (₹)</label>
+                                <input
+                                    type="number"
+                                    value={khataCustomerForm.credit_limit}
+                                    onChange={(e) => setKhataCustomerForm({ ...khataCustomerForm, credit_limit: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#A855F7] focus:ring-1 focus:ring-[#A855F7] transition-all mt-2"
+                                    placeholder="e.g. 5000"
+                                />
+                            </div>
+                        </div>
+                        <button
+                            onClick={saveKhataCustomer}
+                            className="w-full bg-[#A855F7] text-white font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.35)] hover:bg-[#C084FC] transition-all flex items-center justify-center gap-2"
+                        >
+                            <UserPlus className="w-5 h-5" /> SAVE CUSTOMER
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* KHATA LEDGER HISTORY MODAL */}
+            {isKhataLedgerModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
+                    <div className="bg-[#141518]/95 border border-white/10 p-8 rounded-[2.5rem] w-full max-w-3xl shadow-[0_0_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">KHATA LEDGER HISTORY</h3>
+                                <p className="text-[#8E939B] text-sm">Showing transactions for <strong className="text-white">{selectedKhataCustomer?.name}</strong>.</p>
+                            </div>
+                            <button onClick={() => setIsKhataLedgerModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors"><PlusCircle className="w-6 h-6 rotate-45" /></button>
+                        </div>
+                        <div className="max-h-[60vh] overflow-auto rounded-3xl border border-white/10 bg-black/30">
+                            <table className="w-full text-left text-sm">
+                                <thead className="sticky top-0 bg-[#0b0c0f]/95 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                    <tr>
+                                        <th className="p-4 pl-6">Date</th>
+                                        <th className="p-4">Description</th>
+                                        <th className="p-4">Type</th>
+                                        <th className="p-4 text-right pr-6">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {khataLedger.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
+                                        </tr>
+                                    ) : (
+                                        khataLedger.map((entry: any) => (
+                                            <tr key={entry.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
+                                                <td className="p-4 text-gray-300 max-w-[320px] truncate" title={entry.description}>{entry.description}</td>
+                                                <td className="p-4">
+                                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${entry.transaction_type === 'SETTLEMENT' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-[#FF2A6D]/10 text-[#FF2A6D]'}`}>
+                                                        {entry.transaction_type === 'SETTLEMENT' ? 'Payment' : 'Credit'}
+                                                    </span>
+                                                </td>
+                                                <td className={`p-4 text-right font-bold ${entry.transaction_type === 'SETTLEMENT' ? 'text-emerald-400' : 'text-[#FF2A6D]'}`}>₹{entry.amount}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            \n                    </div>
     );
 }
