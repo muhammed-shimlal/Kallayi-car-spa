@@ -15,6 +15,8 @@ from django.db import transaction
 import random
 from fleet.models import Vehicle
 from customers.models import Customer
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 class IsAdminUserOrReadOnly(BasePermission):
     def has_permission(self, request, view):
@@ -318,11 +320,7 @@ def update_booking_stage(request, booking_id):
     if bay_assignment is not None:
         booking.bay_assignment = bay_assignment
     if assigned_technician_id:
-        try:
-            tech = User.objects.get(id=assigned_technician_id)
-            booking.technician = tech
-        except User.DoesNotExist:
-            pass
+        booking.technician_id = assigned_technician_id
 
     booking.save()
 

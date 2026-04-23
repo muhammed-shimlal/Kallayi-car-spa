@@ -43,7 +43,7 @@ export default function AdminDashboard() {
         for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            days.push({ name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: Math.floor(Math.random() * 8000) + 2000 });
+            days.push({ name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: 0 });
         }
         return days;
     };

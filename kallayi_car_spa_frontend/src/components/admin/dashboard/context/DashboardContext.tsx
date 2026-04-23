@@ -34,6 +34,10 @@ const DashboardContext = createContext<any>(null);
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
     const router = useRouter();
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     // --- Navigation State ---
     // isLoading replaced by isGlobalLoading
@@ -189,7 +193,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         enabled: !!token
     });
 
-    const isGlobalLoading = userQuery.isLoading || kpiQuery.isLoading || chartQuery.isLoading || bookingsQuery.isLoading || expensesQuery.isLoading || khataQuery.isLoading || customerCreditsQuery.isLoading || payrollQuery.isLoading || servicesQuery.isLoading || staffQuery.isLoading || eodQuery.isLoading || analyticsQuery.isLoading;
+    const isGlobalLoading = !isMounted || userQuery.isLoading || kpiQuery.isLoading || chartQuery.isLoading || bookingsQuery.isLoading || expensesQuery.isLoading || khataQuery.isLoading || customerCreditsQuery.isLoading || payrollQuery.isLoading || servicesQuery.isLoading || staffQuery.isLoading || eodQuery.isLoading || analyticsQuery.isLoading;
 
     const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0 };
     const chartData = chartQuery.data || generateDemoChartData();
@@ -210,7 +214,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            days.push({ name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: Math.floor(Math.random() * 8000) + 2000 });
+            days.push({ name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: 0 });
         }
         return days;
     }
