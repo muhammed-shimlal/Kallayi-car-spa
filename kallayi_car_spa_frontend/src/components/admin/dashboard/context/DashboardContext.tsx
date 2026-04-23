@@ -74,19 +74,21 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         enabled: !!token
     });
 
-    const chartQuery = useQuery<ChartDataPoint[]>({
+    const chartQuery = useQuery({
         queryKey: ['chartData'],
         queryFn: async () => {
             const res = await fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: fetchHeaders });
-            if (!res.ok) throw new Error('Failed');
+            if (!res.ok) throw new Error('Failed to fetch chart data');
             const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-                return data.map((d: ChartDataPoint) => ({ name: new Date(d.date || new Date()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), value: d.value }));
-            }
-            return generateDemoChartData();
+            
+            // Map the backend data to the exact format Recharts needs
+            // This handles multiple common backend naming conventions automatically
+            return data.map((item: any) => ({
+                name: item.date || item.day || item.name, 
+                value: Number(item.total || item.revenue || item.value || item.amount || 0)
+            }));
         },
-        enabled: !!token,
-        initialData: () => generateDemoChartData()
+        enabled: !!token
     });
 
     const bookingsQuery = useQuery<RecentBooking[]>({
