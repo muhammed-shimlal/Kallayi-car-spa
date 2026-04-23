@@ -1,7 +1,8 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAdminUser, SAFE_METHODS, BasePermission, IsAuthenticated
+from django.db import transaction
 from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
 from .models import Customer, SubscriptionPlan, MemberSubscription
@@ -205,7 +206,9 @@ class CouponViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUserOrReadOnly]
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
+@transaction.atomic
 def register_customer(request):
     name = request.data.get('name', '').strip()
     phone = request.data.get('phone', '').strip()
