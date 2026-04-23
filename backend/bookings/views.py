@@ -279,7 +279,35 @@ def update_booking_stage(request, booking_id):
     payment_khata = float(request.data.get('payment_khata', 0))
 
     if payment_khata > 0 and not booking.customer:
-        return Response({'error': 'Walk-In customers cannot use Khata/Credit.'}, status=400)
+        customer_name = request.data.get('customer_name')
+        
+        if not customer_name:
+            customer_name = "Walk-In Guest"
+            
+        from customers.models import Customer
+        from django.contrib.auth.models import User
+        import random
+        import string
+        
+        username = f"walkin_khata_{random.randint(100000, 999999)}"
+        while User.objects.filter(username=username).exists():
+            username = f"walkin_khata_{random.randint(100000, 999999)}"
+        
+        pwd = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        new_user = User.objects.create(
+            username=username,
+            first_name=customer_name
+        )
+        new_user.set_password(pwd)
+        new_user.save()
+        
+        customer = Customer.objects.create(
+            user=new_user,
+            phone_number=''
+        )
+            
+        booking.customer = customer
+        booking.save()
 
     valid_statuses = [s[0] for s in Booking.STATUS_CHOICES]
     if new_status and new_status not in valid_statuses:

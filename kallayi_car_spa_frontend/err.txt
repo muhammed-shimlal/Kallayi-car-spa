@@ -1,0 +1,13 @@
+src/app/(admin)/admin/dashboard/page.tsx(810,10): error TS17008: JSX element 'div' has no corresponding closing tag.
+src/app/(admin)/admin/dashboard/page.tsx(868,14): error TS17008: JSX element 'main' has no corresponding closing tag.
+src/app/(admin)/admin/dashboard/page.tsx(1448,15): error TS17002: Expected corresponding JSX closing tag for 'div'.
+src/app/(admin)/admin/dashboard/page.tsx(1973,6): error TS1005: '}' expected.
+src/app/(admin)/admin/dashboard/page.tsx(1974,1): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+src/app/(admin)/admin/dashboard/page.tsx(1974,2): error TS1005: '</' expected.
+src/components/admin/dashboard/tabs/FinanceTab.tsx(445,5): error TS1128: Declaration or statement expected.
+src/components/admin/dashboard/tabs/FinanceTab.tsx(446,1): error TS1128: Declaration or statement expected.
+src/components/admin/dashboard/tabs/StaffTab.tsx(31,25): error TS1005: ')' expected.
+src/components/admin/dashboard/tabs/StaffTab.tsx(202,21): error TS1128: Declaration or statement expected.
+src/components/admin/dashboard/tabs/StaffTab.tsx(203,17): error TS1109: Expression expected.
+src/components/admin/dashboard/tabs/StaffTab.tsx(207,5): error TS1128: Declaration or statement expected.
+src/components/admin/dashboard/tabs/StaffTab.tsx(208,1): error TS1128: Declaration or statement expected.

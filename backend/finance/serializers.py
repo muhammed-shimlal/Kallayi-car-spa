@@ -2,9 +2,11 @@ from rest_framework import serializers
 from .models import Invoice, GeneralExpense, ExpenseCategory
 
 class InvoiceSerializer(serializers.ModelSerializer):
+    customer_phone = serializers.CharField(source='booking.customer.phone_number', read_only=True)
+    
     class Meta:
         model = Invoice
-        fields = '__all__'
+        fields = ['id', 'booking', 'amount', 'split_cash', 'split_online', 'split_khata', 'payment_method', 'is_paid', 'created_at', 'customer_phone']
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):
     class Meta:

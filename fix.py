@@ -1,39 +1,93 @@
-import os
-import re
+with open('kallayi_car_spa_frontend/src/app/(admin)/admin/dashboard/page.tsx', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
 
-files_to_fix = [
-    r"d:\Kallayi-car-spa\kallayi_car_spa_frontend\src\app\(admin)\admin\dashboard\page.tsx",
-    r"d:\Kallayi-car-spa\kallayi_car_spa_frontend\src\app\(admin)\admin\queue\page.tsx"
-]
+end_header_idx = 0
+for i, l in enumerate(lines):
+    if l.startswith('export default function AdminDashboard()'):
+        end_header_idx = i
+        break
 
-for fpath in files_to_fix:
-    with open(fpath, "r", encoding="utf-8") as f:
-        content = f.read()
-    
-    # 1. Add API_BASE definition
-    if "const API_BASE =" not in content:
-        import_lucide = "lucide-react';"
-        import_toast = "import toast from 'react-hot-toast';"
-        
-        insert_str = "\nconst API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';\n"
-        
-        if import_lucide in content:
-            content = content.replace(import_lucide, import_lucide + "\n" + insert_str, 1)
-        elif import_toast in content:
-            content = content.replace(import_toast, import_toast + "\n" + insert_str, 1)
+end_logic_idx = 0
+for i, l in enumerate(lines):
+    if 'if (isLoading) return' in l:
+        end_logic_idx = i
+        break
 
-    # 2. Remove the duplicate local declaration in dashboard
-    content = content.replace("const API_BASE = 'http://127.0.0.1:8001/api';", "")
+imports = "".join(lines[:end_header_idx])
+# Filter out "use client" if it's there, but we'll prepend it anyway
+logic = "".join(lines[end_header_idx+1:end_logic_idx])
 
-    # 3. Replace all literal endpoint strings: 'http://127.0.0.1:8001/api/endpoint/' -> `${API_BASE}/endpoint/`
-    content = re.sub(r"'http://127\.0\.0\.1:8001/api([^']*)'", r"`${API_BASE}\1`", content)
+context_template = f"""{imports}
+import {{ createContext, useContext, ReactNode }} from 'react';
 
-    # 4. Replace alerts in dashboard with toasts
-    if "dashboard" in fpath:
-        content = content.replace('alert(`SUCCESS! We found ${debtors.length} customers in the database who owe money.`);', 'toast.success(`SUCCESS! We found ${debtors.length} customers in the database who owe money.`);')
-        content = content.replace('alert(`API FAILED! Khata Status: ${khataRes?.status}`);', 'toast.error(`API FAILED! Khata Status: ${khataRes?.status}`);')
-        content = content.replace('alert("CRASH DETECTED!\\n\\nReason: " + error.message + "\\n\\nStack: " + error.stack);', 'toast.error("CRASH DETECTED!\\n\\nReason: " + error.message);')
+const DashboardContext = createContext<any>(null);
 
-    with open(fpath, "w", encoding="utf-8") as f:
-        f.write(content)
-    print(f"Fixed {fpath}")
+export function DashboardProvider({{ children }}: {{ children: ReactNode }}) {{
+{logic}
+    const value = {{
+        uiState: {{
+            isLoading, setIsLoading, activeTab, setActiveTab, financeSubTab, setFinanceSubTab,
+            staffSubTab, setStaffSubTab, adminName, setAdminName,
+            isKhataModalOpen, setIsKhataModalOpen, isKhataCustomerModalOpen, setIsKhataCustomerModalOpen,
+            isKhataLedgerModalOpen, setIsKhataLedgerModalOpen, isManualKhataOpen, setIsManualKhataOpen,
+            isServiceModalOpen, setIsServiceModalOpen, isStaffModalOpen, setIsStaffModalOpen,
+            isAdvanceModalOpen, setIsAdvanceModalOpen, isLedgerModalOpen, setIsLedgerModalOpen
+        }},
+        financeState: {{
+            kpiData, chartData, expenses, expenseCategories, isSubmittingExpense, expenseForm,
+            receiptFile, receiptPreview, editingExpense, khataCustomers, khataLedger, selectedKhataCustomer,
+            editingKhataCustomer, khataCustomerForm, khataPaymentAmount, eodData, manualKhataForm,
+            customerCredits, invoiceList, analyticsData, totalOutstandingCredit, totalDailyPayout,
+            setExpenseForm, setReceiptFile, setReceiptPreview, setKhataCustomerForm, setKhataPaymentAmount, setManualKhataForm,
+            fetchExpenseCategories, handleFileChange, clearFile, handleExpenseSubmit, startEditingExpense,
+            cancelEditingExpense, deleteExpense, downloadTaxReport, downloadInvoice, approveExpense, settleCredit,
+            openKhataCustomerModal, saveKhataCustomer, deleteKhataCustomer, loadKhataLedger, handleKhataSettle,
+            handleCloseRegister, submitManualKhataCharge
+        }},
+        staffState: {{
+            payrollData, staffDirectory, editingStaff, staffForm, advanceForm, setStaffForm, setAdvanceForm,
+            fetchStaffDirectory, openStaffModal, saveStaff, terminateStaff, settleWorkerPay, handleAddAdvance
+        }},
+        serviceState: {{
+            services, editingService, serviceForm, setServiceForm, fetchServices, openServiceModal, saveService, deleteService
+        }},
+        crmState: {{
+            searchQuery, setSearchQuery, vehicleData, crmLoading, crmError, globalHistory, globalHistoryDate,
+            setGlobalHistoryDate, editingLedgerEntry, setEditingLedgerEntry, ledgerForm, setLedgerForm,
+            fetchGlobalHistory, updateLedgerEntry, deleteLedgerEntry, handleCrmSearch
+        }},
+        globalActions: {{
+            fetchDashboardData, handleLogout
+        }},
+        queueState: {{
+            recentBookings
+        }}
+    }};
+
+    return (
+        <DashboardContext.Provider value={{value}}>
+            {{children}}
+        </DashboardContext.Provider>
+    );
+}}
+
+export function useDashboard() {{
+    const context = useContext(DashboardContext);
+    if (!context) {{
+        throw new Error('useDashboard must be used within a DashboardProvider');
+    }}
+    return context;
+}}
+"""
+
+# Replace "import React, { useEffect" with "import React, { createContext, useContext, ReactNode, useEffect"
+# in the imports section, but imports already has it. We will just add it below. Wait, ReactNode isn't in 'react' if not imported.
+# It doesn't hurt if we import it twice or just use React.ReactNode. Let's adjust:
+
+context_template = context_template.replace("import { createContext, useContext, ReactNode } from 'react';", "import { createContext, useContext } from 'react';\ntype ReactNode = React.ReactNode;")
+
+
+with open('kallayi_car_spa_frontend/src/components/admin/dashboard/context/DashboardContext.tsx', 'w', encoding='utf-8') as f:
+    f.write(context_template)
+
+print("Done writing Context generated by python")

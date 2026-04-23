@@ -365,16 +365,22 @@ export default function AdminQueueBoard() {
     const handleAssignStaff = async (bookingId: number, staffId: number) => {
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/bookings/update-stage/${bookingId}/`, {
+            const res = await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${bookingId}/`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ assigned_technician_id: staffId }),
             });
-            if (!res.ok) throw new Error('API failed');
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                console.error('[assignStaff] API error:', res.status, errBody);
+                toast.error(`Failed to assign. (${res.status}: ${errBody.error || errBody.detail || 'See console'})`);
+                return;
+            }
             toast.success('Worker assigned!');
-            fetchQueue(true); // silent refresh
-        } catch {
-            toast.error('Failed to assign worker.');
+            fetchQueue(true);
+        } catch (e) {
+            console.error('[assignStaff] Network error:', e);
+            toast.error('Failed to assign worker. Check network connection.');
         }
     };
 

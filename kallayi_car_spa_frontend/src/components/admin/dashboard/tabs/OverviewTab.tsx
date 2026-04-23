@@ -7,6 +7,9 @@ import { useDashboard } from '../context/DashboardContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function OverviewTab() {
+    const [isMounted, setIsMounted] = React.useState(false);
+    React.useEffect(() => { setIsMounted(true); }, []);
+
     const { uiState, financeState, queueState } = useDashboard();
     const { chartData } = financeState;
     const { recentBookings } = queueState;
@@ -15,7 +18,7 @@ export default function OverviewTab() {
     return (
         <div className="animate-[fadeIn_0.5s_ease-out] grid grid-cols-1 lg:grid-cols-3 gap-8">
                         <div className="lg:col-span-2 bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl h-96">
-                            {isLoading ? (
+                            {isLoading || !isMounted ? (
                                 <Skeleton className="w-full h-full" />
                             ) : (
                                 <ResponsiveContainer width="100%" height="100%">

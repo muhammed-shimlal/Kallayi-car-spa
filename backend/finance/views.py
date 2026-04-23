@@ -215,13 +215,16 @@ class DashboardViewSet(viewsets.ViewSet):
             # Safely extract customer and vehicle info if booking exists
             customer_name = "Unknown"
             vehicle_info = "N/A"
+            customer_phone = "No Phone"
             
             if hasattr(invoice, 'booking') and invoice.booking:
-                # Try to get customer name, fallback to string representation
-                customer = invoice.booking.customer
-                customer_name = f"{customer.user.first_name} {customer.user.last_name}".strip() or customer.user.username
+                if invoice.booking.customer:
+                    customer = invoice.booking.customer
+                    customer_name = f"{customer.user.first_name} {customer.user.last_name}".strip() or customer.user.username
+                    customer_phone = customer.phone_number
                 vehicle = invoice.booking.vehicle
-                vehicle_info = f"{vehicle.model} ({vehicle.plate_number})"
+                if vehicle:
+                    vehicle_info = f"{vehicle.model} ({vehicle.plate_number})"
             
             # If invoice is older than 30 days, mark as Overdue
             days_old = (timezone.now() - invoice.created_at).days
@@ -230,6 +233,7 @@ class DashboardViewSet(viewsets.ViewSet):
             data.append({
                 'id': invoice.id,
                 'customer': customer_name,
+                'customer_phone': customer_phone,
                 'vehicle': vehicle_info,
                 'amount': float(invoice.amount),
                 'date': invoice.created_at.strftime("%Y-%m-%d"),

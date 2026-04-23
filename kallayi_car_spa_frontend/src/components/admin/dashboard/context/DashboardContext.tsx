@@ -893,7 +893,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             staffSubTab, setStaffSubTab, adminName, setAdminName,
             isKhataModalOpen, setIsKhataModalOpen, isKhataCustomerModalOpen, setIsKhataCustomerModalOpen,
             isKhataLedgerModalOpen, setIsKhataLedgerModalOpen, isManualKhataOpen, setIsManualKhataOpen,
-            isServiceModalOpen, setIsServiceModalOpen, isStaffModalOpen, setIsStaffModalOpen,
+            isServiceModalOpen, setIsServiceModalOpen, isStaffModalOpen, setIsStaffModalOpen, openStaffModal,
             isAdvanceModalOpen, setIsAdvanceModalOpen, isLedgerModalOpen, setIsLedgerModalOpen
         },
         financeState: {
@@ -909,7 +909,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         },
         staffState: {
             payrollData, staffDirectory, editingStaff, staffForm, advanceForm, setStaffForm, setAdvanceForm,
-            fetchStaffDirectory, openStaffModal, saveStaff, terminateStaff, settleWorkerPay, handleAddAdvance
+            fetchStaffDirectory, saveStaff, terminateStaff, settleWorkerPay, handleAddAdvance
         },
         serviceState: {
             services, editingService, serviceForm, setServiceForm, fetchServices, openServiceModal, saveService, deleteService
