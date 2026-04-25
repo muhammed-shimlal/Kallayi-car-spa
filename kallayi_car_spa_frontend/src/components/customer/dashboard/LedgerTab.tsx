@@ -3,11 +3,11 @@ import { motion } from 'framer-motion';
 import { Wallet, Info } from 'lucide-react';
 import { Transaction } from './types';
 
-export function LedgerTab() {
-    const transactions: Transaction[] = [
-        { id: 'TXN-001', date: '2026-10-15', service: 'Deep Detail - Porsche', amount: 1200, status: 'UNPAID' },
-        { id: 'TXN-002', date: '2026-09-21', service: 'Exterior Wash', amount: 500, status: 'PAID' },
-    ];
+interface LedgerTabProps {
+    transactions: Transaction[];
+}
+
+export function LedgerTab({ transactions }: LedgerTabProps) {
 
     const outstanding = transactions.filter(t => t.status === 'UNPAID').reduce((sum, t) => sum + t.amount, 0);
 

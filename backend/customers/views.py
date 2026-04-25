@@ -61,6 +61,35 @@ class CustomerViewSet(viewsets.ModelViewSet):
         self.perform_update(serializer)
 
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny], authentication_classes=[])
+    @transaction.atomic
+    def register(self, request):
+        name = request.data.get('name', '').strip()
+        phone = request.data.get('phone', '').strip()
+        password = request.data.get('password')
+
+        if not name or not phone or not password:
+            return Response({'error': 'Name, phone, and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Username is strictly the phone number
+        if User.objects.filter(username=phone).exists():
+            return Response({'error': 'Phone number already registered'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.create_user(username=phone, password=password, first_name=name)
+            Customer.objects.create(user=user, phone_number=phone)
+            token, _ = Token.objects.get_or_create(user=user)
+            
+            return Response({
+                'token': token.key,
+                'user_id': user.id,
+                'username': user.username,
+                'name': user.first_name,
+                'role': 'customer'
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def redeem_points(self, request):
@@ -205,33 +234,3 @@ class CouponViewSet(viewsets.ModelViewSet):
     serializer_class = CouponSerializer
     permission_classes = [IsAdminUserOrReadOnly]
 
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-@transaction.atomic
-def register_customer(request):
-    name = request.data.get('name', '').strip()
-    phone = request.data.get('phone', '').strip()
-    password = request.data.get('password')
-
-    if not name or not phone or not password:
-        return Response({'error': 'Name, phone, and password are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Username is strictly the phone number
-    if User.objects.filter(username=phone).exists():
-        return Response({'error': 'Phone number already registered'}, status=status.HTTP_400_BAD_REQUEST)
-
-    try:
-        user = User.objects.create_user(username=phone, password=password, first_name=name)
-        Customer.objects.create(user=user, phone_number=phone)
-        token, _ = Token.objects.get_or_create(user=user)
-        
-        return Response({
-            'token': token.key,
-            'user_id': user.id,
-            'username': user.username,
-            'name': user.first_name,
-            'role': 'customer'
-        }, status=status.HTTP_201_CREATED)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

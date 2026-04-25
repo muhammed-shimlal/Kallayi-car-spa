@@ -26,23 +26,68 @@ export default function CustomerDashboard() {
     const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
     const [activeWash, setActiveWash] = useState<ActiveWash | null>(null);
     const [washHistory, setWashHistory] = useState<any[]>([]);
+    const [transactions, setTransactions] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
                 setIsLoading(true);
-                // Replace these with your exact backend endpoints
-                // const [overviewRes, vehiclesRes, historyRes] = await Promise.all([
-                //     api.get('/customers/dashboard/overview/'),
-                //     api.get('/customers/vehicles/'),
-                //     api.get('/customers/history/')
-                // ]);
-                
-                // setLoyaltyPoints(overviewRes.data.loyalty_points);
-                // setActiveWash(overviewRes.data.active_wash);
-                // setMyVehicles(vehiclesRes.data);
-                // setWashHistory(historyRes.data);
+                // Fetch the logged-in customer's bookings
+                const bookingsRes = await api.get('/bookings/');
+                const bookings = bookingsRes.data;
+
+                // 1. Extract Unique Vehicles
+                const vehiclesMap = new Map();
+                bookings.forEach((b: any) => {
+                    if (b.vehicle) {
+                        vehiclesMap.set(b.vehicle.id, {
+                            id: b.vehicle.id,
+                            make: b.vehicle.make || 'Unknown',
+                            model: b.vehicle.model || 'Vehicle',
+                            plate: b.vehicle.plate_number
+                        });
+                    }
+                });
+                setMyVehicles(Array.from(vehiclesMap.values()));
+
+                // 2. Find Active Wash
+                const active = bookings.find((b: any) => !['COMPLETED', 'CANCELLED'].includes(b.status));
+                if (active) {
+                    let progress = 10;
+                    if (active.status === 'IN_PROGRESS') progress = 50;
+                    if (active.status === 'READY') progress = 90;
+
+                    setActiveWash({
+                        status: active.status,
+                        progress,
+                        package: active.service_package?.name || 'Standard Wash',
+                        vehicle: active.vehicle?.plate_number || 'Unknown'
+                    });
+                } else {
+                    setActiveWash(null);
+                }
+
+                // 3. Set Wash History
+                setWashHistory(bookings.filter((b: any) => b.status === 'COMPLETED'));
+
+                // 4. Fetch Invoices for Ledger (Fallback to empty if endpoint doesn't exist yet)
+                try {
+                    const invoiceRes = await api.get('/finance/invoices/');
+                    const formattedTxns = invoiceRes.data.map((inv: any) => ({
+                        id: `INV-${inv.id}`,
+                        date: new Date(inv.created_at).toISOString().split('T')[0],
+                        service: inv.subscription ? 'Subscription' : 'Service Wash',
+                        amount: parseFloat(inv.amount),
+                        status: inv.is_paid ? 'PAID' : 'UNPAID'
+                    }));
+                    setTransactions(formattedTxns);
+                } catch (invoiceErr) {
+                    console.warn("Invoice endpoint not ready or failed. Defaulting to empty ledger.");
+                    setTransactions([]);
+                }
+
+                setLoyaltyPoints(450);
             } catch (error) {
                 console.error("Failed to fetch customer data", error);
             } finally {
@@ -88,7 +133,7 @@ export default function CustomerDashboard() {
                     )}
 
                     {activeTab === 'ledger' && (
-                        <LedgerTab key="ledger" />
+                        <LedgerTab key="ledger" transactions={transactions} />
                     )}
 
                     {activeTab === 'vip' && (
