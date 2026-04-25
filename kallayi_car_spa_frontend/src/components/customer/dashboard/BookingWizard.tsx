@@ -64,8 +64,8 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                 <h3 className="text-2xl font-bold mb-6">1. Target Parameters</h3>
                                 <label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 block">Select Vehicle</label>
                                 <div className="grid grid-cols-2 gap-4 mb-8">
-                                    {myVehicles.map(v => (
-                                        <div key={v.id} className="border border-white/20 bg-white/5 p-4 rounded-2xl cursor-pointer hover:border-[#E52323] transition text-center">
+                                    {myVehicles.map((v, index) => (
+                                        <div key={v.id || v.plate || index} className="border border-white/20 bg-white/5 p-4 rounded-2xl cursor-pointer hover:border-[#E52323] transition text-center">
                                             <Car className="mx-auto mb-2 text-gray-400" />
                                             <p className="font-bold text-sm">{v.model}</p>
                                         </div>

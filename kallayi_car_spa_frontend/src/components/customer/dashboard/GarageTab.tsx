@@ -25,8 +25,8 @@ export function GarageTab({ myVehicles }: GarageTabProps) {
                 </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {myVehicles.map(v => (
-                    <div key={v.id} className="bg-white/5 border border-white/10 p-6 rounded-3xl flex items-center justify-between hover:border-[#E52323]/50 transition cursor-pointer group backdrop-blur-md">
+                {myVehicles.map((v, index) => (
+                    <div key={v.id || v.plate || index} className="bg-white/5 border border-white/10 p-6 rounded-3xl flex items-center justify-between hover:border-[#E52323]/50 transition cursor-pointer group backdrop-blur-md">
                         <div className="flex items-center gap-6">
                             <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center border border-white/10 group-hover:shadow-[0_0_20px_rgba(229,35,35,0.2)] transition">
                                 <Car className="text-gray-400 group-hover:text-[#E52323]" />

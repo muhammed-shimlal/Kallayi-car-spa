@@ -9,6 +9,7 @@ import * as z from "zod";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import Link from "next/link";
+import api from '@/lib/api';
 
 const loginSchema = z.object({
   phone: z.string()
@@ -49,18 +50,12 @@ export default function LoginPage() {
 
     try {
       // 1. Authenticate with Django Backend API
-      const authRes = await fetch("http://127.0.0.1:8001/api/api-token-auth/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: data.phone, password: data.password }),
+      const authRes = await api.post("/api-token-auth/", {
+        username: data.phone,
+        password: data.password,
       });
 
-      if (!authRes.ok) {
-        throw new Error("Invalid phone number or password");
-      }
-
-      const authData = await authRes.json();
-      const token = authData.token;
+      const token = authRes.data.token;
 
       // Force save to Local Storage (This is what the Admin page looks for!)
       localStorage.setItem("auth_token", token);
@@ -69,18 +64,14 @@ export default function LoginPage() {
       document.cookie = `auth_token=${token}; path=/;`;
 
       // 2. Fetch User Profile
-      const meRes = await fetch("http://127.0.0.1:8001/api/core/users/me/", {
+      // Explicitly passing token in case Axios interceptor hasn't read the freshly set local storage yet
+      const meRes = await api.get("/core/users/me/", {
         headers: {
           Authorization: `Token ${token}`,
         },
       });
 
-      if (!meRes.ok) {
-        throw new Error("Failed to fetch user profile data");
-      }
-
-      const meData = await meRes.json();
-      const role = meData.role;
+      const role = meRes.data.role;
 
       // 3. Routing Based on Role
       if (role === "ADMIN" || role === "MANAGER") {
@@ -91,7 +82,11 @@ export default function LoginPage() {
         router.push("/customer/dashboard");
       }
     } catch (err: any) {
-      setError(err.message || "An authentication error occurred.");
+      if (err.response?.status === 400 || err.response?.status === 401) {
+        setError("Invalid phone number or password");
+      } else {
+        setError(err.message || "An authentication error occurred.");
+      }
     } finally {
       setIsLoading(false);
     }

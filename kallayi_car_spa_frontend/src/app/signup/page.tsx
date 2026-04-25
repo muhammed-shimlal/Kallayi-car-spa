@@ -9,6 +9,7 @@ import * as z from "zod";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import Link from "next/link";
+import api from '@/lib/api';
 
 const signupSchema = z.object({
   name: z.string().min(2, "Full Name is required"),
@@ -48,19 +49,13 @@ export default function SignupPage() {
 
     try {
       // 1. Authenticate with Django Backend API
-      const authRes = await fetch("http://127.0.0.1:8001/api/customers/register/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: data.name, phone: data.phone, password: data.password }),
+      const authRes = await api.post("/customers/register/", {
+        name: data.name,
+        phone: data.phone,
+        password: data.password,
       });
 
-      if (!authRes.ok) {
-        const errorData = await authRes.json();
-        throw new Error(errorData.error || "Failed to register. Please try again.");
-      }
-
-      const authData = await authRes.json();
-      const token = authData.token;
+      const token = authRes.data?.token;
 
       if (!token) throw new Error("No token received from the server.");
 
