@@ -24,18 +24,18 @@ export function LedgerTab({ transactions }: LedgerTabProps) {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 {/* Outstanding Summary Widget */}
-                <div className="md:col-span-1 bg-[#E52323] text-white p-8 rounded-[2.5rem] relative overflow-hidden shadow-[0_0_40px_rgba(229,35,35,0.3)]">
+                <div className="md:col-span-1 bg-[#E52323] text-white p-6 md:p-8 rounded-[2.5rem] relative overflow-hidden shadow-[0_0_40px_rgba(229,35,35,0.3)]">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-black/10 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2"></div>
                     <Wallet className="w-8 h-8 opacity-80 mb-6" />
                     <p className="text-xs font-bold uppercase tracking-widest mb-1 opacity-90">Total Outstanding</p>
-                    <h2 className="text-5xl font-black mb-4">₹{outstanding.toLocaleString()}</h2>
+                    <h2 className="text-4xl md:text-5xl font-black mb-4">₹{outstanding.toLocaleString()}</h2>
                     <button className="bg-black text-white px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:scale-105 transition w-full">
                         Settle Dues
                     </button>
                 </div>
 
                 {/* Info Card */}
-                <div className="md:col-span-2 bg-white/5 border border-white/10 backdrop-blur-2xl p-8 rounded-[2.5rem] flex flex-col justify-center">
+                <div className="md:col-span-2 bg-white/5 border border-white/10 backdrop-blur-2xl p-6 md:p-8 rounded-[2.5rem] flex flex-col justify-center">
                     <div className="flex items-start gap-4">
                         <div className="p-3 bg-black/50 border border-white/10 rounded-2xl text-[#E52323]">
                             <Info className="w-6 h-6" />
@@ -53,7 +53,7 @@ export function LedgerTab({ transactions }: LedgerTabProps) {
 
             {/* Transactions List */}
             <div className="bg-white/5 border border-white/10 rounded-[2.5rem] overflow-hidden backdrop-blur-2xl">
-                <div className="p-8 border-b border-white/10">
+                <div className="p-6 md:p-8 border-b border-white/10">
                     <h3 className="text-lg font-bold">Recent Credit Transactions</h3>
                 </div>
                 <div className="divide-y divide-white/5">

@@ -13,6 +13,7 @@ import { LedgerTab } from '@/components/customer/dashboard/LedgerTab';
 import { VipTab } from '@/components/customer/dashboard/VipTab';
 import { HistoryTab } from '@/components/customer/dashboard/HistoryTab';
 import { BookingWizard } from '@/components/customer/dashboard/BookingWizard';
+import { MobileNavigation } from '@/components/customer/dashboard/MobileNavigation';
 
 import { Vehicle, ActiveWash } from '@/components/customer/dashboard/types';
 
@@ -111,18 +112,28 @@ export default function CustomerDashboard() {
         );
     }
 
+    const handleMobileTabChange = (tab: string) => {
+        if (tab === 'booking') {
+            setIsBooking(true);
+        } else {
+            setActiveTab(tab);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-[#050505] text-white flex flex-col md:flex-row font-sans selection:bg-[#E52323]">
             
             {/* Modular Sidebar */}
-            <SidebarNavigation 
-                activeTab={activeTab} 
-                setActiveTab={setActiveTab} 
-                handleLogout={handleLogout} 
-            />
+            <div className="hidden md:flex">
+                <SidebarNavigation 
+                    activeTab={activeTab} 
+                    setActiveTab={setActiveTab} 
+                    handleLogout={handleLogout} 
+                />
+            </div>
 
             {/* Modular Main Content Area with Animated Mounting */}
-            <main className="flex-1 p-6 md:p-12 overflow-y-auto relative">
+            <main className="flex-1 p-6 md:p-12 pb-24 md:pb-8 overflow-y-auto relative">
                 <AnimatePresence mode="wait">
                     {activeTab === 'overview' && (
                         <OverviewTab key="overview" setIsBooking={setIsBooking} loyaltyPoints={loyaltyPoints} activeWash={activeWash!} />
@@ -141,13 +152,18 @@ export default function CustomerDashboard() {
                     )}
 
                     {activeTab === 'history' && (
-                    <>
-                        {/* Make sure your HistoryTab is updated to accept "washHistory" if needed! */}
-                        <HistoryTab key="history" />
-                    </>
-                )}
+                        <HistoryTab key="history" history={washHistory} />
+                    )}
                 </AnimatePresence>
             </main>
+
+            {/* Mobile Navigation */}
+            <div className="block md:hidden">
+                <MobileNavigation 
+                    activeTab={activeTab} 
+                    setActiveTab={handleMobileTabChange} 
+                />
+            </div>
 
             {/* Booking Wizard Setup */}
             {isBooking && (
