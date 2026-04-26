@@ -1,14 +1,18 @@
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from customers.views import CustomerViewSet, SubscriptionPlanViewSet, ReviewViewSet, CouponViewSet
+from customers.views import CustomerViewSet, SubscriptionPlanViewSet, ReviewViewSet, CouponViewSet, CustomerVehicleViewSet
 from fleet.views import VehicleViewSet, TechnicianLocationViewSet, ServiceVehicleViewSet, FleetLogViewSet
 from bookings.views import BookingViewSet, ServicePackageViewSet, CalendarViewSet, DriverBookingViewSet
 from finance.views import InvoiceViewSet, DashboardViewSet, GeneralExpenseViewSet, ExpenseCategoryViewSet, ReportingViewSet, KhataViewSet, close_register, analytics_dashboard, generate_invoice_pdf, manual_khata_charge
 from staff.views import TimeEntryViewSet, JobInspectionViewSet, SOPChecklistViewSet, StaffDashboardViewSet, StaffProfileViewSet
 
 router = DefaultRouter()
-router.register(r'customers', CustomerViewSet)
+
+# NEW: Register this BEFORE the generic 'customers' route to avoid ID collisions
+router.register(r'customer-vehicles', CustomerVehicleViewSet, basename='customer-vehicle')
+
+router.register(r'customers', CustomerViewSet, basename='customer')
 router.register(r'subscription-plans', SubscriptionPlanViewSet)
 router.register(r'reviews', ReviewViewSet)
 router.register(r'coupons', CouponViewSet)

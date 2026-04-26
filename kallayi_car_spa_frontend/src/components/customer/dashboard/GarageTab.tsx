@@ -18,7 +18,7 @@ export function GarageTab({ myVehicles }: GarageTabProps) {
         e.preventDefault();
         setIsLoading(true);
         try {
-            await api.post('/customers/vehicles/', {
+            await api.post('/customer-vehicles/', {
                 make: newVehicle.make,
                 model: newVehicle.model,
                 plate_number: newVehicle.plate

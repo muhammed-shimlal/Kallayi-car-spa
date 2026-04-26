@@ -39,9 +39,9 @@ export default function CustomerDashboard() {
                 const bookings = bookingsRes.data;
 
                 // 1. Fetch Customer Vehicles natively
-                // Fetch Vehicles directly from our new endpoint
+                // Fetch Vehicles directly from our dedicated collision-free endpoint
                 try {
-                    const vehiclesRes = await api.get('/vehicles/');
+                    const vehiclesRes = await api.get('/customer-vehicles/');
                     const formattedVehicles = vehiclesRes.data.map((v: any) => ({
                         id: v.id,
                         make: v.make,
