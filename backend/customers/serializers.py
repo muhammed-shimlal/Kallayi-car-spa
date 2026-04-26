@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Customer
 from django.contrib.auth.models import User
+from .models import CustomerVehicle
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -32,3 +33,9 @@ class CouponSerializer(serializers.ModelSerializer):
     class Meta:
         model = Coupon
         fields = '__all__'
+
+class CustomerVehicleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomerVehicle
+        fields = ['id', 'customer', 'make', 'model', 'plate_number', 'created_at']
+        read_only_fields = ['customer', 'created_at']

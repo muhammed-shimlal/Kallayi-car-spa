@@ -38,19 +38,20 @@ export default function CustomerDashboard() {
                 const bookingsRes = await api.get('/bookings/');
                 const bookings = bookingsRes.data;
 
-                // 1. Extract Unique Vehicles
-                const vehiclesMap = new Map();
-                bookings.forEach((b: any) => {
-                    if (b.vehicle) {
-                        vehiclesMap.set(b.vehicle.id, {
-                            id: b.vehicle.id,
-                            make: b.vehicle.make || 'Unknown',
-                            model: b.vehicle.model || 'Vehicle',
-                            plate: b.vehicle.plate_number
-                        });
-                    }
-                });
-                setMyVehicles(Array.from(vehiclesMap.values()));
+                // 1. Fetch Customer Vehicles natively
+                // Fetch Vehicles directly from our new endpoint
+                try {
+                    const vehiclesRes = await api.get('/vehicles/');
+                    const formattedVehicles = vehiclesRes.data.map((v: any) => ({
+                        id: v.id,
+                        make: v.make,
+                        model: v.model,
+                        plate: v.plate_number
+                    }));
+                    setMyVehicles(formattedVehicles);
+                } catch (vErr) {
+                    console.error("Failed to fetch garage vehicles", vErr);
+                }
 
                 // 2. Find Active Wash
                 const active = bookings.find((b: any) => !['COMPLETED', 'CANCELLED'].includes(b.status));
@@ -93,6 +94,19 @@ export default function CustomerDashboard() {
                 console.error("Failed to fetch customer data", error);
             } finally {
                 setIsLoading(false);
+            }
+            // Fetch Vehicles directly from our new endpoint!
+            try {
+                const vehiclesRes = await api.get('/customers/vehicles/');
+                const formattedVehicles = vehiclesRes.data.map((v: any) => ({
+                    id: v.id,
+                    make: v.make,
+                    model: v.model,
+                    plate: v.plate_number
+                }));
+                setMyVehicles(formattedVehicles);
+            } catch (vErr) {
+                console.error("Failed to fetch garage vehicles", vErr);
             }
         };
 

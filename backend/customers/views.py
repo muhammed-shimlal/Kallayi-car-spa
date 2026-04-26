@@ -234,3 +234,34 @@ class CouponViewSet(viewsets.ModelViewSet):
     serializer_class = CouponSerializer
     permission_classes = [IsAdminUserOrReadOnly]
 
+from .models import CustomerVehicle
+from .serializers import CustomerVehicleSerializer
+
+class CustomerVehicleViewSet(viewsets.ModelViewSet):
+    queryset = CustomerVehicle.objects.all()
+    serializer_class = CustomerVehicleSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return CustomerVehicle.objects.all()
+        return CustomerVehicle.objects.filter(customer=user)
+
+    def perform_create(self, serializer):
+        # Allow passing customer explicitly if admin, otherwise default to current user
+        if self.request.user.is_staff and 'customer' in self.request.data:
+            serializer.save()
+        else:
+            serializer.save(customer=self.request.user)
+
+class CustomerVehicleViewSet(viewsets.ModelViewSet):
+    serializer_class = CustomerVehicleSerializer
+
+    def get_queryset(self):
+        # Ensure customers only see their own vehicles
+        return CustomerVehicle.objects.filter(customer=self.request.user)
+
+    def perform_create(self, serializer):
+        # Auto-assign the logged-in user as the owner
+        serializer.save(customer=self.request.user)

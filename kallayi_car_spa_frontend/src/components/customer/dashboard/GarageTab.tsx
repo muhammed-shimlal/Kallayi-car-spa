@@ -18,16 +18,14 @@ export function GarageTab({ myVehicles }: GarageTabProps) {
         e.preventDefault();
         setIsLoading(true);
         try {
-            // Ensure this endpoint matches your Django backend vehicle creation route
-            await api.post('/fleet/service-vehicles/', {
+            await api.post('/vehicles/', {
                 make: newVehicle.make,
                 model: newVehicle.model,
                 plate_number: newVehicle.plate
             });
-
+            
             setIsAdding(false);
             setNewVehicle({ make: '', model: '', plate: '' });
-            // Optionally trigger a page refresh or call a passed-down refresh function
             window.location.reload(); 
         } catch (error) {
             console.error("Failed to add vehicle", error);
