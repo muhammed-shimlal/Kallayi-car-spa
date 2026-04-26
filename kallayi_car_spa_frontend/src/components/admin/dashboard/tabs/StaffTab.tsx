@@ -77,7 +77,7 @@ export default function StaffTab() {
                                             <tr>
                                                 <td colSpan={7} className="p-8 text-center text-[#8E939B]">No active staff records today.</td>
                                             </tr>
-                                        ) : payrollData.map((worker) => (
+                                        ) : payrollData.map((worker: any) => (
                                             <tr key={worker.id} className="hover:bg-white/5 transition-colors group">
                                                 <td className="p-4 pl-6">
                                                     <p className="font-bold text-white text-base">{worker.name}</p>
@@ -222,7 +222,7 @@ export default function StaffTab() {
                                                 className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF] transition-all mt-2 appearance-none"
                                             >
                                                 <option value="" className="bg-[#141518]">-- Select Worker --</option>
-                                                {payrollData.map(worker => (
+                                                {payrollData.map((worker: any) => (
                                                     <option key={worker.id} value={worker.id} className="bg-[#141518]">{worker.name} ({worker.role})</option>
                                                 ))}
                                             </select>

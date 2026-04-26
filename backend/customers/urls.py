@@ -7,7 +7,8 @@ router.register(r'customers', CustomerViewSet, basename='customer')
 router.register(r'subscription-plans', SubscriptionPlanViewSet)
 router.register(r'reviews', ReviewViewSet)
 router.register(r'coupons', CouponViewSet)
-router.register(r'vehicles', CustomerVehicleViewSet, basename='customer-vehicle')
+# This explicitly creates the /api/customers/vehicles/ endpoint!
+router.register(r'vehicles', CustomerVehicleViewSet, basename='customer-vehicle') 
 
 urlpatterns = [
     path('', include(router.urls)),
