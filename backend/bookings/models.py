@@ -1,6 +1,5 @@
 from django.db import models
-from customers.models import Customer
-from fleet.models import Vehicle
+from customers.models import Customer, CustomerVehicle
 from django.contrib.auth.models import User
 
 class ServicePackage(models.Model):
@@ -31,7 +30,7 @@ class Booking(models.Model):
     ]
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='bookings')
-    vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE, related_name='bookings')
+    vehicle = models.ForeignKey(CustomerVehicle, on_delete=models.CASCADE, related_name='bookings')
     technician = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_bookings')
     service_package = models.ForeignKey(ServicePackage, on_delete=models.SET_NULL, null=True)
     time_slot = models.DateTimeField()

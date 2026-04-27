@@ -13,7 +13,7 @@ from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from django.db import transaction
 import random
-from fleet.models import Vehicle
+from customers.models import Customer, CustomerVehicle
 from customers.models import Customer
 from django.contrib.auth import get_user_model
 User = get_user_model()
@@ -318,10 +318,10 @@ def express_walkin(request):
         new_user = User.objects.create(username=username)
         customer = Customer.objects.create(user=new_user, phone_number=phone)
         
-    # Vehicle Resolution (Note: instruction asked for ServiceVehicle, but Booking requires Vehicle)
-    vehicle, created = Vehicle.objects.get_or_create(
+    # Vehicle Resolution
+    vehicle, created = CustomerVehicle.objects.get_or_create(
         plate_number=plate_number, 
-        defaults={'owner': customer, 'model': 'Unknown Walk-In'}
+        defaults={'customer': customer.user, 'model': 'Unknown Walk-In', 'make': 'Unknown Walk-In'}
     )
     
     # Booking Creation (Bypass Slot Validations & Overlaps)

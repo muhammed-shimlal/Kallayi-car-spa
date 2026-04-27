@@ -9,8 +9,8 @@ class ServicePackageSerializer(serializers.ModelSerializer):
 class BookingSerializer(serializers.ModelSerializer):
     service_package_details = serializers.SerializerMethodField()
     technician_name = serializers.ReadOnlyField(source='technician.username')
-    customer_name = serializers.ReadOnlyField(source='customer.name')
-    vehicle_info = serializers.ReadOnlyField(source='vehicle.license_plate')
+    customer_name = serializers.ReadOnlyField(source='customer.user.first_name')
+    vehicle_info = serializers.ReadOnlyField(source='vehicle.plate_number')
 
     # Add optional fields to silence legacy client payload mismatches
     transaction_id = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
@@ -40,6 +40,15 @@ class BookingSerializer(serializers.ModelSerializer):
                 'chemical_recipe': obj.service_package.chemical_recipe,
             }
         return None
+
+    def create(self, validated_data):
+        # Remove legacy payment fields so they don't break Native Django Model allocation
+        validated_data.pop('transaction_id', None)
+        validated_data.pop('payment_method', None)
+        validated_data.pop('split_cash', None)
+        validated_data.pop('payment_status', None)
+        
+        return super().create(validated_data)
 
     def validate(self, data):
         # Calculate end_time for validation
