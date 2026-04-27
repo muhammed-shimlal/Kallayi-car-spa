@@ -84,11 +84,29 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
 
     const nextStep = async () => {
         setDirection(1);
-        if (bookingStep < 3) {
-            setBookingStep(s => s + 1);
-        } else {
-            if (!selectedVehicle || !selectedPackage || !selectedDate || !selectedSlot) {
-                alert("Please complete Target Parameters and Temporal Coordinates.");
+        
+        // Strict Validation Checkpoints
+        if (bookingStep === 1) {
+            if (!selectedVehicle || !selectedVehicle.id) {
+                alert("Please cleanly select a valid Vehicle from your garage.");
+                return;
+            }
+            if (!selectedPackage || !selectedPackage.id) {
+                alert("Please select a Service Package.");
+                return;
+            }
+            setBookingStep(2);
+        } 
+        else if (bookingStep === 2) {
+            if (!selectedDate || !selectedSlot) {
+                alert("Please select a Date and a precise Arrival Slot.");
+                return;
+            }
+            setBookingStep(3);
+        } 
+        else if (bookingStep === 3) {
+            if (!selectedVehicle?.id || !selectedPackage?.id || !selectedDate || !selectedSlot) {
+                alert("Critical System State Error: Missing parameters detected. Please restart the booking wizard.");
                 return;
             }
             try {
@@ -102,8 +120,8 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                 const timeSlotDate = new Date(parseInt(y), parseInt(m)-1, parseInt(d), hInt, parseInt(minutes), 0);
                 
                 await api.post('/bookings/', {
-                    vehicle: selectedVehicle.id,
-                    service_package: selectedPackage.id,
+                    vehicle: parseInt(selectedVehicle.id),
+                    service_package: parseInt(selectedPackage.id),
                     time_slot: timeSlotDate.toISOString(),
                 });
                 

@@ -12,11 +12,24 @@ class BookingSerializer(serializers.ModelSerializer):
     customer_name = serializers.ReadOnlyField(source='customer.name')
     vehicle_info = serializers.ReadOnlyField(source='vehicle.license_plate')
 
+    # Add optional fields to silence legacy client payload mismatches
+    transaction_id = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
+    payment_method = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
+    split_cash = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True, write_only=True)
+    payment_status = serializers.CharField(required=False, allow_null=True, allow_blank=True, default='UNPAID', write_only=True)
+
     class Meta:
         model = Booking
         fields = ['id', 'customer', 'customer_name', 'vehicle', 'vehicle_info', 'technician', 'technician_name', 
-                  'service_package', 'service_package_details', 'time_slot', 'end_time', 'status', 'address', 'latitude', 'longitude']
+                  'service_package', 'service_package_details', 'time_slot', 'end_time', 'status', 'address', 'latitude', 'longitude',
+                  'transaction_id', 'payment_method', 'split_cash', 'payment_status']
         read_only_fields = ['customer', 'end_time', 'status', 'created_at']
+        extra_kwargs = {
+            'address': {'required': False, 'allow_blank': True},
+            'latitude': {'required': False},
+            'longitude': {'required': False},
+            'technician': {'required': False, 'allow_null': True},
+        }
 
     def get_service_package_details(self, obj):
         if obj.service_package:
