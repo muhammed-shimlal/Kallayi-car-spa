@@ -46,8 +46,15 @@ class ServicePackageViewSet(viewsets.ModelViewSet):
                 self.permission_denied(request, message="Only Admin or Manager can modify service packages.")
 
 class BookingViewSet(viewsets.ModelViewSet):
-    queryset = Booking.objects.all().order_by('-created_at')
     serializer_class = BookingSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff or user.is_superuser or hasattr(user, 'staff_profile'):
+            return Booking.objects.all().order_by('-created_at')
+        if hasattr(user, 'customer'):
+            return Booking.objects.filter(customer=user.customer).order_by('-created_at')
+        return Booking.objects.none()
  
     @action(detail=False, methods=['get'])
     def completed(self, request):
