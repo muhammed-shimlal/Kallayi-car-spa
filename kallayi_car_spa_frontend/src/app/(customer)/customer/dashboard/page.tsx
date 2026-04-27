@@ -91,19 +91,6 @@ export default function CustomerDashboard() {
             } finally {
                 setIsLoading(false);
             }
-            // Fetch Vehicles directly from our new endpoint!
-            try {
-                const vehiclesRes = await api.get('/customer-vehicles/');
-                const formattedVehicles = vehiclesRes.data.map((v: any) => ({
-                    id: v.id,
-                    make: v.make,
-                    model: v.model,
-                    plate: v.plate_number
-                }));
-                setMyVehicles(formattedVehicles);
-            } catch (vErr) {
-                console.error("Failed to fetch garage vehicles", vErr);
-            }
         };
 
         fetchDashboardData();

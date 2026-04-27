@@ -29,10 +29,10 @@ class CustomerViewSet(viewsets.ModelViewSet):
             username = f"{base_username}_{counter}"
             counter += 1
 
-        # Create the underlying User object first
+        # Create the underlying User object with a secure random password
         new_user = User.objects.create_user(
             username=username,
-            password='Kallayi123!',
+            password=User.objects.make_random_password(length=16),
             first_name=name
         )
 
@@ -89,13 +89,16 @@ class CustomerViewSet(viewsets.ModelViewSet):
                 'role': 'customer'
             }, status=status.HTTP_201_CREATED)
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            import logging
+            logging.getLogger(__name__).error("Registration error: %s", str(e), exc_info=True)
+            return Response({'error': 'Registration failed. Please try again.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    @transaction.atomic
     def redeem_points(self, request):
         user = request.user
         try:
-            customer = Customer.objects.get(user=user)
+            customer = Customer.objects.select_for_update().get(user=user)
         except Customer.DoesNotExist:
             return Response({'error': 'Customer profile not found'}, status=404)
             
@@ -106,8 +109,6 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if customer.loyalty_points < points_to_redeem:
             return Response({'error': 'Insufficient points'}, status=400)
             
-        # Redeem logic: Simple 1 point = 1 Rupee (or whatever logic)
-        # For now, just deduct points and return a "coupon code" or success message
         customer.loyalty_points -= points_to_redeem
         customer.save()
         
@@ -238,30 +239,18 @@ from .models import CustomerVehicle
 from .serializers import CustomerVehicleSerializer
 
 class CustomerVehicleViewSet(viewsets.ModelViewSet):
-    queryset = CustomerVehicle.objects.all()
     serializer_class = CustomerVehicleSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff:
+        if user.is_staff or user.is_superuser:
             return CustomerVehicle.objects.all()
         return CustomerVehicle.objects.filter(customer=user)
 
     def perform_create(self, serializer):
-        # Allow passing customer explicitly if admin, otherwise default to current user
-        if self.request.user.is_staff and 'customer' in self.request.data:
+        # Staff can pass an explicit customer ID; regular users are auto-assigned
+        if (self.request.user.is_staff or self.request.user.is_superuser) and 'customer' in self.request.data:
             serializer.save()
         else:
             serializer.save(customer=self.request.user)
-
-class CustomerVehicleViewSet(viewsets.ModelViewSet):
-    serializer_class = CustomerVehicleSerializer
-
-    def get_queryset(self):
-        # Ensure customers only see their own vehicles
-        return CustomerVehicle.objects.filter(customer=self.request.user)
-
-    def perform_create(self, serializer):
-        # Auto-assign the logged-in user as the owner
-        serializer.save(customer=self.request.user)
