@@ -868,7 +868,7 @@ export default function AdminDashboard() {
             </aside>
 
             {/* MAIN CONTENT AREA */}
-            <main className="flex-1 p-8 lg:p-12 overflow-y-auto relative">
+            <main className="flex-1 p-4 sm:p-8 lg:p-12 w-full overflow-y-auto relative">
                 
                 {/* GLOBAL CRM SEARCH BAR */}
                 <div className="mb-8">
@@ -899,22 +899,22 @@ export default function AdminDashboard() {
 
                 {/* REAL-TIME KPI DASHBOARD (Always Visible) */}
                 {isLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
                         <Skeleton className="h-[124px]" />
                         <Skeleton className="h-[124px]" />
                         <Skeleton className="h-[124px]" />
                         <Skeleton className="h-[124px]" />
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
                         <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-6 rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)]">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-[#01FFFF]/10 rounded-full blur-[50px] group-hover:bg-[#01FFFF]/20 transition-all"></div>
                             <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Net Profit Today</p>
-                            <h2 className="text-4xl font-syncopate font-bold text-white tracking-tighter">₹{kpiData.net_profit_today.toLocaleString()}</h2>
+                            <h2 className="text-3xl sm:text-4xl font-syncopate font-bold text-white tracking-tighter truncate">₹{kpiData.net_profit_today.toLocaleString()}</h2>
                         </div>
-                        <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Total Revenue</p><h2 className="text-3xl font-syncopate font-bold">₹{kpiData.revenue_today.toLocaleString()}</h2></div>
-                        <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Labor Cost</p><h2 className="text-3xl font-syncopate font-bold">₹{kpiData.labor_cost_today.toLocaleString()}</h2></div>
-                        <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">General Expenses</p><h2 className="text-3xl font-syncopate font-bold text-[#FF2A6D]">₹{kpiData.general_expenses_today.toLocaleString()}</h2></div>
+                        <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Total Revenue</p><h2 className="text-2xl sm:text-3xl font-syncopate font-bold truncate">₹{kpiData.revenue_today.toLocaleString()}</h2></div>
+                        <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Labor Cost</p><h2 className="text-2xl sm:text-3xl font-syncopate font-bold truncate">₹{kpiData.labor_cost_today.toLocaleString()}</h2></div>
+                        <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">General Expenses</p><h2 className="text-2xl sm:text-3xl font-syncopate font-bold text-[#FF2A6D] truncate">₹{kpiData.general_expenses_today.toLocaleString()}</h2></div>
                     </div>
                 )}
 
@@ -1465,7 +1465,7 @@ export default function AdminDashboard() {
                 {/* SERVICE CREATE/EDIT MODAL */}
             {isServiceModalOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
-                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                    <div className="bg-[#141518] border border-white/10 p-6 sm:p-8 rounded-[2.5rem] w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)]">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="font-syncopate font-bold tracking-widest text-amber-400">
                                 {editingService ? 'EDIT SERVICE' : 'NEW SERVICE'}
@@ -1534,7 +1534,7 @@ export default function AdminDashboard() {
             {/* LEDGER EDIT MODAL */}
             {isLedgerModalOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
-                    <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                    <div className="bg-[#141518] border border-white/10 p-6 sm:p-8 rounded-[2.5rem] w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)]">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">EDIT LEDGER ENTRY</h3>
                             <button onClick={() => setIsLedgerModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors">

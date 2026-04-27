@@ -487,18 +487,18 @@ export default function AdminQueueBoard() {
         <div className="min-h-screen bg-[#050505] text-white flex flex-col font-jakarta overflow-hidden">
 
             {/* ── TOP BAR ───────────────────────────────────────────────────── */}
-            <header className="flex items-center justify-between px-8 py-5 border-b border-white/5 bg-[#141518]/80 backdrop-blur-xl flex-shrink-0">
+            <header className="flex flex-col lg:flex-row items-start lg:items-center gap-4 justify-between px-8 py-5 border-b border-white/5 bg-[#141518]/80 backdrop-blur-xl flex-shrink-0">
                 <div className="flex items-center gap-6">
                     <button
                         onClick={() => router.push('/admin/dashboard')}
                         className="flex items-center gap-2 text-[#8E939B] hover:text-white transition-colors text-xs font-bold uppercase tracking-widest"
                     >
                         <ChevronLeft className="w-4 h-4" />
-                        <LayoutDashboard className="w-4 h-4" /> Admin Dashboard
+                        <LayoutDashboard className="w-4 h-4" /> <span className="hidden sm:inline">Admin Dashboard</span>
                     </button>
                     <div className="w-px h-6 bg-white/10" />
                     <div>
-                        <h1 className="font-syncopate font-black text-lg tracking-widest">
+                        <h1 className="font-syncopate font-black text-base sm:text-lg tracking-widest">
                             LIVE QUEUE<span className="text-[#FF2A6D]">.</span>
                         </h1>
                         <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.3em]">Admin Bay Control Board</p>
@@ -522,7 +522,7 @@ export default function AdminQueueBoard() {
                         className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-full text-[#8E939B] hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                        Refresh
+                        <span className="hidden sm:inline">Refresh</span>
                     </button>
                 </div>
             </header>
@@ -531,7 +531,7 @@ export default function AdminQueueBoard() {
             {isLoading ? (
                 <div className="flex-1 flex gap-6 p-6 overflow-x-auto overflow-y-hidden">
                     {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="flex flex-col flex-shrink-0 w-80 xl:w-96 bg-[#0C0D0F] border border-white/5 rounded-3xl overflow-hidden shadow-[0_0_20px_rgba(255,255,255,0.02)]">
+                        <div key={i} className="flex flex-col flex-shrink-0 w-[85vw] sm:w-80 xl:w-96 bg-[#0C0D0F] border border-white/5 rounded-3xl overflow-hidden shadow-[0_0_20px_rgba(255,255,255,0.02)]">
                             <div className="bg-white/5 border-b border-white/5 p-5">
                                 <div className="flex items-center justify-between">
                                     <Skeleton className="h-5 w-32" />
@@ -554,7 +554,7 @@ export default function AdminQueueBoard() {
                             return (
                                 <div
                                     key={col.id}
-                                    className={`flex flex-col flex-shrink-0 w-80 xl:w-96 bg-[#0C0D0F] border ${col.borderColor} rounded-3xl overflow-hidden ${col.glow}`}
+                                    className={`flex flex-col flex-shrink-0 w-[85vw] sm:w-80 xl:w-96 bg-[#0C0D0F] border ${col.borderColor} rounded-3xl overflow-hidden ${col.glow}`}
                                 >
                                     <div className={`${col.headerBg} border-b ${col.borderColor} p-5 flex-shrink-0`}>
                                         <div className="flex items-center justify-between">
@@ -622,11 +622,11 @@ export default function AdminQueueBoard() {
             {/* ── CHECKOUT MODAL ────────────────────────────────────────────── */}
             {checkoutModal.isOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)]">
                         {/* Modal Header */}
                         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#0C0D0F]">
                             <div>
-                                <h2 className="font-syncopate font-black text-lg tracking-widest text-emerald-400">
+                                <h2 className="font-syncopate font-black text-base sm:text-lg tracking-widest text-emerald-400">
                                     CHECKOUT
                                 </h2>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-1">
@@ -746,7 +746,7 @@ export default function AdminQueueBoard() {
             {/* ── EDIT SERVICE MODAL ───────────────────────────────────────── */}
             {isEditModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-sm overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] p-6">
+                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)] p-6">
                         <div className="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
                             <h2 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF]">
                                 CHANGE SERVICE PACKAGE

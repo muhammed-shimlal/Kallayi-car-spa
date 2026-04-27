@@ -209,7 +209,7 @@ export default function FinanceTab() {
                     {customerCredits.length === 0 ? (
                         <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">All booking invoices are settled!</td></tr>
                     ) : (
-                        customerCredits.map((credit) => (
+                        customerCredits.map((credit: any) => (
                             <tr key={credit.id} className="hover:bg-white/5">
                                 <td className="p-4 pl-6 font-bold text-white">{credit.customer}</td>
                                 <td className="p-4 text-[#8E939B]">{credit.vehicle}</td>
@@ -247,7 +247,7 @@ export default function FinanceTab() {
                                                     className="w-full bg-black/40 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white text-sm outline-none focus:border-[#FF2A6D] transition-all appearance-none"
                                                 >
                                                     <option value="">Select Category...</option>
-                                                    {expenseCategories.map(cat => (
+                                                    {expenseCategories.map((cat: any) => (
                                                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                                                     ))}
                                                 </select>
@@ -346,7 +346,7 @@ export default function FinanceTab() {
                                     <div className="p-6 border-b border-white/5 flex justify-between items-center">
                                         <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#8E939B]">RECENT EXPENSES</h4>
                                         <span className="text-[10px] bg-white/10 text-white px-3 py-1 rounded-full uppercase tracking-widest font-bold">
-                                            Total: ₹{expenses.reduce((sum, exp) => sum + Number(exp.amount), 0).toLocaleString()}
+                                            Total: ₹{expenses.reduce((sum: number, exp: any) => sum + Number(exp.amount), 0).toLocaleString()}
                                         </span>
                                     </div>
                                     <div className="flex-1 overflow-auto">

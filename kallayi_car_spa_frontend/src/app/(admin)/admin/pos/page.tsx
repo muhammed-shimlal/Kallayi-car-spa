@@ -135,13 +135,13 @@ export default function AdminExpressPOSPage() {
 
 
   return (
-    <div className="bg-[#050505] min-h-screen font-jakarta text-white relative">
+    <div className="bg-[#050505] min-h-[100dvh] font-jakarta text-white relative">
       <div className="absolute inset-0 z-0 bg-gradient-to-b from-[#141518] to-[#050505]" />
       <div className="absolute inset-0 z-0 opacity-10 bg-[url('https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?q=80&w=2669&auto=format&fit=crop')] bg-cover bg-center mix-blend-luminosity" />
 
-      <main className="relative z-10 max-w-4xl mx-auto pt-10 pb-20 px-6 sm:px-12 h-screen flex flex-col">
+      <main className="relative z-10 max-w-4xl mx-auto pt-10 pb-20 px-6 sm:px-12 min-h-[100dvh] flex flex-col">
         {/* Header */}
-        <header className="flex items-center justify-between mb-12">
+        <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 mb-12">
           <div>
             <h1 className="font-syncopate text-3xl font-bold tracking-widest text-white uppercase">
               Command <span className="text-[#01FFFF]">Center</span>
@@ -164,13 +164,13 @@ export default function AdminExpressPOSPage() {
             {/* Input Groups Container */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Plate Number */}
-              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-8 shadow-2xl flex flex-col justify-center">
+              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-center">
                 <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] mb-4 text-center block">
                   License Plate
                 </label>
                 <input
                   {...register("plate_number")}
-                  className={`w-full bg-transparent border-b-2 text-center text-5xl sm:text-6xl font-syncopate font-bold uppercase transition-all pb-4 outline-none placeholder:text-zinc-800 ${
+                  className={`w-full bg-transparent border-b-2 text-center text-4xl sm:text-5xl md:text-6xl font-syncopate font-bold uppercase transition-all pb-4 outline-none placeholder:text-zinc-800 ${
                     errors.plate_number ? "border-[#E52323] text-[#E52323]" : "border-white/10 text-white focus:border-[#01FFFF]"
                   }`}
                   placeholder="KL-11-AA"
@@ -184,7 +184,7 @@ export default function AdminExpressPOSPage() {
               </div>
 
               {/* Phone Number */}
-              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-8 shadow-2xl flex flex-col justify-center">
+              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-center">
                 <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] mb-4 text-center block">
                   Customer Master Key
                 </label>
@@ -214,7 +214,7 @@ export default function AdminExpressPOSPage() {
                   <Loader2 className="w-8 h-8 animate-spin text-[#01FFFF]" />
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   {packages.map((pkg) => {
                     const isSelected = selectedPackageId === pkg.id;
                     return (
@@ -222,9 +222,9 @@ export default function AdminExpressPOSPage() {
                         type="button"
                         key={pkg.id}
                         onClick={() => setValue("package_id", pkg.id, { shouldValidate: true })}
-                        className={`p-6 rounded-3xl text-left transition-all duration-300 ${
+                        className={`p-4 sm:p-6 rounded-3xl text-left transition-all duration-300 ${
                           isSelected
-                            ? "bg-[#01FFFF]/10 border-2 border-[#01FFFF] shadow-[0_0_30px_rgba(1,255,255,0.15)] scale-105"
+                            ? "bg-[#01FFFF]/10 border-2 border-[#01FFFF] shadow-[0_0_30px_rgba(1,255,255,0.15)] scale-[1.02] sm:scale-105"
                             : "bg-[#141518]/60 border border-white/5 hover:border-white/20 hover:bg-[#141518]"
                         }`}
                       >
