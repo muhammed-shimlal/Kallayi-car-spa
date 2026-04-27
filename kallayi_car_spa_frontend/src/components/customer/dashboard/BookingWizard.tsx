@@ -17,6 +17,25 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
     const [isLoadingSlots, setIsLoadingSlots] = useState(false);
     const [selectedSlot, setSelectedSlot] = useState<string>('');
 
+    // Step 1 States
+    const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
+    const [selectedPackage, setSelectedPackage] = useState<any>(null);
+    const [servicePackages, setServicePackages] = useState<any[]>([]);
+
+    const today = new Date().toISOString().split('T')[0];
+
+    useEffect(() => {
+        const fetchPackages = async () => {
+            try {
+                const res = await api.get('/service-packages/'); 
+                setServicePackages(res.data);
+            } catch (error) {
+                console.error("Failed to fetch packages", error);
+            }
+        };
+        fetchPackages();
+    }, []);
+
     useEffect(() => {
         const fetchSlots = async () => {
             if (!selectedDate) {
@@ -91,7 +110,15 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                 <label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 block">Select Vehicle</label>
                                 <div className="grid grid-cols-2 gap-4 mb-8">
                                     {myVehicles.map((v, index) => (
-                                        <div key={v.id || v.plate || index} className="border border-white/20 bg-white/5 p-4 rounded-2xl cursor-pointer hover:border-[#E52323] transition text-center">
+                                        <div 
+                                            key={v.id || v.plate || index} 
+                                            onClick={() => setSelectedVehicle(v)}
+                                            className={`border p-4 rounded-2xl cursor-pointer transition text-center ${
+                                                (selectedVehicle?.id === v.id || selectedVehicle?.plate === v.plate)
+                                                ? 'border-[#E52323] bg-[#E52323]/20 shadow-[0_0_15px_rgba(229,35,35,0.4)]'
+                                                : 'border-white/20 bg-white/5 hover:border-[#E52323]'
+                                            }`}
+                                        >
                                             <Car className="mx-auto mb-2 text-gray-400" />
                                             <p className="font-bold text-sm">{v.model}</p>
                                         </div>
@@ -100,10 +127,21 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
 
                                 <label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 block">Select Package</label>
                                 <div className="space-y-3">
-                                    {['Exterior Wash (₹500)', 'Deep Detail (₹1200)'].map(pkg => (
-                                        <div key={pkg} className="border border-white/20 bg-white/5 p-4 rounded-2xl cursor-pointer hover:border-[#E52323] transition flex justify-between">
-                                            <span className="font-bold">{pkg}</span>
-                                            <div className="w-5 h-5 rounded-full border border-gray-500"></div>
+                                    {servicePackages.map(pkg => (
+                                        <div 
+                                            key={pkg.id} 
+                                            onClick={() => setSelectedPackage(pkg)}
+                                            className={`border p-4 rounded-2xl cursor-pointer transition flex justify-between items-center ${
+                                                selectedPackage?.id === pkg.id 
+                                                ? 'border-[#E52323] bg-[#E52323]/20 shadow-[0_0_15px_rgba(229,35,35,0.4)]'
+                                                : 'border-white/20 bg-white/5 hover:border-[#E52323]'
+                                            }`}
+                                        >
+                                            <div>
+                                                <span className="font-bold block">{pkg.name}</span>
+                                                <span className="text-xs text-[#E52323] font-bold">₹{parseFloat(pkg.price)}</span>
+                                            </div>
+                                            <div className={`w-5 h-5 rounded-full border ${selectedPackage?.id === pkg.id ? 'border-[#E52323] bg-[#E52323]' : 'border-gray-500'}`}></div>
                                         </div>
                                     ))}
                                 </div>
@@ -131,6 +169,7 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Calendar className="w-4 h-4" /> Date</label>
                                         <input 
                                             type="date" 
+                                            min={today}
                                             value={selectedDate}
                                             onChange={(e) => {
                                                 setSelectedDate(e.target.value);
