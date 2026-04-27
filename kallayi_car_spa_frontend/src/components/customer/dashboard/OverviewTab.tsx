@@ -1,15 +1,16 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Award, Activity } from 'lucide-react';
+import { Plus, Award, Activity, LogOut } from 'lucide-react';
 import { ActiveWash } from './types';
 
 interface OverviewTabProps {
     setIsBooking: (val: boolean) => void;
     loyaltyPoints: number;
     activeWash: ActiveWash;
+    handleLogout: () => void;
 }
 
-export function OverviewTab({ setIsBooking, loyaltyPoints, activeWash }: OverviewTabProps) {
+export function OverviewTab({ setIsBooking, loyaltyPoints, activeWash, handleLogout }: OverviewTabProps) {
     return (
         <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -18,11 +19,16 @@ export function OverviewTab({ setIsBooking, loyaltyPoints, activeWash }: Overvie
             transition={{ duration: 0.5, ease: "easeOut" }}
         >
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-10">
-                <div>
-                    <span className="text-[#E52323] text-[10px] font-bold tracking-[0.3em] uppercase">Sys. Online</span>
-                    <h1 className="text-4xl font-bold tracking-tighter mt-2">Welcome Back.</h1>
+                <div className="w-full md:w-auto flex justify-between items-start">
+                    <div>
+                        <span className="text-[#E52323] text-[10px] font-bold tracking-[0.3em] uppercase">Sys. Online</span>
+                        <h1 className="text-4xl font-bold tracking-tighter mt-2">Welcome Back.</h1>
+                    </div>
+                    <button onClick={handleLogout} className="md:hidden flex items-center gap-2 text-gray-500 hover:text-[#E52323] transition-colors font-bold text-[10px] uppercase tracking-widest mt-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10">
+                        <LogOut className="w-4 h-4" /> Disconnect
+                    </button>
                 </div>
-                <button onClick={() => setIsBooking(true)} className="bg-white text-black px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:scale-105 transition flex items-center gap-2">
+                <button onClick={() => setIsBooking(true)} className="w-full md:w-auto justify-center bg-white text-black px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:scale-105 transition flex items-center gap-2">
                     <Plus className="w-4 h-4" /> Book Wash
                 </button>
             </div>

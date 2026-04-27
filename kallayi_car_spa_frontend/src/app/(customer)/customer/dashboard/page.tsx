@@ -150,7 +150,7 @@ export default function CustomerDashboard() {
             <main className="flex-1 p-6 md:p-12 pb-24 md:pb-8 overflow-y-auto relative">
                 <AnimatePresence mode="wait">
                     {activeTab === 'overview' && (
-                        <OverviewTab key="overview" setIsBooking={setIsBooking} loyaltyPoints={loyaltyPoints} activeWash={activeWash!} />
+                        <OverviewTab key="overview" setIsBooking={setIsBooking} loyaltyPoints={loyaltyPoints} activeWash={activeWash!} handleLogout={handleLogout} />
                     )}
                     
                     {activeTab === 'garage' && (

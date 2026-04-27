@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useDashboard } from '@/components/admin/dashboard/context/DashboardContext';
 import {
     Menu, X, LayoutDashboard, Wallet, Users, BarChart2,
-    Search, FileText, Wrench, Activity, ChevronRight
+    Search, FileText, Wrench, Activity, ChevronRight, LogOut
 } from 'lucide-react';
 
 export default function MobileNavigation() {
@@ -25,6 +25,11 @@ export default function MobileNavigation() {
     const handleRouteClick = (route: string) => {
         router.push(route);
         setIsOpen(false);
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('auth_token');
+        router.push('/login');
     };
 
     return (
@@ -131,6 +136,13 @@ export default function MobileNavigation() {
                             className="flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-gradient-to-r from-[#E52323] right to-red-700 text-white font-bold text-sm uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(229,35,35,0.4)] active:scale-95"
                         >
                             Launch Express POS <ChevronRight className="w-5 h-5" />
+                        </button>
+
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-sm uppercase tracking-widest transition-all text-[#8E939B] hover:text-[#FF2A6D] border border-transparent mt-2"
+                        >
+                            <LogOut className="w-5 h-5" /> Disconnect
                         </button>
                     </div>
                 </div>
