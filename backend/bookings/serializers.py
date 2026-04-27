@@ -11,6 +11,8 @@ class BookingSerializer(serializers.ModelSerializer):
     technician_name = serializers.ReadOnlyField(source='technician.username')
     customer_name = serializers.ReadOnlyField(source='customer.user.first_name')
     vehicle_info = serializers.ReadOnlyField(source='vehicle.plate_number')
+    service_package_name = serializers.CharField(source='service_package.name', read_only=True)
+    vehicle_plate = serializers.CharField(source='vehicle.plate_number', read_only=True)
 
     # Add optional fields to silence legacy client payload mismatches
     transaction_id = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
@@ -20,9 +22,9 @@ class BookingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Booking
-        fields = ['id', 'customer', 'customer_name', 'vehicle', 'vehicle_info', 'technician', 'technician_name', 
-                  'service_package', 'service_package_details', 'time_slot', 'end_time', 'status', 'address', 'latitude', 'longitude',
-                  'transaction_id', 'payment_method', 'split_cash', 'payment_status']
+        fields = ['id', 'customer', 'customer_name', 'vehicle', 'vehicle_info', 'vehicle_plate', 'technician', 'technician_name', 
+                  'service_package', 'service_package_name', 'service_package_details', 'time_slot', 'end_time', 'status',
+                  'address', 'latitude', 'longitude', 'transaction_id', 'payment_method', 'split_cash', 'payment_status', 'created_at']
         read_only_fields = ['customer', 'end_time', 'status', 'created_at']
         extra_kwargs = {
             'address': {'required': False, 'allow_blank': True},

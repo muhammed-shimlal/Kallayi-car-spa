@@ -32,36 +32,33 @@ export function HistoryTab({ history }: HistoryTabProps) {
             ) : (
                 <div className="grid grid-cols-1 gap-4">
                     {(history || []).map((record, index) => (
-                        <div key={record.id || index} className="bg-white/5 border border-white/10 p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-white/20 transition-colors">
+                        <div key={record.id || index} className="bg-white/5 border border-white/10 p-6 rounded-2xl flex flex-col hover:border-white/20 transition-colors">
                             <div className="flex items-center gap-4">
-                                <div className="bg-[#E52323]/20 p-3 rounded-xl border border-[#E52323]/30">
+                                <div className="bg-[#E52323]/20 p-3 rounded-xl border border-[#E52323]/30 shrink-0">
                                     <CheckCircle className="w-6 h-6 text-[#E52323]" />
                                 </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-white">
-                                        {record.service_package?.name || 'Service Wash'}
-                                        {record.vehicle ? ` - ${record.vehicle.make} ${record.vehicle.model}` : ''}
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="text-lg font-bold text-white truncate">
+                                        {record.service_package_name || 'Standard Wash'}
                                     </h3>
                                     <p className="text-xs text-gray-500 mt-1 uppercase tracking-widest flex items-center gap-2 font-bold">
-                                        <Calendar className="w-3 h-3" />
-                                        {new Date(record.created_at || record.end_time || Date.now()).toLocaleDateString()} 
-                                        {record.vehicle?.plate_number ? ` • ${record.vehicle.plate_number}` : ''}
+                                        <Calendar className="w-3 h-3 shrink-0" />
+                                        {new Date(record.created_at || record.end_time || Date.now()).toLocaleDateString()}
+                                        {(record.vehicle_plate) ? ` • ${record.vehicle_plate}` : ''}
                                     </p>
                                 </div>
+                                <span className="text-[10px] text-[#E52323] uppercase tracking-widest font-bold shrink-0">Completed</span>
                             </div>
-                            <div className="text-right mt-4 md:mt-0 flex flex-col items-end">
-                                <p className="text-xl font-black text-white">₹{record.total_price || record.service_package?.price || '0'}</p>
-                                <p className="text-[10px] text-[#E52323] uppercase tracking-widest font-bold mt-1 mb-3">Completed</p>
-                                
-                                {(record.total_price || record.service_package?.price) ? (
-                                    <button 
-                                        onClick={() => window.open(`${API_BASE}/finance/invoice/${record.id}/pdf/`, '_blank')}
-                                        className="flex items-center gap-2 bg-white/5 hover:bg-[#01FFFF]/20 text-[#01FFFF] text-[10px] uppercase font-bold tracking-widest px-4 py-2 rounded-lg border border-white/10 transition-all"
-                                    >
-                                        <Download className="w-3 h-3" /> View Invoice
-                                    </button>
-                                ) : null}
-                            </div>
+                            
+                            {(!record.status || record.status === 'COMPLETED') && (
+                                <button 
+                                  onClick={() => window.open(`/invoice-preview?id=${record.id}`, '_blank')}
+                                  className="mt-4 w-full flex justify-center items-center gap-2 bg-white/5 hover:bg-[#01FFFF]/20 text-[#01FFFF] hover:text-white transition-all text-[10px] sm:text-xs uppercase font-bold tracking-widest px-4 py-3 rounded-xl border border-white/10"
+                                >
+                                  <Download className="w-4 h-4" />
+                                  View Invoice
+                                </button>
+                            )}
                         </div>
                     ))}
                 </div>
