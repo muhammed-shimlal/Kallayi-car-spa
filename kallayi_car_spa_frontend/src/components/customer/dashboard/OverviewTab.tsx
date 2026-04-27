@@ -5,12 +5,11 @@ import { ActiveWash } from './types';
 
 interface OverviewTabProps {
     setIsBooking: (val: boolean) => void;
-    loyaltyPoints: number;
     activeWash: ActiveWash;
     handleLogout: () => void;
 }
 
-export function OverviewTab({ setIsBooking, loyaltyPoints, activeWash, handleLogout }: OverviewTabProps) {
+export function OverviewTab({ setIsBooking, activeWash, handleLogout }: OverviewTabProps) {
     return (
         <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -33,18 +32,10 @@ export function OverviewTab({ setIsBooking, loyaltyPoints, activeWash, handleLog
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                {/* 🎯 Loyalty Points Widget */}
-                <div className="bg-gradient-to-br from-gray-900 to-black border border-white/10 p-6 md:p-8 rounded-[2.5rem] relative overflow-hidden shadow-2xl">
-                    <Award className="absolute -right-6 -bottom-6 w-32 h-32 text-white/5" />
-                    <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-2">Synergy Points</p>
-                    <h2 className="text-4xl md:text-5xl font-black text-white">{loyaltyPoints}</h2>
-                    <p className="text-[#E52323] text-xs font-bold mt-4">Redeem for ₹125 Off</p>
-                </div>
-
+            <div className="flex flex-col gap-6 mb-8">
                 {/* 📍 Real-Time Tracking Widget */}
                 {activeWash ? (
-                    <div className="md:col-span-2 border border-[#E52323]/30 bg-[#E52323]/5 p-6 md:p-8 rounded-3xl relative overflow-hidden">
+                    <div className="w-full border border-[#E52323]/30 bg-[#E52323]/5 p-6 md:p-8 rounded-3xl relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-full h-[1px] bg-[#E52323] opacity-50 shadow-[0_0_10px_#E52323]"></div>
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 mb-6">
                             <div>
@@ -65,7 +56,7 @@ export function OverviewTab({ setIsBooking, loyaltyPoints, activeWash, handleLog
                         </div>
                     </div>
                 ) : (
-                    <div className="md:col-span-2 bg-white/5 border border-white/10 p-6 md:p-8 rounded-3xl flex flex-col items-center justify-center text-center shadow-inner">
+                    <div className="w-full bg-white/5 border border-white/10 p-6 md:p-8 rounded-3xl flex flex-col items-center justify-center text-center shadow-inner">
                         <Activity className="w-12 h-12 text-white/10 mb-4" />
                         <h3 className="text-xl font-bold text-gray-500">No Active Operations</h3>
                         <p className="text-[10px] text-gray-600 uppercase tracking-widest mt-2 font-bold">Your fleet is currently secure.</p>

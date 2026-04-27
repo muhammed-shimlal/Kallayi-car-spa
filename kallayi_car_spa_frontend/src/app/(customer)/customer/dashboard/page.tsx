@@ -10,7 +10,6 @@ import { SidebarNavigation } from '@/components/customer/dashboard/SidebarNaviga
 import { OverviewTab } from '@/components/customer/dashboard/OverviewTab';
 import { GarageTab } from '@/components/customer/dashboard/GarageTab';
 import { LedgerTab } from '@/components/customer/dashboard/LedgerTab';
-import { VipTab } from '@/components/customer/dashboard/VipTab';
 import { HistoryTab } from '@/components/customer/dashboard/HistoryTab';
 import { BookingWizard } from '@/components/customer/dashboard/BookingWizard';
 import { MobileNavigation } from '@/components/customer/dashboard/MobileNavigation';
@@ -23,7 +22,6 @@ export default function CustomerDashboard() {
     const [isBooking, setIsBooking] = useState(false);
 
     // Real API Data States
-    const [loyaltyPoints, setLoyaltyPoints] = useState<number>(0);
     const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
     const [activeWash, setActiveWash] = useState<ActiveWash | null>(null);
     const [washHistory, setWashHistory] = useState<any[]>([]);
@@ -88,8 +86,6 @@ export default function CustomerDashboard() {
                     console.warn("Invoice endpoint not ready or failed. Defaulting to empty ledger.");
                     setTransactions([]);
                 }
-
-                setLoyaltyPoints(450);
             } catch (error) {
                 console.error("Failed to fetch customer data", error);
             } finally {
@@ -150,7 +146,7 @@ export default function CustomerDashboard() {
             <main className="flex-1 p-6 md:p-12 pb-24 md:pb-8 overflow-y-auto relative">
                 <AnimatePresence mode="wait">
                     {activeTab === 'overview' && (
-                        <OverviewTab key="overview" setIsBooking={setIsBooking} loyaltyPoints={loyaltyPoints} activeWash={activeWash!} handleLogout={handleLogout} />
+                        <OverviewTab key="overview" setIsBooking={setIsBooking} activeWash={activeWash!} handleLogout={handleLogout} />
                     )}
                     
                     {activeTab === 'garage' && (
@@ -159,10 +155,6 @@ export default function CustomerDashboard() {
 
                     {activeTab === 'ledger' && (
                         <LedgerTab key="ledger" transactions={transactions} />
-                    )}
-
-                    {activeTab === 'vip' && (
-                        <VipTab key="vip" />
                     )}
 
                     {activeTab === 'history' && (

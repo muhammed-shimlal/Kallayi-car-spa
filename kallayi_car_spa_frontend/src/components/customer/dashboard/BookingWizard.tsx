@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Car, MapPin, Calendar, Clock, Award, CreditCard, ChevronRight } from 'lucide-react';
+import api from '@/lib/api';
 import { Vehicle } from './types';
 
 interface BookingWizardProps {
@@ -10,6 +11,31 @@ interface BookingWizardProps {
 
 export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) {
     const [bookingStep, setBookingStep] = useState(1);
+
+    const [selectedDate, setSelectedDate] = useState<string>('');
+    const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+    const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+    const [selectedSlot, setSelectedSlot] = useState<string>('');
+
+    useEffect(() => {
+        const fetchSlots = async () => {
+            if (!selectedDate) {
+                setAvailableSlots([]);
+                return;
+            }
+            setIsLoadingSlots(true);
+            try {
+                const res = await api.get(`/bookings/available_slots/`, { params: { date: selectedDate } });
+                setAvailableSlots(res.data.slots || []);
+            } catch (err) {
+                console.error("Failed to fetch slots", err);
+                setAvailableSlots([]);
+            } finally {
+                setIsLoadingSlots(false);
+            }
+        };
+        fetchSlots();
+    }, [selectedDate]);
 
     const slideVariants = {
         enter: (direction: number) => ({ x: direction > 0 ? 50 : -50, opacity: 0 }),
@@ -103,15 +129,47 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                     </div>
                                     <div>
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Calendar className="w-4 h-4" /> Date</label>
-                                        <input type="date" className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white outline-none [color-scheme:dark]" />
+                                        <input 
+                                            type="date" 
+                                            value={selectedDate}
+                                            onChange={(e) => {
+                                                setSelectedDate(e.target.value);
+                                                setSelectedSlot(''); // Reset selected time
+                                            }}
+                                            className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white outline-none [color-scheme:dark]" 
+                                        />
                                     </div>
                                     <div>
                                         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Clock className="w-4 h-4" /> Available Slots</label>
-                                        <div className="grid grid-cols-3 gap-3">
-                                            {['09:00 AM', '11:00 AM', '02:00 PM'].map(time => (
-                                                <div key={time} className="border border-white/20 bg-white/5 py-3 rounded-xl text-center text-sm font-bold cursor-pointer hover:border-[#E52323] transition">{time}</div>
-                                            ))}
-                                        </div>
+                                        {isLoadingSlots ? (
+                                            <div className="text-center py-8 text-gray-400 font-bold uppercase tracking-widest text-xs animate-pulse">
+                                                Scanning available bays...
+                                            </div>
+                                        ) : !selectedDate ? (
+                                            <div className="text-center py-8 text-gray-500 font-bold uppercase tracking-widest text-xs">
+                                                Select a date to view bays.
+                                            </div>
+                                        ) : availableSlots.length === 0 ? (
+                                            <div className="text-center py-8 text-[#E52323] font-bold uppercase tracking-widest text-xs">
+                                                Fully booked for this date.
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-3 gap-4">
+                                                {availableSlots.map(time => (
+                                                    <div 
+                                                        key={time}
+                                                        onClick={() => setSelectedSlot(time)}
+                                                        className={`border p-4 rounded-xl cursor-pointer transition text-center font-bold text-sm ${
+                                                            selectedSlot === time 
+                                                            ? 'border-[#E52323] bg-[#E52323]/20 text-white shadow-[0_0_15px_rgba(229,35,35,0.4)]' 
+                                                            : 'border-white/20 bg-white/5 hover:border-white/50 text-gray-300'
+                                                        }`}
+                                                    >
+                                                        {time}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </motion.div>
@@ -130,16 +188,7 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                             >
                                 <h3 className="text-2xl font-bold mb-6">3. Finalize & Authorize</h3>
                                 
-                                {/* 🎯 Loyalty Toggle */}
-                                <div className="bg-[#E52323]/10 border border-[#E52323]/30 p-5 rounded-2xl mb-8 flex justify-between items-center">
-                                    <div>
-                                        <h4 className="font-bold text-white text-sm flex items-center gap-2"><Award className="w-4 h-4 text-[#E52323]"/> Apply Synergy Points</h4>
-                                        <p className="text-xs text-gray-400 mt-1">Use 500 points for ₹50 off</p>
-                                    </div>
-                                    <div className="w-12 h-6 bg-white/20 rounded-full relative cursor-pointer">
-                                        <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 left-0.5"></div>
-                                    </div>
-                                </div>
+
 
                                 {/* 💳 Stripe Mock */}
                                 <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">

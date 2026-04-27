@@ -4,7 +4,7 @@ from .views import express_walkin, update_booking_stage, live_queue, vehicle_crm
 
 router = DefaultRouter()
 router.register(r'services', ServicePackageViewSet, basename='services')
-router.register(r'', BookingViewSet, basename='bookings')
+router.register(r'', BookingViewSet, basename='booking')
 
 urlpatterns = [
     path('express-walkin/', express_walkin, name='express-walkin'),

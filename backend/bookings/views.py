@@ -77,60 +77,41 @@ class BookingViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def available_slots(self, request):
         date_str = request.query_params.get('date')
-        package_id = request.query_params.get('service_package_id')
-        
-        if not date_str or not package_id:
-            return Response({'error': 'Missing date or service_package_id'}, status=400)
+        if not date_str:
+            return Response({'error': 'Missing date parameter'}, status=400)
             
         try:
             target_date = parse_date(date_str)
-            package = ServicePackage.objects.get(id=package_id)
-        except (ValueError, ServicePackage.DoesNotExist):
-             return Response({'error': 'Invalid date or package'}, status=400)
+            if not target_date:
+                raise ValueError
+        except ValueError:
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
 
-        # 1. Get all active Technicians/Washers
-        # Using the Staff App profile
-        techs = StaffProfile.objects.filter(role='WASHER', is_active=True)
-        if not techs.exists():
-            return Response({'error': 'No technicians available'}, status=400)
+        # 1. Define Standard Operating Hours (1-hour blocks from 9:00 AM to 6:00 PM)
+        all_slots = []
+        for hour in range(9, 18):
+            t = time(hour, 0)
+            all_slots.append(t.strftime("%I:%M %p"))
 
-        # 2. Define business hours (e.g., 9 AM to 5 PM)
-        start_hour = 9
-        end_hour = 17
-        slot_duration = 30 # Check every 30 mins
-        
-        available_slots = []
-        # Create naive datetimes first
-        naive_start = datetime.combine(target_date, time(start_hour, 0))
-        naive_end = datetime.combine(target_date, time(end_hour, 0))
-        
-        # Make them timezone-aware
-        current_time = timezone.make_aware(naive_start)
-        end_time = timezone.make_aware(naive_end)
-        
-        duration = timedelta(minutes=package.duration_minutes)
+        # 2. Query bookings that fall on the specified date (ignoring CANCELLED ones)
+        existing_bookings = Booking.objects.filter(
+            time_slot__date=target_date
+        ).exclude(status='CANCELLED')
 
-        while current_time + duration <= end_time:
-            slot_start = current_time
-            slot_end = current_time + duration
-            
-            # Check if ANY tech is free for this slot
-            # A tech is busy if they have a booking that Overlaps
-            # Overlap: (BookStart < SlotEnd) AND (BookEnd > SlotStart)
-            
-            # Get IDs of busy techs
-            busy_tech_ids = Booking.objects.filter(
-                technician__staff_profile__in=techs,
-                status__in=['CONFIRMED', 'IN_PROGRESS'],
-                time_slot__lt=slot_end,
-                end_time__gt=slot_start
-            ).values_list('technician__staff_profile__id', flat=True)
-            
-            # If count of busy techs < total techs, then slot is available
-            if len(busy_tech_ids) < techs.count():
-                available_slots.append(slot_start.strftime("%H:%M"))
-                
-            current_time += timedelta(minutes=slot_duration)
+        # 3. Find booked slot times
+        booked_slots = set()
+        for b in existing_bookings:
+            if b.time_slot:
+                local_b_time = timezone.localtime(b.time_slot)
+                # Ensure the string explicitly matches the '%I:%M %p' format (e.g., '09:00 AM', '02:00 PM')
+                # On Windows %I could give '09', just strip leading zeros if necessary, but standard is keep.
+                formatted_time_slot = local_b_time.strftime("%I:%M %p")
+                if formatted_time_slot.startswith("0"): 
+                     pass # It's matched identically with our `for hour in range(9, 18): t.strftime("%I:%M %p")`
+                booked_slots.add(formatted_time_slot)
+
+        # 4. Filter remaining blocks
+        available_slots = [slot for slot in all_slots if slot not in booked_slots]
             
         return Response({'date': date_str, 'slots': available_slots})
 
