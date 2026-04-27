@@ -16,7 +16,7 @@ class BookingSerializer(serializers.ModelSerializer):
         model = Booking
         fields = ['id', 'customer', 'customer_name', 'vehicle', 'vehicle_info', 'technician', 'technician_name', 
                   'service_package', 'service_package_details', 'time_slot', 'end_time', 'status', 'address', 'latitude', 'longitude']
-        read_only_fields = ['end_time', 'status', 'created_at']
+        read_only_fields = ['customer', 'end_time', 'status', 'created_at']
 
     def get_service_package_details(self, obj):
         if obj.service_package:

@@ -55,6 +55,25 @@ class BookingViewSet(viewsets.ModelViewSet):
         if hasattr(user, 'customer'):
             return Booking.objects.filter(customer=user.customer).order_by('-created_at')
         return Booking.objects.none()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        
+        # 1. Save booking with CONFIRMED status automatically
+        if hasattr(user, 'customer'):
+            booking = serializer.save(customer=user.customer, status='CONFIRMED')
+        else:
+            booking = serializer.save(status='CONFIRMED')
+            
+        # 2. Generate an UNPAID Invoice immediately to track payment status correctly
+        from finance.models import Invoice
+        amount = booking.service_package.price if booking.service_package else 0.0
+        Invoice.objects.create(
+            booking=booking,
+            amount=amount,
+            is_paid=False,
+            payment_method=None
+        )
  
     @action(detail=False, methods=['get'])
     def completed(self, request):
@@ -73,6 +92,87 @@ class BookingViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(completed_bookings, many=True)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def checkout(self, request, pk=None):
+        booking = self.get_object()
+        
+        amount_cash = float(request.data.get('amount_cash', 0))
+        amount_upi = float(request.data.get('amount_upi', 0))
+        amount_khata = float(request.data.get('amount_khata', 0))
+
+        if amount_khata > 0 and not booking.customer:
+            customer_name = request.data.get('customer_name') or "Walk-In Guest"
+            from customers.models import Customer
+            from django.contrib.auth.models import User
+            import random
+            import string
+            
+            username = f"walkin_khata_{random.randint(100000, 999999)}"
+            while User.objects.filter(username=username).exists():
+                username = f"walkin_khata_{random.randint(100000, 999999)}"
+            
+            new_user = User.objects.create(username=username, first_name=customer_name)
+            new_user.set_password(''.join(random.choices(string.ascii_letters + string.digits, k=12)))
+            new_user.save()
+            customer = Customer.objects.create(user=new_user, phone_number='')
+            booking.customer = customer
+            booking.save()
+
+        booking.status = 'COMPLETED'
+        booking.end_time = timezone.now()
+        booking.save()
+        
+        if amount_khata > 0 and booking.customer:
+            from finance.models import KhataLedger
+            from decimal import Decimal
+            booking.customer.outstanding_balance += Decimal(amount_khata)
+            booking.customer.save()
+            KhataLedger.objects.create(
+                customer=booking.customer,
+                amount=amount_khata,
+                transaction_type='CHARGE',
+                description=f'Service completed for {booking.vehicle.plate_number if booking.vehicle else "Walk-In"}',
+                related_booking=booking
+            )
+
+        payment_method = 'SPLIT'
+        if amount_cash > 0 and amount_upi == 0 and amount_khata == 0:
+            payment_method = 'CASH'
+        elif amount_upi > 0 and amount_cash == 0 and amount_khata == 0:
+            payment_method = 'ONLINE'
+
+        total_amount = booking.service_package.price if booking.service_package else 0.0
+
+        if not hasattr(booking, 'invoice'):
+            from finance.models import Invoice
+            Invoice.objects.create(
+                booking=booking,
+                amount=total_amount,
+                split_cash=amount_cash,
+                split_online=amount_upi,
+                split_khata=amount_khata,
+                payment_method=payment_method,
+                is_paid=True
+            )
+        else:
+            inv = booking.invoice
+            inv.split_cash = amount_cash
+            inv.split_online = amount_upi
+            inv.split_khata = amount_khata
+            inv.payment_method = payment_method
+            inv.is_paid = True
+            inv.save()
+            
+        from finance.logic import calculate_wash_cost, process_payroll_event
+        try:
+            calculate_wash_cost(booking)
+            process_payroll_event(booking)
+        except Exception as e:
+            print(f"Finance calculation error: {e}")
+            
+        return Response({'status': 'success', 'message': 'Checkout completed successfully.', 'booking_id': booking.id})
 
     @action(detail=False, methods=['get'])
     def available_slots(self, request):
@@ -93,9 +193,11 @@ class BookingViewSet(viewsets.ModelViewSet):
             t = time(hour, 0)
             all_slots.append(t.strftime("%I:%M %p"))
 
-        # 2. Query bookings that fall on the specified date (ignoring CANCELLED ones)
+        # 2. Query ONLINE scheduled bookings that fall on the specified date (ignoring CANCELLED ones)
+        # Walk-ins (created via POS at current time) are ignored because they do not fall exactly on the hour.
         existing_bookings = Booking.objects.filter(
-            time_slot__date=target_date
+            time_slot__date=target_date,
+            time_slot__minute=0
         ).exclude(status='CANCELLED')
 
         # 3. Find booked slot times
@@ -222,13 +324,15 @@ def express_walkin(request):
         defaults={'owner': customer, 'model': 'Unknown Walk-In'}
     )
     
-    # Booking Creation
+    # Booking Creation (Bypass Slot Validations & Overlaps)
+    current_time = timezone.now()
     booking = Booking.objects.create(
         customer=customer,
         vehicle=vehicle,
         service_package=package,
-        status='PENDING',
-        time_slot=timezone.now(),
+        status='WAITING',
+        time_slot=current_time,
+        start_time=current_time,
         address='Kallayi Car Spa - Main Hub'
     )
     

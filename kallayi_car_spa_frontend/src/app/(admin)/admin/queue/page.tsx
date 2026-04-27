@@ -246,7 +246,9 @@ export default function AdminQueueBoard() {
         upi: 0, 
         khata: 0, 
         customerName: '',
-        customerId: null as number | null
+        customerId: null as number | null,
+        isSplit: false,
+        method: 'CASH'
     });
 
     const [servicePackages, setServicePackages] = useState<ServicePackage[]>([]);
@@ -403,7 +405,9 @@ export default function AdminQueueBoard() {
             upi: 0, 
             khata: 0, 
             customerName: foundCard.customer_name,
-            customerId: foundCard.customer_id
+            customerId: foundCard.customer_id,
+            isSplit: false,
+            method: 'CASH'
         });
     };
 
@@ -417,25 +421,62 @@ export default function AdminQueueBoard() {
 
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${checkoutModal.bookingId}/`, {
-                method: 'PATCH',
+            const res = await fetch(`${API_BASE}/bookings/${checkoutModal.bookingId}/checkout/`, {
+                method: 'POST',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    new_status: 'COMPLETED', 
-                    bay_assignment: null,
-                    payment_cash: checkoutModal.cash,
-                    payment_upi: checkoutModal.upi,
-                    payment_khata: checkoutModal.khata
+                    amount_cash: finalCashAmount,
+                    amount_upi: checkoutModal.upi,
+                    amount_khata: checkoutModal.khata,
+                    customer_name: checkoutModal.customerName
                 }),
             });
             if (!res.ok) throw new Error('API failed');
-            toast.success('Vehicle Complete & Checkout Successful!');
+
+            toast.dismiss();
+            toast((t) => (
+                <div className="flex flex-col gap-3">
+                    <span className="font-bold text-emerald-400">Vehicle Complete & Checkout Successful!</span>
+                    <button 
+                        onClick={() => { toast.dismiss(t.id); window.print(); }} 
+                        className="w-full py-2 bg-[#141518] hover:bg-white/20 border border-white/20 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 tracking-widest uppercase shadow-[0_0_15px_rgba(255,255,255,0.05)]"
+                    >
+                        🖨️ Print Receipt
+                    </button>
+                </div>
+            ), { duration: 8000 });
             
-            setCheckoutModal({ isOpen: false, bookingId: null, totalAmount: 0, cash: 0, upi: 0, khata: 0, customerName: '', customerId: null });
-            fetchQueue();
+            setCheckoutModal({ isOpen: false, bookingId: null, totalAmount: 0, cash: 0, upi: 0, khata: 0, customerName: '', customerId: null, isSplit: false, method: 'CASH' });
+            fetchQueue(true);
         } catch {
             toast.error('Failed to checkout vehicle.');
         }
+    };
+
+    const toggleSplit = () => {
+        setCheckoutModal(prev => {
+            if (!prev.isSplit) {
+                return { ...prev, isSplit: true };
+            } else {
+                return { 
+                    ...prev, 
+                    isSplit: false, 
+                    cash: prev.method === 'CASH' ? prev.totalAmount : 0,
+                    upi: prev.method === 'UPI' ? prev.totalAmount : 0,
+                    khata: prev.method === 'KHATA' ? prev.totalAmount : 0
+                };
+            }
+        });
+    };
+
+    const handleMethodChange = (method: string) => {
+        setCheckoutModal(prev => ({
+            ...prev,
+            method,
+            cash: method === 'CASH' ? prev.totalAmount : 0,
+            upi: method === 'UPI' ? prev.totalAmount : 0,
+            khata: method === 'KHATA' ? prev.totalAmount : 0
+        }));
     };
 
     const onDragEnd = async (result: DropResult) => {
@@ -643,47 +684,76 @@ export default function AdminQueueBoard() {
 
                         {/* Payment Inputs */}
                         <div className="p-6 space-y-5">
-                            <div>
-                                <label className="text-[10px] text-emerald-400 uppercase font-bold tracking-[0.2em] ml-2">Cash Tendered</label>
-                                <div className="relative mt-2">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
-                                    <input
-                                        type="number"
-                                        value={checkoutModal.cash || ''}
-                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, cash: parseFloat(e.target.value) || 0 }))}
-                                        className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label className="text-[10px] text-blue-400 uppercase font-bold tracking-[0.2em] ml-2">UPI / Card</label>
-                                <div className="relative mt-2">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
-                                    <input
-                                        type="number"
-                                        value={checkoutModal.upi || ''}
-                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, upi: parseFloat(e.target.value) || 0 }))}
-                                        className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                                        placeholder="0.00"
-                                    />
-                                </div>
+                            <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-sm font-bold uppercase tracking-widest text-white">Payment Method</h3>
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <span className="text-[10px] uppercase font-bold text-[#8E939B] group-hover:text-white transition">Split Payment</span>
+                                    <div 
+                                        onClick={toggleSplit}
+                                        className={`w-10 h-5 rounded-full flex items-center p-1 transition-colors ${checkoutModal.isSplit ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-gray-600'}`}
+                                    >
+                                        <div className={`w-3 h-3 bg-white rounded-full transition-transform ${checkoutModal.isSplit ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                                    </div>
+                                </label>
                             </div>
 
-                            <div>
-                                <label className="text-[10px] text-purple-400 uppercase font-bold tracking-[0.2em] ml-2">Add to Khata (Credit)</label>
-                                <div className="relative mt-2">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
-                                    <input
-                                        type="number"
-                                        value={checkoutModal.khata || ''}
-                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, khata: parseFloat(e.target.value) || 0 }))}
-                                        className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
-                                        placeholder="0.00"
-                                    />
+                            {!checkoutModal.isSplit ? (
+                                <div className="grid grid-cols-3 gap-3">
+                                    {['CASH', 'UPI', 'KHATA'].map((method) => (
+                                        <div 
+                                            key={method}
+                                            onClick={() => handleMethodChange(method)}
+                                            className={`border p-4 rounded-xl cursor-pointer text-center transition-all ${checkoutModal.method === method ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'border-white/10 bg-white/5 text-[#8E939B] hover:border-white/30 hover:bg-white/10'}`}
+                                        >
+                                            <span className="text-xs font-bold uppercase tracking-wider">{method === 'KHATA' ? 'Khata' : method}</span>
+                                        </div>
+                                    ))}
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                                    <div>
+                                        <label className="text-[10px] text-emerald-400 uppercase font-bold tracking-[0.2em] ml-2">Cash Tendered</label>
+                                        <div className="relative mt-2">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
+                                            <input
+                                                type="number"
+                                                value={checkoutModal.cash || ''}
+                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, cash: parseFloat(e.target.value) || 0 }))}
+                                                className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="text-[10px] text-blue-400 uppercase font-bold tracking-[0.2em] ml-2">UPI / Card</label>
+                                        <div className="relative mt-2">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
+                                            <input
+                                                type="number"
+                                                value={checkoutModal.upi || ''}
+                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, upi: parseFloat(e.target.value) || 0 }))}
+                                                className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] text-purple-400 uppercase font-bold tracking-[0.2em] ml-2">Add to Khata (Credit)</label>
+                                        <div className="relative mt-2">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#8E939B] font-bold">₹</span>
+                                            <input
+                                                type="number"
+                                                value={checkoutModal.khata || ''}
+                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, khata: parseFloat(e.target.value) || 0 }))}
+                                                className="w-full bg-white/5 border border-white/10 py-4 pl-8 pr-4 rounded-xl text-white font-mono text-lg focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Modal Footer & Actions */}
@@ -735,7 +805,7 @@ export default function AdminQueueBoard() {
                                     disabled={((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0)) < checkoutModal.totalAmount}
                                     className="px-6 py-3 rounded-xl font-bold text-sm bg-emerald-500 text-black hover:bg-emerald-400 transition-all disabled:opacity-20 disabled:hover:bg-emerald-500 disabled:cursor-not-allowed flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                                 >
-                                    Confirm Payment
+                                    Settle Payment
                                 </button>
                             </div>
                         </div>      

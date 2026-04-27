@@ -24,6 +24,23 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
 
     const today = new Date().toISOString().split('T')[0];
 
+    const isSlotPassed = (timeStr: string) => {
+        if (!selectedDate || selectedDate !== today) return false;
+        
+        const currentHour = new Date().getHours();
+        const parts = timeStr.trim().split(' ');
+        if (parts.length < 2) return false;
+        
+        let [hourStr] = parts[0].split(':');
+        let hour = parseInt(hourStr, 10);
+        const meridiem = parts[1].toUpperCase();
+        
+        if (meridiem === 'PM' && hour !== 12) hour += 12;
+        if (meridiem === 'AM' && hour === 12) hour = 0;
+        
+        return hour <= currentHour;
+    };
+
     useEffect(() => {
         const fetchPackages = async () => {
             try {
@@ -65,12 +82,38 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
     // 1 is forward, -1 is backwards
     const [direction, setDirection] = useState(1);
 
-    const nextStep = () => {
+    const nextStep = async () => {
         setDirection(1);
-        if (bookingStep < 3) setBookingStep(s => s + 1);
-        else {
-            alert("Booking Authorized via Stripe!");
-            setIsBooking(false);
+        if (bookingStep < 3) {
+            setBookingStep(s => s + 1);
+        } else {
+            if (!selectedVehicle || !selectedPackage || !selectedDate || !selectedSlot) {
+                alert("Please complete Target Parameters and Temporal Coordinates.");
+                return;
+            }
+            try {
+                const [timeStr, period] = selectedSlot.split(' ');
+                let [hours, minutes] = timeStr.split(':');
+                let hInt = parseInt(hours, 10);
+                if (period === 'PM' && hInt !== 12) hInt += 12;
+                if (period === 'AM' && hInt === 12) hInt = 0;
+                
+                const [y, m, d] = selectedDate.split('-');
+                const timeSlotDate = new Date(parseInt(y), parseInt(m)-1, parseInt(d), hInt, parseInt(minutes), 0);
+                
+                await api.post('/bookings/', {
+                    vehicle: selectedVehicle.id,
+                    service_package: selectedPackage.id,
+                    time_slot: timeSlotDate.toISOString(),
+                });
+                
+                alert("Booking successfully queued!");
+                setIsBooking(false);
+                window.location.reload(); 
+            } catch (err: any) {
+                console.error("Booking submission error:", err);
+                alert("Failed to confirm booking: " + JSON.stringify(err.response?.data || err.message));
+            }
         }
     };
 
@@ -194,19 +237,24 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-3 gap-4">
-                                                {availableSlots.map(time => (
-                                                    <div 
-                                                        key={time}
-                                                        onClick={() => setSelectedSlot(time)}
-                                                        className={`border p-4 rounded-xl cursor-pointer transition text-center font-bold text-sm ${
-                                                            selectedSlot === time 
-                                                            ? 'border-[#E52323] bg-[#E52323]/20 text-white shadow-[0_0_15px_rgba(229,35,35,0.4)]' 
-                                                            : 'border-white/20 bg-white/5 hover:border-white/50 text-gray-300'
-                                                        }`}
-                                                    >
-                                                        {time}
-                                                    </div>
-                                                ))}
+                                                {availableSlots.map(time => {
+                                                    const passed = isSlotPassed(time);
+                                                    return (
+                                                        <div 
+                                                            key={time}
+                                                            onClick={() => { if (!passed) setSelectedSlot(time); }}
+                                                            className={`border p-4 rounded-xl transition text-center font-bold text-sm ${
+                                                                passed 
+                                                                ? 'opacity-30 cursor-not-allowed border-white/10 bg-white/5 text-gray-500'
+                                                                : selectedSlot === time 
+                                                                ? 'cursor-pointer border-[#E52323] bg-[#E52323]/20 text-white shadow-[0_0_15px_rgba(229,35,35,0.4)]' 
+                                                                : 'cursor-pointer border-white/20 bg-white/5 hover:border-white/50 text-gray-300'
+                                                            }`}
+                                                        >
+                                                            {time}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -225,20 +273,30 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                 exit="exit"
                                 transition={{ duration: 0.3, ease: "easeInOut" }}
                             >
-                                <h3 className="text-2xl font-bold mb-6">3. Finalize & Authorize</h3>
+                                <h3 className="text-2xl font-bold mb-6">3. Review & Confirm Booking</h3>
                                 
-
-
-                                {/* 💳 Stripe Mock */}
-                                <div className="bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
-                                    <div className="flex justify-between items-center border-b border-white/10 pb-4 mb-4">
-                                        <span className="font-bold text-sm tracking-widest uppercase">Secure Payment</span>
-                                        <CreditCard className="text-gray-400" />
+                                <div className="bg-[#1a1a1a] border border-white/10 p-6 rounded-3xl space-y-4">
+                                    <h4 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4 border-b border-white/5 pb-2">Booking Summary</h4>
+                                    
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-gray-400">Vehicle</span>
+                                        <span className="font-bold">{selectedVehicle?.plate || selectedVehicle?.model || 'None'}</span>
                                     </div>
-                                    <input type="text" placeholder="Card Number" className="w-full bg-black border border-white/10 p-4 rounded-xl text-white font-mono text-sm outline-none focus:border-[#E52323]" />
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <input type="text" placeholder="MM/YY" className="bg-black border border-white/10 p-4 rounded-xl text-white font-mono text-sm outline-none focus:border-[#E52323] text-center" />
-                                        <input type="text" placeholder="CVC" className="bg-black border border-white/10 p-4 rounded-xl text-white font-mono text-sm outline-none focus:border-[#E52323] text-center" />
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-gray-400">Package</span>
+                                        <span className="font-bold">{selectedPackage?.name || 'None'}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-gray-400">Date</span>
+                                        <span className="font-bold">{selectedDate || 'None'}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm pb-4 border-b border-white/5">
+                                        <span className="text-gray-400">Arrival Time</span>
+                                        <span className="font-bold text-[#E52323]">{selectedSlot || 'None'}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-base pt-2">
+                                        <span className="font-bold tracking-widest uppercase">Total Due On Site</span>
+                                        <span className="font-bold text-xl">₹{selectedPackage ? parseFloat(selectedPackage.price) : 0}</span>
                                     </div>
                                 </div>
                             </motion.div>
@@ -258,7 +316,7 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                         onClick={nextStep} 
                         className="flex-1 bg-[#E52323] text-white py-4 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition flex justify-center items-center gap-2 shadow-[0_0_20px_rgba(229,35,35,0.4)]"
                     >
-                        {bookingStep === 3 ? 'Authorize Payment (₹1200)' : 'Proceed'} <ChevronRight className="w-4 h-4" />
+                        {bookingStep === 3 ? 'Confirm Booking (Pay on Arrival)' : 'Proceed'} <ChevronRight className="w-4 h-4" />
                     </button>
                 </div>
 
