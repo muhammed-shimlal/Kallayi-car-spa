@@ -25,52 +25,27 @@ function InvoiceContent() {
 
     const fetchData = async () => {
       try {
+        // Single request — invoice_status & invoice_amount are now embedded in the booking response
         const bookingRes = await api.get(`/bookings/${idStr}/`);
         const b = bookingRes.data;
 
-        // Try to fetch package to get live price reference
-        let pkgPrice = 0;
-        let pkgName = b.service_package_details?.name || 'Service Wash';
-        if (b.service_package) {
-            try {
-                const pkgRes = await api.get(`/service-packages/${b.service_package}/`);
-                pkgPrice = parseFloat(pkgRes.data.price);
-                pkgName = pkgRes.data.name;
-            } catch (e) {}
-        }
+        const pkgName = b.service_package_name || b.service_package_details?.name || 'Service Wash';
+        const vehiclePlate = b.vehicle_plate || b.vehicle_info || 'Unknown Plate';
 
-        // Fetch invoice list to find the matching entry (for full payment details)
-        let phone = 'N/A';
-        let amount = pkgPrice;
-        let paymentMethod = 'Not Paid';
-        let invoiceIdString = `INV-000${b.id}`;
-
-        try {
-            const token = localStorage.getItem('auth_token');
-            const invRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api'}/finance/invoices/`, {
-                headers: { 'Authorization': `Token ${token}` }
-            });
-            if (invRes.ok) {
-                const invoices = await invRes.json();
-                const matchedInvoice = invoices.find((inv: any) => inv.booking === b.id);
-                if (matchedInvoice) {
-                    phone = matchedInvoice.customer_phone || 'N/A';
-                    amount = parseFloat(matchedInvoice.amount);
-                    paymentMethod = matchedInvoice.payment_method || 'Unknown';
-                    invoiceIdString = `INV-${matchedInvoice.id.toString().padStart(4, '0')}`;
-                }
-            }
-        } catch (err) {}
+        // invoice_amount is the source of truth; fall back to package price
+        const rawAmount = b.invoice_amount
+            ? parseFloat(b.invoice_amount)
+            : (b.service_package_details?.price ? parseFloat(b.service_package_details.price) : 0);
 
         setData({
-            invoiceId: invoiceIdString,
+            invoiceId: `INV-${b.id.toString().padStart(4, '0')}`,
             customerName: b.customer_name || 'Walk-In Guest',
-            customerPhone: phone,
-            vehiclePlate: b.vehicle_info || 'Unknown Plate',
+            vehiclePlate,
             date: new Date(b.created_at || b.end_time || b.time_slot).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
             packageName: pkgName,
-            price: amount,
-            paymentMethod: paymentMethod === 'SPLIT' ? 'Split Payment' : paymentMethod
+            price: rawAmount,
+            invoiceStatus: b.invoice_status || 'UNPAID',
+            paymentMethod: b.payment_method || null,
         });
       } catch (err) {
           console.error(err);
@@ -172,7 +147,7 @@ function InvoiceContent() {
                   <span className="text-[#888888] text-[10px] uppercase">Tax Included</span>
                 </div>
                 <div className={`${playfair.className} text-[#D4AF37] text-3xl md:text-4xl font-bold leading-none`}>
-                  ₹{(Math.floor(data.price)).toString()}
+                  ₹{Math.floor(data.price)}
                   <span className="text-xl md:text-2xl text-[#b38e21]">.{(data.price % 1).toFixed(2).split('.')[1]}</span>
                 </div>
               </div>
@@ -182,10 +157,27 @@ function InvoiceContent() {
           {/* Footer Section */}
           <div className="border-t border-[#333333] pt-8 flex flex-col md:flex-row justify-between items-start gap-6 md:gap-0">
             <div className="space-y-4">
-              <p className={`${playfair.className} italic text-[#EAEAEA] text-lg`}>"Thank you for trusting us with your vehicle."</p>
-              <div className="text-sm border border-[#333333] bg-[#1a1a1a] px-4 py-2 inline-flex flex-col items-center justify-center space-y-1">
-                <span className="text-[#888888] uppercase text-[9px] tracking-wider font-semibold">Payment Mode</span>
-                <span className="text-[#EAEAEA] uppercase text-xs tracking-widest font-bold">{data.paymentMethod}</span>
+              <p className={`${playfair.className} italic text-[#EAEAEA] text-lg`}>&quot;Thank you for trusting us with your vehicle.&quot;</p>
+              
+              {/* Payment Status Badge */}
+              <div className="flex items-center gap-3">
+                <span
+                  className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border ${
+                    data.invoiceStatus === 'PAID'
+                      ? 'bg-[#01FFFF]/10 border-[#01FFFF]/40 text-[#01FFFF]'
+                      : 'bg-[#E52323]/10 border-[#E52323]/40 text-[#E52323]'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    data.invoiceStatus === 'PAID' ? 'bg-[#01FFFF]' : 'bg-[#E52323]'
+                  }`} />
+                  {data.invoiceStatus === 'PAID' ? 'PAID' : 'NOT PAID'}
+                </span>
+                {data.paymentMethod && (
+                  <span className="text-[#888888] uppercase text-[9px] tracking-widest font-semibold">
+                    via {data.paymentMethod === 'SPLIT' ? 'Split Payment' : data.paymentMethod}
+                  </span>
+                )}
               </div>
             </div>
             <div className="text-left md:text-right text-[#888888] text-xs space-y-2 w-full md:w-auto">

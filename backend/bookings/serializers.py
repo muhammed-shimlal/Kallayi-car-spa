@@ -13,6 +13,8 @@ class BookingSerializer(serializers.ModelSerializer):
     vehicle_info = serializers.ReadOnlyField(source='vehicle.plate_number')
     service_package_name = serializers.CharField(source='service_package.name', read_only=True)
     vehicle_plate = serializers.CharField(source='vehicle.plate_number', read_only=True)
+    invoice_status = serializers.SerializerMethodField()
+    invoice_amount = serializers.SerializerMethodField()
 
     # Add optional fields to silence legacy client payload mismatches
     transaction_id = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
@@ -24,7 +26,8 @@ class BookingSerializer(serializers.ModelSerializer):
         model = Booking
         fields = ['id', 'customer', 'customer_name', 'vehicle', 'vehicle_info', 'vehicle_plate', 'technician', 'technician_name', 
                   'service_package', 'service_package_name', 'service_package_details', 'time_slot', 'end_time', 'status',
-                  'address', 'latitude', 'longitude', 'transaction_id', 'payment_method', 'split_cash', 'payment_status', 'created_at']
+                  'address', 'latitude', 'longitude', 'transaction_id', 'payment_method', 'split_cash', 'payment_status',
+                  'created_at', 'invoice_status', 'invoice_amount']
         read_only_fields = ['customer', 'end_time', 'status', 'created_at']
         extra_kwargs = {
             'address': {'required': False, 'allow_blank': True},
@@ -32,6 +35,20 @@ class BookingSerializer(serializers.ModelSerializer):
             'longitude': {'required': False},
             'technician': {'required': False, 'allow_null': True},
         }
+
+    def get_invoice_status(self, obj):
+        """Returns 'PAID' or 'UNPAID' based on the related Invoice.is_paid boolean."""
+        try:
+            return 'PAID' if obj.invoice.is_paid else 'UNPAID'
+        except Exception:
+            return 'UNPAID'
+
+    def get_invoice_amount(self, obj):
+        """Returns the invoice amount as a string, or None if no invoice exists."""
+        try:
+            return str(obj.invoice.amount)
+        except Exception:
+            return None
 
     def get_service_package_details(self, obj):
         if obj.service_package:
