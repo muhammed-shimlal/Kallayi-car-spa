@@ -17,7 +17,7 @@ const staffSchema = z.object({
         .regex(/^\+?[0-9\s\-()]{10,15}$/, 'Enter a valid phone number'),
     password: z.string().optional(),
     role: z.enum(['WASHER', 'TECHNICIAN', 'MANAGER', 'DRIVER'], {
-        required_error: 'Please select a role',
+        message: 'Please select a role',
     }),
     base_salary: z
         .string()

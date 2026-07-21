@@ -1,163 +1,397 @@
-# Kallayi Car Spa - Deployment Guide
+# DEPLOYMENT.md
 
-## Backend Deployment
+# 🚀 Deployment Guide
 
-### Local Development Setup
+## Kallayi Car Spa
 
-1. **Install Dependencies**
+---
+
+# Overview
+
+This document explains how to deploy the **Kallayi Car Spa** Django REST API to a production environment.
+
+The project supports deployment on:
+
+- Render
+- Railway
+- DigitalOcean
+- AWS EC2
+- VPS (Ubuntu)
+- Docker
+
+---
+
+# Production Requirements
+
+## Software
+
+| Software | Version |
+|-----------|----------|
+| Python | 3.11+ |
+| PostgreSQL | 15+ |
+| Git | Latest |
+| Gunicorn | Latest |
+| Nginx | Latest |
+| Ubuntu | 22.04 LTS (Recommended) |
+
+---
+
+# Environment Variables
+
+Create a `.env` file.
+
+Example:
+
+```env
+DEBUG=False
+
+SECRET_KEY=your-secret-key
+
+ALLOWED_HOSTS=your-domain.com,www.your-domain.com
+
+DATABASE_URL=postgresql://username:password@host:5432/database
+
+JWT_SECRET_KEY=your-jwt-secret
+
+CSRF_TRUSTED_ORIGINS=https://your-domain.com
+
+CORS_ALLOWED_ORIGINS=https://your-domain.com
+```
+
+> Never commit the `.env` file to GitHub.
+
+---
+
+# Install Dependencies
+
 ```bash
-cd backend
 pip install -r requirements.txt
 ```
 
-2. **Environment Configuration**
-```bash
-# Copy the example environment file
-cp .env.example .env
+---
 
-# Edit .env with your values
-# SECRET_KEY: Generate with: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
-# DEBUG: Set to False for production
-# ALLOWED_HOSTS: Add your domain/IP addresses
-```
+# Collect Static Files
 
-3. **Database Setup**
-```bash
-python manage.py makemigrations
-python manage.py migrate
-python manage.py createsuperuser
-```
-
-4. **Collect Static Files**
 ```bash
 python manage.py collectstatic --noinput
 ```
 
-5. **Run with Gunicorn (Production)**
+---
+
+# Apply Database Migrations
+
 ```bash
-gunicorn --bind 0.0.0.0:8000 --workers 3 config.wsgi:application
+python manage.py migrate
 ```
 
 ---
 
-### Docker Deployment
+# Create Superuser
 
-1. **Build Docker Image**
 ```bash
-cd backend
-docker build -t kallayi-backend .
-```
-
-2. **Run Container**
-```bash
-docker run -d \
-  -p 8000:8000 \
-  -e SECRET_KEY='your-secret-key' \
-  -e DEBUG=False \
-  -e ALLOWED_HOSTS='yourdomain.com,www.yourdomain.com' \
-  --name kallayi-backend \
-  kallayi-backend
-```
-
-3. **Run Migrations in Container**
-```bash
-docker exec kallayi-backend python manage.py migrate
-docker exec kallayi-backend python manage.py createsuperuser
+python manage.py createsuperuser
 ```
 
 ---
 
-## Frontend Deployment
+# Production Server
 
-### Development Build
+Install Gunicorn.
 
-1. **Install Dependencies**
 ```bash
-cd frontend
-flutter pub get
+pip install gunicorn
 ```
 
-2. **Run App (Debug)**
+Run:
+
 ```bash
-flutter run
+gunicorn config.wsgi:application
+```
+
+Replace `config` with your Django project's actual configuration package if it has a different name.
+
+---
+
+# PostgreSQL Setup
+
+Install PostgreSQL.
+
+Ubuntu:
+
+```bash
+sudo apt update
+
+sudo apt install postgresql postgresql-contrib
+```
+
+Create a database.
+
+```sql
+CREATE DATABASE kallayi_car_spa;
+```
+
+Create a user.
+
+```sql
+CREATE USER carspa_user WITH PASSWORD 'your_password';
+```
+
+Grant privileges.
+
+```sql
+GRANT ALL PRIVILEGES ON DATABASE kallayi_car_spa TO carspa_user;
 ```
 
 ---
 
-### Production Build
+# Nginx Configuration
 
-1. **Generate App Icons**
-```bash
-flutter pub run flutter_launcher_icons
+Example configuration:
+
+```nginx
+server {
+
+    listen 80;
+
+    server_name your-domain.com;
+
+    location / {
+
+        proxy_pass http://127.0.0.1:8000;
+
+        proxy_set_header Host $host;
+
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    }
+
+}
 ```
 
-2. **Generate Splash Screens**
-```bash
-dart run flutter_native_splash:create
-```
+Restart Nginx.
 
-3. **Build Release APK (Android)**
 ```bash
-flutter build apk --release
-```
-
-The APK will be located at: `build/app/outputs/flutter-apk/app-release.apk`
-
-4. **Build App Bundle (For Play Store)**
-```bash
-flutter build appbundle --release
-```
-
-5. **Build iOS (Mac only)**
-```bash
-flutter build ios --release
+sudo systemctl restart nginx
 ```
 
 ---
 
-## Security Checklist
+# HTTPS
 
-- [x] SECRET_KEY moved to environment variable
-- [x] DEBUG set to False in production
-- [x] ALLOWED_HOSTS configured properly
-- [x] Static files served via Whitenoise
-- [x] Gunicorn configured as WSGI server
-- [ ] HTTPS/SSL certificate configured (required for production)
-- [ ] Database backups configured
-- [ ] Firewall rules configured
-- [ ] CORS origins restricted to known domains
+Install Certbot.
 
----
+```bash
+sudo apt install certbot python3-certbot-nginx
+```
 
-## Performance Tips
+Generate SSL.
 
-1. **Backend**
-   - Use PostgreSQL instead of SQLite in production
-   - Enable Redis for caching
-   - Configure CDN for static files
-   - Set up monitoring (Sentry, etc.)
-
-2. **Frontend**
-   - Enable ProGuard/R8 shrinking
-   - Optimize images in assets
-   - Use release mode always in production
-   - Configure proper API endpoints (no localhost)
+```bash
+sudo certbot --nginx
+```
 
 ---
 
-## Troubleshooting
+# Deploy on Render
 
-**Backend won't start:**
-- Check `.env` file exists and is properly formatted
-- Verify all environment variables are set
-- Run `python manage.py check` to diagnose issues
+1. Push the project to GitHub.
+2. Create a new **Web Service** in Render.
+3. Connect the GitHub repository.
+4. Configure:
+   - **Build Command**
 
-**Static files not loading:**
-- Run `python manage.py collectstatic`
-- Verify STATIC_ROOT path is correct
-- Check whitenoise middleware order
+     ```bash
+     pip install -r requirements.txt
+     ```
 
-**Frontend build errors:**
-- Run `flutter clean && flutter pub get`
-- Verify logo.png exists in assets/images/
-- Check pubspec.yaml for syntax errors
+   - **Start Command**
+
+     ```bash
+     gunicorn config.wsgi:application
+     ```
+
+5. Add the required environment variables.
+6. Deploy the application.
+
+---
+
+# Deploy on Railway
+
+1. Push the project to GitHub.
+2. Create a new Railway project.
+3. Connect the GitHub repository.
+4. Add PostgreSQL.
+5. Configure environment variables.
+6. Deploy.
+
+---
+
+# Deploy Using Docker
+
+## Dockerfile
+
+```dockerfile
+FROM python:3.11
+
+WORKDIR /app
+
+COPY . .
+
+RUN pip install -r requirements.txt
+
+CMD ["gunicorn", "config.wsgi:application"]
+```
+
+---
+
+Build the image.
+
+```bash
+docker build -t kallayi-car-spa .
+```
+
+Run the container.
+
+```bash
+docker run -p 8000:8000 kallayi-car-spa
+```
+
+---
+
+# Health Check
+
+Verify the deployment.
+
+```
+https://your-domain.com/
+```
+
+API example:
+
+```
+https://your-domain.com/api/
+```
+
+---
+
+# Deployment Checklist
+
+- [ ] Debug disabled
+- [ ] Secret key stored securely
+- [ ] Environment variables configured
+- [ ] PostgreSQL configured
+- [ ] Static files collected
+- [ ] Migrations applied
+- [ ] Superuser created
+- [ ] HTTPS enabled
+- [ ] Backups configured
+- [ ] Monitoring enabled
+
+---
+
+# Backup Strategy
+
+Database backup.
+
+```bash
+pg_dump database_name > backup.sql
+```
+
+Restore.
+
+```bash
+psql database_name < backup.sql
+```
+
+---
+
+# Monitoring
+
+Recommended tools:
+
+- UptimeRobot
+- Grafana
+- Prometheus
+- Sentry
+
+---
+
+# Common Deployment Issues
+
+## Static Files Not Loading
+
+Run:
+
+```bash
+python manage.py collectstatic --noinput
+```
+
+---
+
+## Database Connection Error
+
+Verify:
+
+- Database credentials
+- `DATABASE_URL`
+- PostgreSQL service status
+
+---
+
+## 502 Bad Gateway
+
+Check:
+
+- Gunicorn status
+- Nginx configuration
+- Application logs
+
+---
+
+## Module Import Error
+
+Reinstall dependencies.
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+# Security Recommendations
+
+- Enable HTTPS
+- Keep dependencies updated
+- Rotate secret keys
+- Restrict database access
+- Use strong passwords
+- Regularly back up the database
+
+---
+
+# Future Deployment Improvements
+
+- Docker Compose
+- Kubernetes
+- GitHub Actions (CI/CD)
+- Automatic deployments
+- Multi-environment configuration
+- Load balancing
+- Redis caching
+- Celery background tasks
+
+---
+
+# Maintainer
+
+**Muhammed Shimlal**
+
+GitHub:
+
+https://github.com/muhammed-shimlal/Kallayi-car-spa
+
+---
+
+# License
+
+This project is licensed under the MIT License.

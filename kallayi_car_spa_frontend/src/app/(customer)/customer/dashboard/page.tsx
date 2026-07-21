@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'framer-motion';
+import Cookies from 'js-cookie';
 
 import api from '@/lib/api';
 
@@ -28,6 +29,14 @@ export default function CustomerDashboard() {
     const [transactions, setTransactions] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    // --- Auth Guard: redirect immediately if no token present ---
+    useEffect(() => {
+        const token = Cookies.get('auth_token');
+        if (!token) {
+            router.replace('/login');
+        }
+    }, [router]);
+
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
@@ -51,7 +60,7 @@ export default function CustomerDashboard() {
                     console.error("Failed to fetch garage vehicles", vErr);
                 }
 
-                // 2. Find Active Wash
+                // 2. Derive active wash directly from bookings list
                 const active = bookings.find((b: any) => !['COMPLETED', 'CANCELLED'].includes(b.status));
                 if (active) {
                     let progress = 10;
@@ -61,8 +70,8 @@ export default function CustomerDashboard() {
                     setActiveWash({
                         status: active.status,
                         progress,
-                        package: active.service_package?.name || 'Standard Wash',
-                        vehicle: active.vehicle?.plate_number || 'Unknown'
+                        package: active.service_package_name || 'Standard Wash',
+                        vehicle: active.vehicle_plate || 'Unknown',
                     });
                 } else {
                     setActiveWash(null);
@@ -133,7 +142,7 @@ export default function CustomerDashboard() {
             <main className="flex-1 p-6 md:p-12 pb-24 md:pb-8 overflow-y-auto relative">
                 <AnimatePresence mode="wait">
                     {activeTab === 'overview' && (
-                        <OverviewTab key="overview" setIsBooking={setIsBooking} activeWash={activeWash!} handleLogout={handleLogout} />
+                        <OverviewTab key="overview" setIsBooking={setIsBooking} handleLogout={handleLogout} />
                     )}
                     
                     {activeTab === 'garage' && (
