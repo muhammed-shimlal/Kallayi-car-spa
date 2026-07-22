@@ -37,5 +37,5 @@ class CouponSerializer(serializers.ModelSerializer):
 class CustomerVehicleSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerVehicle
-        fields = ['id', 'customer', 'make', 'model', 'plate_number', 'created_at']
+        fields = '__all__'
         read_only_fields = ['customer', 'created_at']

@@ -2,13 +2,16 @@ import axios from 'axios';
 import Cookies from 'js-cookie';
 
 const api = axios.create({
-  baseURL: 'http://192.168.1.8:8001/api/',
+  baseURL: 'http://192.168.1.3:8001/api/',
 });
 
 // Request interceptor to attach the auth token to every request
 api.interceptors.request.use(
   (config) => {
-    const token = Cookies.get('auth_token');
+    let token = Cookies.get('auth_token');
+    if (!token && typeof window !== 'undefined') {
+      token = localStorage.getItem('auth_token') || undefined;
+    }
     if (token) {
       config.headers.Authorization = `Token ${token}`;
     }

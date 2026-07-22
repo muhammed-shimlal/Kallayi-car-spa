@@ -8,6 +8,7 @@ import {
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
     AlertCircle, User, Wifi, WifiOff
 } from 'lucide-react';
+import api from '@/lib/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -172,25 +173,17 @@ export default function QueueBoard() {
 
     // ─── Fetch Queue Data ─────────────────────────────────────────────────────
     const fetchQueue = useCallback(async (silent = false) => {
-        const token = localStorage.getItem('auth_token');
-        if (!token) return router.push('/login');
         if (!silent) setIsLoading(true);
 
         try {
-            const res = await fetch('http://127.0.0.1:8001/api/bookings/live-queue/', {
-                headers: { 'Authorization': `Token ${token}` }
-            });
-
-            if (!res.ok) throw new Error('API error');
-
-            const data: BookingCard[] = await res.json();
+            const res = await api.get('/bookings/live-queue/');
+            const data: BookingCard[] = res.data;
             
             // Distribute into columns
             const newCols: Record<string, BookingCard[]> = {
                 WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
             };
             data.forEach(card => {
-                // Map legacy statuses into our kanban columns
                 const colKey = newCols[card.status] !== undefined ? card.status : 'WAITING';
                 newCols[colKey].push(card);
             });
@@ -297,17 +290,9 @@ export default function QueueBoard() {
 
         // 2. SYNC to backend
         try {
-            const token = localStorage.getItem('auth_token');
-            await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${bookingId}/`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Token ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    new_status: destCol.startsWith('IN_BAY') ? 'IN_PROGRESS' : destCol,
-                    bay_assignment: destCol.startsWith('IN_BAY') ? destCol.replace('IN_BAY_', 'Bay ') : null,
-                }),
+            await api.patch(`/bookings/update-stage/${bookingId}/`, {
+                new_status: destCol.startsWith('IN_BAY') ? 'IN_PROGRESS' : destCol,
+                bay_assignment: destCol.startsWith('IN_BAY') ? destCol.replace('IN_BAY_', 'Bay ') : null,
             });
         } catch (err) {
             console.error('Sync failed, reverting', err);

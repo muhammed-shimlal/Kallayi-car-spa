@@ -11,11 +11,19 @@ class StaffProfile(models.Model):
         ('WASHER', 'Washer'),
         ('ADMIN', 'Owner/Admin'),
     ]
+    SALARY_TYPE_CHOICES = [
+        ('DAILY', 'Daily Salary'),
+        ('MONTHLY', 'Monthly Salary'),
+        ('COMMISSION', 'Commission Based'),
+        ('CUSTOM', 'Custom Pay'),
+    ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staff_profile')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='WASHER')
     phone_number = models.CharField(max_length=20, blank=True)
     
     # Financial details
+    salary_type = models.CharField(max_length=20, choices=SALARY_TYPE_CHOICES, default='COMMISSION')
+    salary_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     hourly_rate = models.DecimalField(max_digits=6, decimal_places=2, default=15.00)
     base_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Percentage (0-100)")

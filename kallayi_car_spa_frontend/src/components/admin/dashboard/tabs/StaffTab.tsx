@@ -121,7 +121,7 @@ export default function StaffTab() {
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                                     <div>
                                         <h2 className="font-syncopate font-bold text-lg tracking-widest">STAFF DIRECTORY<span className="text-[#01FFFF]">.</span></h2>
-                                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] font-bold mt-1">Hire, Edit & Manage Workers</p>
+                                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] font-bold mt-1">Hire, Edit, Pay & Manage Workers</p>
                                     </div>
                                     <button
                                         onClick={() => openStaffModal()}
@@ -139,14 +139,15 @@ export default function StaffTab() {
                                                     <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Name</th>
                                                     <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Role</th>
                                                     <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B] hidden md:table-cell">Phone</th>
-                                                    <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Base Salary (₹)</th>
-                                                    <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Commission %</th>
+                                                    <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Salary Type</th>
+                                                    <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Amount (₹)</th>
+                                                    <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Comm %</th>
                                                     <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Actions</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {staffDirectory.length === 0 && (
-                                                    <tr><td colSpan={5} className="text-center py-12 text-[#8E939B] text-sm">No staff registered yet.</td></tr>
+                                                    <tr><td colSpan={7} className="text-center py-12 text-[#8E939B] text-sm">No staff registered yet.</td></tr>
                                                 )}
                                                 {staffDirectory.map((staff: any) => {
                                                     const roleColors: Record<string, string> = {
@@ -169,8 +170,11 @@ export default function StaffTab() {
                                                             <td className="px-6 py-5 hidden md:table-cell">
                                                                 <span className="text-xs text-[#8E939B]">{staff.phone_number || '—'}</span>
                                                             </td>
+                                                            <td className="px-6 py-5">
+                                                                <span className="text-xs font-mono text-cyan font-bold">{staff.salary_type || 'COMMISSION'}</span>
+                                                            </td>
                                                             <td className="px-6 py-5 text-right">
-                                                                <span className="font-syncopate font-bold text-emerald-400">₹{parseFloat(staff.base_salary).toLocaleString()}</span>
+                                                                <span className="font-syncopate font-bold text-emerald-400">₹{parseFloat(staff.salary_amount || staff.base_salary || 0).toLocaleString()}</span>
                                                             </td>
                                                             <td className="px-6 py-5 text-right">
                                                                 <span className="font-mono text-amber-400 font-bold">{parseFloat(staff.commission_rate || 0)}%</span>
@@ -180,14 +184,14 @@ export default function StaffTab() {
                                                                     <button
                                                                         onClick={() => openStaffModal(staff)}
                                                                         className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#01FFFF] hover:border-[#01FFFF]/30 transition-all"
-                                                                        title="Edit"
+                                                                        title="Edit Details"
                                                                     >
                                                                         <Pencil className="w-3.5 h-3.5" />
                                                                     </button>
                                                                     <button
                                                                         onClick={() => terminateStaff(staff.id)}
                                                                         className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#FF2A6D] hover:border-[#FF2A6D]/30 transition-all"
-                                                                        title="Terminate"
+                                                                        title="Deactivate / Soft Delete"
                                                                     >
                                                                         <UserMinus className="w-3.5 h-3.5" />
                                                                     </button>

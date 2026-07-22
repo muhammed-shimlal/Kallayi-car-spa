@@ -83,9 +83,9 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response({'status': 'Invoice settled successfully'})
 
 class GeneralExpenseViewSet(viewsets.ModelViewSet):
-    queryset = GeneralExpense.objects.all().select_related('category', 'recorded_by')
+    queryset = GeneralExpense.objects.filter(is_active=True).select_related('category', 'recorded_by', 'staff')
     serializer_class = GeneralExpenseSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
         serializer.save(recorded_by=self.request.user)
@@ -98,6 +98,31 @@ class GeneralExpenseViewSet(viewsets.ModelViewSet):
         expense.approved_by = request.user
         expense.approved_at = timezone.now()
         expense.save()
+        return Response({'status': 'Expense approved'})
+
+    def destroy(self, request, *args, **kwargs):
+        """Soft delete expense record."""
+        expense = self.get_object()
+        expense.is_active = False
+        expense.save()
+        return Response(status=204)
+
+from .models import SalaryPayment
+from .serializers import SalaryPaymentSerializer
+
+class SalaryPaymentViewSet(viewsets.ModelViewSet):
+    queryset = SalaryPayment.objects.filter(is_active=True).select_related('staff', 'created_by')
+    serializer_class = SalaryPaymentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        payment = self.get_object()
+        payment.is_active = False
+        payment.save()
+        return Response(status=204)
         return Response({'status': 'Expense approved'})
     
     @action(detail=True, methods=['post'])

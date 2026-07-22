@@ -36,7 +36,7 @@ class StaffDirectorySerializer(serializers.ModelSerializer):
         model = StaffProfile
         fields = [
             'id', 'user_id','first_name', 'username', 'phone_number',
-            'role', 'base_salary', 'commission_rate', 'is_active', 'joining_date',
+            'role', 'salary_type', 'salary_amount', 'base_salary', 'commission_rate', 'is_active', 'joining_date',
         ]
 
     def create(self, validated_data):

@@ -19,27 +19,85 @@ class ExpenseCategory(models.Model):
 
 class GeneralExpense(models.Model):
     """
-    Tracks operational overhead like Rent, Utilities, Maintenance, etc.
+    Tracks operational overhead and staff transactions (Advances, Bonuses, Deductions, Reimbursements, Incentives).
     """
+    EXPENSE_TYPE_CHOICES = [
+        ('BUSINESS', 'Business Expense'),
+        ('STAFF', 'Staff Expense'),
+    ]
+    TRANSACTION_TYPE_CHOICES = [
+        ('ADVANCE', 'Advance'),
+        ('DEDUCTION', 'Deduction'),
+        ('BONUS', 'Bonus'),
+        ('REIMBURSEMENT', 'Reimbursement'),
+        ('INCENTIVE', 'Incentive'),
+    ]
+    PAYMENT_METHOD_CHOICES = [
+        ('CASH', 'Cash'),
+        ('UPI', 'UPI'),
+        ('BANK_TRANSFER', 'Bank Transfer'),
+        ('CARD', 'Card'),
+        ('CHEQUE', 'Cheque'),
+    ]
     STATUS_CHOICES = [
-        ('PENDING', 'Pending Approval'),
+        ('PENDING', 'Pending'),
         ('APPROVED', 'Approved'),
-        ('REJECTED', 'Rejected'),
+        ('PAID', 'Paid'),
+        ('CANCELLED', 'Cancelled'),
     ]
     
     category = models.ForeignKey(ExpenseCategory, on_delete=models.SET_NULL, null=True, related_name='expenses')
+    expense_type = models.CharField(max_length=10, choices=EXPENSE_TYPE_CHOICES, default='BUSINESS')
+    transaction_type = models.CharField(max_length=15, choices=TRANSACTION_TYPE_CHOICES, null=True, blank=True)
+    payment_method = models.CharField(max_length=15, choices=PAYMENT_METHOD_CHOICES, default='CASH')
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='staff_transactions')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField(blank=True)
-    date = models.DateField()
+    notes = models.TextField(blank=True)
+    date = models.DateField(default=timezone.localdate)
     receipt_image = models.ImageField(upload_to='receipts/', null=True, blank=True)
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='expenses_recorded')
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='APPROVED')
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='expenses_approved')
     approved_at = models.DateTimeField(null=True, blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='expenses_updated')
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.category} - {self.amount} ({self.date}) [{self.status}]"
+        return f"{self.expense_type} - {self.amount} ({self.date}) [{self.status}]"
+
+class SalaryPayment(models.Model):
+    """
+    Tracks official salary payouts to staff members with historical financial snapshots.
+    """
+    PAYMENT_METHOD_CHOICES = [
+        ('CASH', 'Cash'),
+        ('UPI', 'UPI'),
+        ('BANK_TRANSFER', 'Bank Transfer'),
+        ('CARD', 'Card'),
+        ('CHEQUE', 'Cheque'),
+    ]
+
+    staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='salary_payments')
+    payment_date = models.DateField(default=timezone.localdate)
+    period_start = models.DateField()
+    period_end = models.DateField()
+    calculated_payable = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    paid_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    remaining_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    payment_method = models.CharField(max_length=15, choices=PAYMENT_METHOD_CHOICES, default='CASH')
+    reference_number = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='salary_payments_created')
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='salary_payments_updated')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Salary Payout ₹{self.paid_amount} to {self.staff.username} on {self.payment_date}"
 
 class ChemicalInventory(models.Model):
     name = models.CharField(max_length=100)

@@ -9,6 +9,7 @@ import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import api from "@/lib/api";
 
 const posSchema = z.object({
   plate_number: z.string().min(1, "License plate is required"),
@@ -47,64 +48,33 @@ export default function ExpressPOSPage() {
   const selectedPackageId = watch("package_id");
   const plateNumber = watch("plate_number");
 
-  // --- NEW: AUTO-FILL WATCHER ---
+  // --- AUTO-FILL WATCHER ---
   useEffect(() => {
-    // Only search if the plate is at least 4 characters long
     if (!plateNumber || plateNumber.length < 4) return;
 
-    // Debounce the fetch so it doesn't spam the server on every single keystroke
     const timer = setTimeout(async () => {
       try {
-        const token = localStorage.getItem("auth_token");
-        
-        // Note: If your router uses /api/fleet/vehicles instead of /api/vehicles, update this URL
-        const res = await fetch(`http://127.0.0.1:8001/api/vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`, {
-          headers: token ? { Authorization: `Token ${token}` } : {},
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          if (data.phone) {
-            // Auto-fill the phone number into the form
-            setValue("phone", data.phone, { shouldValidate: true });
-            toast.success(`Found: ${data.customer_name}'s Vehicle`);
-          }
+        const res = await api.get(`/vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`);
+        if (res.data && res.data.phone) {
+          setValue("phone", res.data.phone, { shouldValidate: true });
+          toast.success(`Found: ${res.data.customer_name}'s Vehicle`);
         }
       } catch (err) {
-        // Silently fail if vehicle doesn't exist yet
         console.error(err);
       }
-    }, 800); // Wait 800ms after the user stops typing to trigger the search
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [plateNumber, setValue]);
-  // ------------------------------
 
   useEffect(() => {
     const fetchPackages = async () => {
       try {
-        const token = localStorage.getItem("auth_token");
-        const res = await fetch("http://127.0.0.1:8001/api/service-packages/", {
-          headers: token ? { Authorization: `Token ${token}` } : {},
-        });
-        if (res.ok) {
-          const data = await res.json();
-          // Assuming the data is an array or object with results
-          setPackages(data.results || data);
-        } else {
-          // Mock data if failed
-          setPackages([
-            { id: 1, name: "Foam Wash", price: "500.00" },
-            { id: 2, name: "Deep Detail", price: "1200.00" },
-            { id: 3, name: "Interior Polish", price: "800.00" },
-          ]);
-        }
+        const res = await api.get("/service-packages/");
+        setPackages(res.data.results || res.data || []);
       } catch (err) {
-        setPackages([
-          { id: 1, name: "Foam Wash", price: "500.00" },
-          { id: 2, name: "Deep Detail", price: "1200.00" },
-          { id: 3, name: "Interior Polish", price: "800.00" },
-        ]);
+        console.error(err);
+        setPackages([]);
       } finally {
         setIsLoadingPackages(false);
       }
@@ -114,24 +84,11 @@ export default function ExpressPOSPage() {
 
   const onSubmit = async (data: POSFormValues) => {
     try {
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch("http://127.0.0.1:8001/api/bookings/express-walkin/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Token ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to process walk-in");
-      }
-
+      await api.post("/bookings/express-walkin/", data);
       toast.success("Vehicle Added to Queue!");
       reset();
-    } catch (error) {
-      alert("Error processing walk-in. Ensure you have proper permissions (Washer/Tech/Manager).");
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || "Error processing walk-in.");
       console.error(error);
     }
   };

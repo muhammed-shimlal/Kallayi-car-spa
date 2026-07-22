@@ -19,17 +19,20 @@ const staffSchema = z.object({
     role: z.enum(['WASHER', 'TECHNICIAN', 'MANAGER', 'DRIVER'], {
         message: 'Please select a role',
     }),
-    base_salary: z
+    salary_type: z.enum(['DAILY', 'MONTHLY', 'COMMISSION', 'CUSTOM'], {
+        message: 'Please select salary type',
+    }),
+    salary_amount: z
         .string()
         .optional()
         .refine((val) => !val || (!isNaN(parseFloat(val)) && parseFloat(val) >= 0), {
-            message: 'Salary must be a valid number',
+            message: 'Amount must be valid',
         }),
     commission_rate: z
         .string()
         .optional()
         .refine((val) => !val || (!isNaN(parseFloat(val)) && parseFloat(val) >= 0 && parseFloat(val) <= 100), {
-            message: 'Commission must be between 0 and 100',
+            message: 'Commission must be 0-100',
         }),
 });
 
@@ -75,7 +78,8 @@ export default function StaffModal() {
             phone_number: '',
             password: '',
             role: 'WASHER',
-            base_salary: '',
+            salary_type: 'DAILY',
+            salary_amount: '',
             commission_rate: '',
         },
     });
@@ -88,7 +92,8 @@ export default function StaffModal() {
                 phone_number: editingStaff.phone_number ?? '',
                 password: '',
                 role: (editingStaff.role as StaffFormValues['role']) ?? 'WASHER',
-                base_salary: String(editingStaff.base_salary ?? ''),
+                salary_type: (editingStaff.salary_type as StaffFormValues['salary_type']) ?? 'DAILY',
+                salary_amount: String(editingStaff.salary_amount ?? editingStaff.base_salary ?? ''),
                 commission_rate: String(editingStaff.commission_rate ?? ''),
             });
         } else {
@@ -97,7 +102,8 @@ export default function StaffModal() {
                 phone_number: '',
                 password: '',
                 role: 'WASHER',
-                base_salary: '',
+                salary_type: 'DAILY',
+                salary_amount: '',
                 commission_rate: '',
             });
         }
@@ -174,8 +180,8 @@ export default function StaffModal() {
                             <FieldError message={errors.phone_number?.message} />
                         </div>
 
-                        {/* Role / Salary / Commission */}
-                        <div className="grid grid-cols-3 gap-4">
+                        {/* Role / Salary Type / Salary Amount / Commission */}
+                        <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">
                                     Role
@@ -194,26 +200,44 @@ export default function StaffModal() {
 
                             <div>
                                 <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">
-                                    Salary (₹)
+                                    Salary Type
+                                </label>
+                                <select
+                                    {...register('salary_type')}
+                                    className={`${inputClass(!!errors.salary_type)} appearance-none`}
+                                >
+                                    <option value="DAILY" className="bg-[#141518]">Daily Salary</option>
+                                    <option value="MONTHLY" className="bg-[#141518]">Monthly Salary</option>
+                                    <option value="COMMISSION" className="bg-[#141518]">Commission Based</option>
+                                    <option value="CUSTOM" className="bg-[#141518]">Custom Pay</option>
+                                </select>
+                                <FieldError message={errors.salary_type?.message} />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">
+                                    Salary Amount (₹)
                                 </label>
                                 <input
                                     type="number"
-                                    {...register('base_salary')}
-                                    className={inputClass(!!errors.base_salary)}
-                                    placeholder="500"
+                                    {...register('salary_amount')}
+                                    className={inputClass(!!errors.salary_amount)}
+                                    placeholder="e.g. 700"
                                 />
-                                <FieldError message={errors.base_salary?.message} />
+                                <FieldError message={errors.salary_amount?.message} />
                             </div>
 
                             <div>
                                 <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">
-                                    Comm %
+                                    Commission %
                                 </label>
                                 <input
                                     type="number"
                                     {...register('commission_rate')}
                                     className={inputClass(!!errors.commission_rate)}
-                                    placeholder="10"
+                                    placeholder="e.g. 20"
                                 />
                                 <FieldError message={errors.commission_rate?.message} />
                             </div>

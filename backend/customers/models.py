@@ -64,11 +64,29 @@ class Coupon(models.Model):
         return f"{self.code} ({self.discount_percentage}%)"
 
 class CustomerVehicle(models.Model):
+    VEHICLE_TYPE_CHOICES = [
+        ('CAR', 'Car'),
+        ('BIKE', 'Bike'),
+        ('AUTO', 'Auto'),
+        ('VAN', 'Van'),
+        ('TRUCK', 'Truck'),
+    ]
+
     customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='vehicles')
     make = models.CharField(max_length=50)
     model = models.CharField(max_length=50)
     plate_number = models.CharField(max_length=20, unique=True)
+    registration_number = models.CharField(max_length=50, blank=True)
+    color = models.CharField(max_length=30, blank=True)
+    year = models.IntegerField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    vehicle_type = models.CharField(max_length=10, choices=VEHICLE_TYPE_CHOICES, default='CAR')
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.registration_number:
+            self.registration_number = self.plate_number
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.make} {self.model} ({self.plate_number})"

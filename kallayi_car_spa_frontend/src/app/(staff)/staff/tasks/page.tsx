@@ -7,6 +7,7 @@ import {
     Activity, CheckCircle, PlayCircle, Car, Droplets,
     SprayCan, Sparkles, Clock, LogOut, RefreshCw
 } from 'lucide-react';
+import api from '@/lib/api';
 
 interface Task {
     id: number;
@@ -29,40 +30,28 @@ export default function StaffTasksPage() {
     const [actionLoading, setActionLoading] = useState<number | null>(null);
     const [sentTasks, setSentTasks] = useState<Set<number>>(new Set());
 
-    const API_BASE = 'http://127.0.0.1:8001/api';
-
-    const getHeaders = () => ({
-        'Authorization': `Token ${localStorage.getItem('auth_token')}`,
-        'Content-Type': 'application/json',
-    });
-
     const fetchTasks = useCallback(async () => {
-        const token = localStorage.getItem('auth_token');
-        if (!token) { router.push('/login'); return; }
-
         try {
             const [tasksRes, userRes] = await Promise.all([
-                fetch(`${API_BASE}/bookings/my-tasks/`, { headers: getHeaders() }),
-                fetch(`${API_BASE}/core/users/me/`, { headers: getHeaders() }),
+                api.get('/bookings/my-tasks/'),
+                api.get('/core/users/me/'),
             ]);
 
-            if (tasksRes.ok) {
-                const serverTasks = await tasksRes.json();
-                setTasks(serverTasks);
-                // Clear sentTasks that are no longer in the list
-                setSentTasks(prev => {
-                    const currentIds = new Set(serverTasks.map((t: Task) => t.id));
-                    const next = new Set<number>();
-                    prev.forEach(id => { if (currentIds.has(id)) next.add(id); });
-                    return next;
-                });
-            }
-            if (userRes.ok) {
-                const user = await userRes.json();
-                setWorkerName(user.first_name || user.username || 'Worker');
-            }
-        } catch (e) {
+            setTasks(tasksRes.data || []);
+            setSentTasks(prev => {
+                const currentIds = new Set((tasksRes.data || []).map((t: Task) => t.id));
+                const next = new Set<number>();
+                prev.forEach(id => { if (currentIds.has(id)) next.add(id); });
+                return next;
+            });
+
+            const user = userRes.data;
+            setWorkerName(user.first_name || user.username || 'Worker');
+        } catch (e: any) {
             console.error('Failed to fetch tasks:', e);
+            if (e.response?.status === 401) {
+                router.push('/login');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -76,7 +65,6 @@ export default function StaffTasksPage() {
     }, [fetchTasks]);
 
     const handleStartTask = async (bookingId: number) => {
-        // Optimistic UI — instantly flip to IN_PROGRESS
         const previousTasks = [...tasks];
         setTasks(prev =>
             prev.map(t =>
@@ -88,15 +76,7 @@ export default function StaffTasksPage() {
         toast.success('Wash started! Timer running ⏱️');
 
         try {
-            const res = await fetch(`${API_BASE}/bookings/task/${bookingId}/start/`, {
-                method: 'PATCH',
-                headers: getHeaders(),
-            });
-            if (!res.ok) {
-                // Revert on failure
-                setTasks(previousTasks);
-                toast.error('Network failed. Please tap again.');
-            }
+            await api.patch(`/bookings/task/${bookingId}/start/`);
         } catch (e) {
             setTasks(previousTasks);
             toast.error('Network failed. Please tap again.');
@@ -104,32 +84,20 @@ export default function StaffTasksPage() {
     };
 
     const handleFinishTask = async (bookingId: number) => {
-        // Optimistic UI — instantly mark as SENT (green state)
-        const previousTasks = [...tasks];
         const previousSent = new Set(sentTasks);
         setSentTasks(prev => new Set(prev).add(bookingId));
         toast.success('Complete! Customer has been notified ✅');
 
         try {
-            const res = await fetch(`${API_BASE}/bookings/task/${bookingId}/finish/`, {
-                method: 'PATCH',
-                headers: getHeaders(),
-            });
-            if (!res.ok) {
-                // Revert on failure
-                setSentTasks(previousSent);
-                toast.error('Network failed. Please tap again.');
-            } else {
-                // Remove from list after a brief moment to show green state
-                setTimeout(() => {
-                    setTasks(prev => prev.filter(t => t.id !== bookingId));
-                    setSentTasks(prev => {
-                        const next = new Set(prev);
-                        next.delete(bookingId);
-                        return next;
-                    });
-                }, 1500);
-            }
+            await api.patch(`/bookings/task/${bookingId}/finish/`);
+            setTimeout(() => {
+                setTasks(prev => prev.filter(t => t.id !== bookingId));
+                setSentTasks(prev => {
+                    const next = new Set(prev);
+                    next.delete(bookingId);
+                    return next;
+                });
+            }, 1500);
         } catch (e) {
             setSentTasks(previousSent);
             toast.error('Network failed. Please tap again.');

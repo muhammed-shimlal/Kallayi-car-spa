@@ -10,7 +10,7 @@ from django.utils import timezone
 
 
 class StaffDirectoryViewSet(viewsets.ModelViewSet):
-    """Full CRUD for admin to manage staff members."""
+    """Full CRUD for admin to manage staff members with search, filters, reset password, and stats."""
     serializer_class = StaffDirectorySerializer
 
     @transaction.atomic
@@ -19,6 +19,8 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
         first_name = request.data.get('first_name', '').strip()
         password = request.data.get('password')
         role = request.data.get('role', 'WASHER')
+        salary_type = request.data.get('salary_type', 'COMMISSION')
+        salary_amount = request.data.get('salary_amount', 0)
         base_salary = request.data.get('base_salary', 0)
         commission_rate = request.data.get('commission_rate', 0)
 
@@ -38,6 +40,9 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
             staff_profile = StaffProfile.objects.create(
                 user=user,
                 role=role,
+                phone_number=phone_number,
+                salary_type=salary_type,
+                salary_amount=salary_amount,
                 base_salary=base_salary,
                 commission_rate=commission_rate,
                 is_active=True
@@ -49,10 +54,28 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def get_queryset(self):
-        return StaffProfile.objects.filter(
-            role__in=['WASHER', 'TECHNICIAN', 'MANAGER', 'DRIVER'],
-            user__is_active=True,
-        ).select_related('user').order_by('role', 'user__first_name')
+        qs = StaffProfile.objects.select_related('user').order_by('role', 'user__first_name')
+        
+        # Admin Search (Name or Phone)
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            qs = qs.filter(
+                Q(user__first_name__icontains=search) |
+                Q(user__username__icontains=search) |
+                Q(phone_number__icontains=search)
+            )
+
+        # Filters
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            active_bool = is_active.lower() == 'true'
+            qs = qs.filter(user__is_active=active_bool)
+
+        salary_type = self.request.query_params.get('salary_type')
+        if salary_type:
+            qs = qs.filter(salary_type=salary_type)
+
+        return qs
 
     def get_permissions(self):
         return [IsAuthenticated()]
@@ -67,6 +90,67 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
             )
             if not is_admin:
                 self.permission_denied(request, message="Only Admin can manage staff.")
+
+    @action(detail=True, methods=['post'])
+    def reset_password(self, request, pk=None):
+        """Admin endpoint to reset a staff member's password."""
+        staff_profile = self.get_object()
+        new_password = request.data.get('new_password')
+        if not new_password:
+            return Response({'error': 'New password is required.'}, status=400)
+
+        staff_profile.user.set_password(new_password)
+        staff_profile.user.save()
+        return Response({'status': 'success', 'message': f'Password reset for {staff_profile.user.first_name}'})
+
+    @action(detail=True, methods=['patch'])
+    def toggle_status(self, request, pk=None):
+        """Toggle active / inactive status."""
+        staff_profile = self.get_object()
+        staff_profile.user.is_active = not staff_profile.user.is_active
+        staff_profile.user.save()
+        staff_profile.is_active = staff_profile.user.is_active
+        staff_profile.save()
+        return Response({
+            'status': 'success',
+            'is_active': staff_profile.is_active,
+            'message': f"Staff status set to {'Active' if staff_profile.is_active else 'Inactive'}"
+        })
+
+    @action(detail=True, methods=['get'])
+    def stats(self, request, pk=None):
+        """Admin stat overview for a specific staff member."""
+        staff_profile = self.get_object()
+        staff_user = staff_profile.user
+        today = timezone.localdate()
+
+        from .services.earning_service import get_staff_earnings
+        from .services.wallet_service import get_staff_balance_summary
+
+        earnings_data = get_staff_earnings(staff_user)
+        balance_data = get_staff_balance_summary(staff_user)
+
+        from bookings.models import Booking
+        completed_today = Booking.objects.filter(technician=staff_user, status='COMPLETED', time_slot__date=today)
+        last_job = Booking.objects.filter(technician=staff_user, status='COMPLETED').order_by('-end_time', '-id').first()
+
+        last_job_time = None
+        if last_job and last_job.end_time:
+            last_job_time = last_job.end_time.strftime('%Y-%m-%d %H:%M')
+
+        return Response({
+            'staff_id': staff_profile.id,
+            'name': staff_user.first_name or staff_user.username,
+            'phone': staff_profile.phone_number or staff_user.username,
+            'is_active': staff_user.is_active,
+            'salary_type': staff_profile.salary_type,
+            'today_earnings': earnings_data['today'],
+            'completed_vehicles_today': completed_today.count(),
+            'advances': balance_data['advances'],
+            'current_payable': balance_data['current_payable'],
+            'last_login': staff_user.last_login.strftime('%Y-%m-%d %H:%M') if staff_user.last_login else 'Never',
+            'last_job_time': last_job_time or 'No completed jobs'
+        })
 
     def destroy(self, request, *args, **kwargs):
         """Soft-delete: deactivate instead of deleting to preserve payroll history."""
@@ -90,19 +174,16 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def clock_in(self, request):
         user = request.user
-        if not hasattr(user, 'staff_app_profile'):
+        if not hasattr(user, 'staff_profile'):
             return Response({'error': 'User is not staff'}, status=400)
             
-        # Check if already clocked in
-        active_entry = TimeEntry.objects.filter(staff=user.staff_app_profile, clock_out_time__isnull=True).first()
+        active_entry = TimeEntry.objects.filter(staff=user.staff_profile, clock_out_time__isnull=True).first()
         if active_entry:
              return Response({'error': 'Already clocked in'}, status=400)
 
         location = request.data.get('location', '')
-        # In a real app, validate location against Geofence here
-        
         entry = TimeEntry.objects.create(
-            staff=user.staff_app_profile,
+            staff=user.staff_profile,
             clock_in_time=timezone.now(),
             clock_in_location=location
         )
@@ -111,10 +192,10 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def clock_out(self, request):
         user = request.user
-        if not hasattr(user, 'staff_app_profile'):
+        if not hasattr(user, 'staff_profile'):
              return Response({'error': 'User is not staff'}, status=400)
 
-        active_entry = TimeEntry.objects.filter(staff=user.staff_app_profile, clock_out_time__isnull=True).first()
+        active_entry = TimeEntry.objects.filter(staff=user.staff_profile, clock_out_time__isnull=True).first()
         if not active_entry:
              return Response({'error': 'Not clocked in'}, status=400)
         
@@ -134,32 +215,154 @@ class SOPChecklistViewSet(viewsets.ModelViewSet):
     serializer_class = SOPChecklistSerializer
     
 class StaffDashboardViewSet(viewsets.ViewSet):
+    """Modular Staff Dashboard APIs."""
     permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
-    def my_stats(self, request):
-        user = request.user
+    def earnings(self, request):
+        """GET /api/staff/dashboard/earnings/"""
+        from .services.earning_service import get_staff_earnings
+        data = get_staff_earnings(request.user)
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def work(self, request):
+        """GET /api/staff/dashboard/work/?period=today|week|month|year"""
+        period = request.query_params.get('period', 'today')
+        from .services.work_service import get_staff_work_summary
+        data = get_staff_work_summary(request.user, period=period)
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def balance(self, request):
+        """GET /api/staff/dashboard/balance/"""
+        from .services.wallet_service import get_staff_balance_summary
+        data = get_staff_balance_summary(request.user)
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def transactions(self, request):
+        """GET /api/staff/dashboard/transactions/"""
+        from finance.models import GeneralExpense
+        txs = GeneralExpense.objects.filter(
+            staff=request.user,
+            expense_type='STAFF',
+            is_active=True
+        ).order_by('-date', '-id')
+
+        res = []
+        for t in txs:
+            res.append({
+                'id': t.id,
+                'transaction_type': t.transaction_type,
+                'amount': float(t.amount),
+                'date': t.date.strftime('%Y-%m-%d'),
+                'payment_method': t.payment_method,
+                'status': t.status,
+                'description': t.description or t.notes or '',
+                'category': t.category.name if t.category else 'Staff Transaction'
+            })
+        return Response(res)
+
+    @action(detail=False, methods=['get'])
+    def jobs(self, request):
+        """GET /api/staff/dashboard/jobs/"""
         today = timezone.localdate()
+        from bookings.models import Booking
+        from staff.models import TimeEntry
         
-        # Payroll Stats
-        from finance.models import PayrollEntry
-        payroll = PayrollEntry.objects.filter(staff_user=user, date=today).first()
-        
-        earnings = 0.0
-        if payroll:
-             earnings = float(payroll.commission_earned) + float(payroll.tips_earned) + float(payroll.base_wage)
-             
-        # Time Stats
-        if hasattr(user, 'staff_app_profile'):
-            active_entry = TimeEntry.objects.filter(staff=user.staff_app_profile, clock_out_time__isnull=True).exists()
-            status = 'CLOCKED_IN' if active_entry else 'CLOCKED_OUT'
-        else:
-            status = 'UNKNOWN'
+        today_jobs = Booking.objects.filter(technician=request.user, time_slot__date=today).select_related('customer', 'vehicle', 'service_package').order_by('-id')
+        completed_today = today_jobs.filter(status='COMPLETED')
+        last_completed = completed_today.order_by('-end_time', '-id').first()
+
+        last_time_str = "None"
+        if last_completed and last_completed.end_time:
+            last_time_str = last_completed.end_time.strftime('%I:%M %p')
+
+        # Real working hours calculation
+        active_time = TimeEntry.objects.filter(staff__user=request.user, clock_in_time__date=today).order_by('clock_in_time').first()
+        working_hours_str = "Not Clocked In"
+        if active_time:
+            start_t = active_time.clock_in_time.strftime('%I:%M %p')
+            end_t = active_time.clock_out_time.strftime('%I:%M %p') if active_time.clock_out_time else "Active Now"
+            working_hours_str = f"{start_t} - {end_t}"
+        elif completed_today.exists():
+            first_j = completed_today.order_by('start_time', 'time_slot').first()
+            start_t = (first_j.start_time or first_j.time_slot).strftime('%I:%M %p')
+            end_t = last_time_str if last_time_str != "None" else "Active"
+            working_hours_str = f"{start_t} - {end_t}"
+
+        summary = {
+            'completed_jobs': completed_today.count(),
+            'completed_vehicles': completed_today.count(),
+            'working_hours': working_hours_str,
+            'last_completed_time': last_time_str,
+        }
+
+        jobs_list = []
+        for j in today_jobs[:30]:
+            v_str = 'Vehicle'
+            v_make = ''
+            v_model = ''
+            v_plate = ''
+            v_type = 'CAR'
+            if j.vehicle:
+                v_make = j.vehicle.make
+                v_model = j.vehicle.model
+                v_plate = j.vehicle.plate_number or j.vehicle.registration_number
+                v_type = getattr(j.vehicle, 'vehicle_type', 'CAR')
+                v_str = f"{v_make} {v_model} ({v_plate})".strip()
+
+            jobs_list.append({
+                'id': j.id,
+                'customer_name': j.customer.user.get_full_name() or j.customer.user.username if j.customer else 'Guest',
+                'vehicle': v_str,
+                'vehicle_make': v_make,
+                'vehicle_model': v_model,
+                'vehicle_plate': v_plate,
+                'vehicle_type': v_type,
+                'service_package': j.service_package.name if j.service_package else 'Wash',
+                'status': j.status,
+                'time_slot': j.time_slot.strftime('%Y-%m-%d %H:%M'),
+                'timestamp': j.end_time.strftime('%I:%M %p') if j.end_time else j.time_slot.strftime('%I:%M %p'),
+                'amount': float(j.service_package.price) if j.service_package else 0.0
+            })
 
         return Response({
-            'today_earnings': earnings,
-            'current_status': status
+            'summary': summary,
+            'jobs': jobs_list
         })
+
+    @action(detail=False, methods=['get'])
+    def profile(self, request):
+        """GET /api/staff/dashboard/profile/"""
+        user = request.user
+        staff_profile = getattr(user, 'staff_profile', None)
+        return Response({
+            'id': user.id,
+            'full_name': user.get_full_name() or user.username,
+            'username': user.username,
+            'phone_number': staff_profile.phone_number if staff_profile else '',
+            'role': staff_profile.get_role_display() if staff_profile else 'Staff',
+            'salary_type': staff_profile.get_salary_type_display() if staff_profile else 'Commission',
+            'joining_date': staff_profile.joining_date.strftime('%Y-%m-%d') if staff_profile and staff_profile.joining_date else '',
+        })
+
+    @action(detail=False, methods=['post'])
+    def change_password(self, request):
+        """POST /api/staff/dashboard/change_password/"""
+        user = request.user
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+
+        if not user.check_password(current_password):
+            return Response({'error': 'Current password is incorrect.'}, status=400)
+        if not new_password or len(new_password) < 6:
+            return Response({'error': 'New password must be at least 6 characters.'}, status=400)
+
+        user.set_password(new_password)
+        user.save()
+        return Response({'status': 'success', 'message': 'Password updated successfully.'})
 
 from rest_framework.decorators import api_view, permission_classes
 from django.db.models import Sum

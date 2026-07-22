@@ -77,7 +77,7 @@ export default function LoginPage() {
       if (role === "ADMIN" || role === "MANAGER") {
         router.push("/admin/dashboard");
       } else if (role === "WASHER" || role === "DRIVER" || role === "TECHNICIAN") {
-        router.push("/staff/queue");
+        router.push("/staff/dashboard");
       } else {
         router.push("/customer/dashboard");
       }
