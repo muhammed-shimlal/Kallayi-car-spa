@@ -14,8 +14,9 @@ import toast from 'react-hot-toast';
 import { StaffMember, ServicePackage } from '@/types/admin';
 import { Skeleton } from '@/components/ui/Skeleton';
 
+import api, { getApiBaseUrl } from '@/lib/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
+const getApiBase = () => getApiBaseUrl();
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -202,7 +203,7 @@ function BookingCard({
                                     </option>
                                     
                                     {staffMembers?.map(s => (
-                                        <option key={s.id} value={s.user_id} className="bg-[#141518] text-white">
+                                        <option key={s.id} value={s.user_id || s.id} className="bg-[#141518] text-white">
                                             {s.first_name || s.username} ({s.role})
                                         </option>
                                     ))}
@@ -262,7 +263,7 @@ export default function AdminQueueBoard() {
         if (!silent) setIsLoading(true);
 
         try {
-            const res = await fetch(`${API_BASE}/bookings/live-queue/`, {
+            const res = await fetch(`${getApiBase()}/bookings/live-queue/`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             if (!res.ok) throw new Error('API error');
@@ -285,18 +286,25 @@ export default function AdminQueueBoard() {
 
             if (!silent) {
                 try {
-                    const staffRes = await fetch(`${API_BASE}/staff/directory/`, {
+                    const staffRes = await fetch(`${getApiBase()}/staff/directory/`, {
                         headers: { 'Authorization': `Token ${token}` }
                     });
                     if (staffRes.ok) {
                         const staffData = await staffRes.json();
+                        console.log('Fetched Staff:', staffData);
                         const list = Array.isArray(staffData) ? staffData : (staffData.results || []);
-                        setStaffMembers(list.filter((s: StaffMember) => s.role === 'WASHER' || s.role === 'TECHNICIAN'));
+                        const activeList = list.filter((s: any) => s.is_active !== false);
+                        const assignable = activeList.filter((s: StaffMember) => 
+                            ['WASHER', 'TECHNICIAN', 'DRIVER', 'MANAGER', 'ADMIN'].includes((s.role || '').toUpperCase())
+                        );
+                        setStaffMembers(assignable.length > 0 ? assignable : activeList);
+                    } else {
+                        console.error('[fetchQueue] Failed to fetch staff directory:', staffRes.status);
                     }
-                } catch { /* ignore staff error */ }
+                } catch (e) { console.error('[fetchQueue] Staff fetch error:', e); }
 
                 try {
-                    const svcRes = await fetch(`${API_BASE}/service-packages/`, {
+                    const svcRes = await fetch(`${getApiBase()}/service-packages/`, {
                         headers: { 'Authorization': `Token ${token}` }
                     });
                     if (svcRes.ok) {
@@ -323,7 +331,7 @@ export default function AdminQueueBoard() {
         if (!window.confirm("Are you sure you want to cancel this wash?")) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/bookings/${id}/`, {
+            const res = await fetch(`${getApiBase()}/bookings/${id}/`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'CANCELLED' })
@@ -349,7 +357,7 @@ export default function AdminQueueBoard() {
         }
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/bookings/${editBookingId}/`, {
+            const res = await fetch(`${getApiBase()}/bookings/${editBookingId}/`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ service_package: parseInt(newPackageId) })
@@ -366,11 +374,17 @@ export default function AdminQueueBoard() {
 
     const handleAssignStaff = async (bookingId: number, staffId: number) => {
         const token = localStorage.getItem('auth_token');
+        const baseUrl = getApiBase();
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${bookingId}/`, {
+            console.log(`[assignStaff] Sending assignment: bookingId=${bookingId}, staffId=${staffId} to ${baseUrl}`);
+            const res = await fetch(`${baseUrl}/bookings/update-stage/${bookingId}/`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ assigned_technician_id: staffId }),
+                body: JSON.stringify({
+                    assigned_technician_id: staffId,
+                    technician_id: staffId,
+                    technician: staffId
+                }),
             });
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
@@ -378,7 +392,7 @@ export default function AdminQueueBoard() {
                 toast.error(`Failed to assign. (${res.status}: ${errBody.error || errBody.detail || 'See console'})`);
                 return;
             }
-            toast.success('Worker assigned!');
+            toast.success('Worker assigned successfully!');
             fetchQueue(true);
         } catch (e) {
             console.error('[assignStaff] Network error:', e);
@@ -421,7 +435,7 @@ export default function AdminQueueBoard() {
 
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/bookings/${checkoutModal.bookingId}/checkout/`, {
+            const res = await fetch(`${getApiBase()}/bookings/${checkoutModal.bookingId}/checkout/`, {
                 method: 'POST',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 

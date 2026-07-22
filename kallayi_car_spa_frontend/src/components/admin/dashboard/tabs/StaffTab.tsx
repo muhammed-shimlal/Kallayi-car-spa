@@ -10,7 +10,8 @@ export default function StaffTab() {
     const { totalDailyPayout } = financeState;
     const { 
         payrollData, staffDirectory, editingStaff, staffForm, advanceForm, setStaffForm, setAdvanceForm,
-        saveStaff, terminateStaff, settleWorkerPay, handleAddAdvance
+        staffStatusFilter, setStaffStatusFilter, staffSearchQuery, setStaffSearchQuery,
+        saveStaff, terminateStaff, toggleStaffStatus, settleWorkerPay, handleAddAdvance
     } = staffState;
 
     return (
@@ -131,6 +132,46 @@ export default function StaffTab() {
                                     </button>
                                 </div>
 
+                                {/* Controls Row: Status Filters & Search Bar */}
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6">
+                                    <div className="flex items-center gap-1 bg-[#141518]/80 border border-white/10 p-1 rounded-xl">
+                                        <button
+                                            onClick={() => setStaffStatusFilter('active')}
+                                            className={`px-4 py-2 rounded-lg font-grotesk text-xs uppercase tracking-wider font-bold transition-all ${
+                                                staffStatusFilter === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-[#8E939B] hover:text-white'
+                                            }`}
+                                        >
+                                            Active Only
+                                        </button>
+                                        <button
+                                            onClick={() => setStaffStatusFilter('terminated')}
+                                            className={`px-4 py-2 rounded-lg font-grotesk text-xs uppercase tracking-wider font-bold transition-all ${
+                                                staffStatusFilter === 'terminated' ? 'bg-[#FF2A6D]/20 text-[#FF2A6D] border border-[#FF2A6D]/30' : 'text-[#8E939B] hover:text-white'
+                                            }`}
+                                        >
+                                            Terminated Only
+                                        </button>
+                                        <button
+                                            onClick={() => setStaffStatusFilter('all')}
+                                            className={`px-4 py-2 rounded-lg font-grotesk text-xs uppercase tracking-wider font-bold transition-all ${
+                                                staffStatusFilter === 'all' ? 'bg-white/10 text-[#01FFFF] border border-white/20' : 'text-[#8E939B] hover:text-white'
+                                            }`}
+                                        >
+                                            All Staff
+                                        </button>
+                                    </div>
+
+                                    <div className="relative flex-1 max-w-sm">
+                                        <input
+                                            type="text"
+                                            value={staffSearchQuery}
+                                            onChange={(e) => setStaffSearchQuery(e.target.value)}
+                                            placeholder="Search by name, phone, or role..."
+                                            className="w-full bg-[#141518]/80 border border-white/10 py-2.5 px-4 pr-10 rounded-xl text-xs text-white placeholder-[#8E939B] focus:outline-none focus:border-[#01FFFF] transition-all font-mono"
+                                        />
+                                    </div>
+                                </div>
+
                                 <div className="bg-[#141518]/60 backdrop-blur-xl rounded-[2rem] border border-white/5 overflow-hidden">
                                     <div className="overflow-x-auto">
                                         <table className="w-full">
@@ -138,6 +179,7 @@ export default function StaffTab() {
                                                 <tr className="border-b border-white/10">
                                                     <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Name</th>
                                                     <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Role</th>
+                                                    <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Status</th>
                                                     <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B] hidden md:table-cell">Phone</th>
                                                     <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Salary Type</th>
                                                     <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Amount (₹)</th>
@@ -147,7 +189,7 @@ export default function StaffTab() {
                                             </thead>
                                             <tbody>
                                                 {staffDirectory.length === 0 && (
-                                                    <tr><td colSpan={7} className="text-center py-12 text-[#8E939B] text-sm">No staff registered yet.</td></tr>
+                                                    <tr><td colSpan={8} className="text-center py-12 text-[#8E939B] text-sm">No staff records match your criteria.</td></tr>
                                                 )}
                                                 {staffDirectory.map((staff: any) => {
                                                     const roleColors: Record<string, string> = {
@@ -156,6 +198,7 @@ export default function StaffTab() {
                                                         WASHER: 'bg-[#01FFFF]/15 text-[#01FFFF] border-[#01FFFF]/30',
                                                         DRIVER: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
                                                     };
+                                                    const isActive = staff.is_active !== false;
                                                     return (
                                                         <tr key={staff.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
                                                             <td className="px-6 py-5">
@@ -166,6 +209,17 @@ export default function StaffTab() {
                                                                 <span className={`text-[9px] font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full border ${roleColors[staff.role] || 'bg-white/10 text-white border-white/20'}`}>
                                                                     {staff.role}
                                                                 </span>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-center">
+                                                                {isActive ? (
+                                                                    <span className="text-[9px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                                                        Active
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[9px] font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-[#FF2A6D]/20 text-[#FF2A6D] border border-[#FF2A6D]/30">
+                                                                        Terminated
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                             <td className="px-6 py-5 hidden md:table-cell">
                                                                 <span className="text-xs text-[#8E939B]">{staff.phone_number || '—'}</span>
@@ -188,13 +242,23 @@ export default function StaffTab() {
                                                                     >
                                                                         <Pencil className="w-3.5 h-3.5" />
                                                                     </button>
-                                                                    <button
-                                                                        onClick={() => terminateStaff(staff.id)}
-                                                                        className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#FF2A6D] hover:border-[#FF2A6D]/30 transition-all"
-                                                                        title="Deactivate / Soft Delete"
-                                                                    >
-                                                                        <UserMinus className="w-3.5 h-3.5" />
-                                                                    </button>
+                                                                    {isActive ? (
+                                                                        <button
+                                                                            onClick={() => toggleStaffStatus(staff.id, true)}
+                                                                            className="px-3 py-1.5 rounded-lg bg-[#FF2A6D]/10 border border-[#FF2A6D]/30 text-[#FF2A6D] hover:bg-[#FF2A6D] hover:text-white transition-all text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+                                                                            title="Terminate (Soft Delete)"
+                                                                        >
+                                                                            <UserMinus className="w-3.5 h-3.5" /> Terminate
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => toggleStaffStatus(staff.id, false)}
+                                                                            className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500 hover:text-black transition-all text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+                                                                            title="Reactivate Account"
+                                                                        >
+                                                                            <CheckCircle className="w-3.5 h-3.5" /> Reactivate
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                             </td>
                                                         </tr>

@@ -8,13 +8,18 @@ class ServicePackageSerializer(serializers.ModelSerializer):
 
 class BookingSerializer(serializers.ModelSerializer):
     service_package_details = serializers.SerializerMethodField()
-    technician_name = serializers.ReadOnlyField(source='technician.username')
+    technician_name = serializers.SerializerMethodField()
     customer_name = serializers.ReadOnlyField(source='customer.user.first_name')
     vehicle_info = serializers.ReadOnlyField(source='vehicle.plate_number')
     service_package_name = serializers.CharField(source='service_package.name', read_only=True)
     vehicle_plate = serializers.CharField(source='vehicle.plate_number', read_only=True)
     invoice_status = serializers.SerializerMethodField()
     invoice_amount = serializers.SerializerMethodField()
+
+    def get_technician_name(self, obj):
+        if obj.technician:
+            return obj.technician.get_full_name() or obj.technician.username
+        return "Unassigned"
 
     # Add optional fields to silence legacy client payload mismatches
     transaction_id = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)

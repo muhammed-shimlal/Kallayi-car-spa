@@ -34,7 +34,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(data)
 
 class StaffViewSet(viewsets.ModelViewSet):
-    queryset = StaffProfile.objects.all()
+    queryset = StaffProfile.objects.filter(is_active=True, user__is_active=True)
     serializer_class = StaffProfileSerializer
     # permission_classes = [permissions.IsAuthenticated]
 

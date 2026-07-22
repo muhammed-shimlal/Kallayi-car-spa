@@ -69,7 +69,9 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
         is_active = self.request.query_params.get('is_active')
         if is_active is not None:
             active_bool = is_active.lower() == 'true'
-            qs = qs.filter(user__is_active=active_bool)
+            qs = qs.filter(is_active=active_bool, user__is_active=active_bool)
+        else:
+            qs = qs.filter(is_active=True, user__is_active=True)
 
         salary_type = self.request.query_params.get('salary_type')
         if salary_type:
@@ -83,13 +85,15 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
     def check_permissions(self, request):
         super().check_permissions(request)
         if request.method not in SAFE_METHODS:
-            user = request.user
-            is_admin = (
-                user.is_superuser or
-                (hasattr(user, 'staff_profile') and user.staff_profile.role == 'ADMIN')
-            )
-            if not is_admin:
-                self.permission_denied(request, message="Only Admin can manage staff.")
+            if not request.user.is_staff and not (hasattr(request.user, 'staff_profile') and request.user.staff_profile.role in ['ADMIN', 'MANAGER']):
+                self.permission_denied(request, message="Only managers and admins can modify staff records.")
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        if instance.user:
+            instance.user.is_active = False
+            instance.user.save(update_fields=['is_active'])
+        instance.save(update_fields=['is_active'])
 
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
@@ -103,7 +107,7 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
         staff_profile.user.save()
         return Response({'status': 'success', 'message': f'Password reset for {staff_profile.user.first_name}'})
 
-    @action(detail=True, methods=['patch'])
+    @action(detail=True, methods=['patch', 'post'])
     def toggle_status(self, request, pk=None):
         """Toggle active / inactive status."""
         staff_profile = self.get_object()

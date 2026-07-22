@@ -141,40 +141,69 @@ class ExpenseCategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
 
 class DashboardViewSet(viewsets.ViewSet):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def kpi_summary(self, request):
+        from bookings.models import Booking
+        from django.db.models import Q
+        
         today = timezone.localdate()
         
-        # 1. Revenue Today
-        revenue = Invoice.objects.filter(
-            created_at__date=today
-        ).aggregate(total=Sum('amount'))['total'] or 0.0
-        
-        # 2. Chemical Cost Today
-        chemical_logs = ChemicalUsageLog.objects.filter(timestamp__date=today).select_related('inventory_item')
-        chemical_cost = sum(log.amount_used * log.inventory_item.cost_per_unit for log in chemical_logs)
+        try:
+            # 1. Revenue Today
+            revenue = float(Invoice.objects.filter(
+                created_at__date=today
+            ).aggregate(total=Sum('amount'))['total'] or 0.0)
+            
+            # 2. Chemical Cost Today
+            chemical_logs = ChemicalUsageLog.objects.filter(timestamp__date=today).select_related('inventory_item')
+            chemical_cost = 0.0
+            for log in chemical_logs:
+                if log.inventory_item and log.inventory_item.cost_per_unit and log.amount_used:
+                    chemical_cost += float(log.amount_used) * float(log.inventory_item.cost_per_unit)
 
-        # 3. Labor Cost Today
-        labor = PayrollEntry.objects.filter(date=today).aggregate(
-            total=Sum(F('base_wage') + F('commission_earned') + F('tips_earned'))
-        )['total'] or 0.0
-        
-        # 4. General Expenses Today
-        general_expenses = GeneralExpense.objects.filter(date=today).aggregate(
-            total=Sum('amount')
-        )['total'] or 0.0
+            # 3. Labor Cost Today
+            labor = float(PayrollEntry.objects.filter(date=today).aggregate(
+                total=Sum(F('base_wage') + F('commission_earned') + F('tips_earned'))
+            )['total'] or 0.0)
+            
+            # 4. General Expenses Today
+            general_expenses = float(GeneralExpense.objects.filter(date=today).aggregate(
+                total=Sum('amount')
+            )['total'] or 0.0)
 
-        net_profit = float(revenue) - float(chemical_cost) - float(labor) - float(general_expenses)
+            net_profit = revenue - chemical_cost - labor - general_expenses
 
-        return Response({
-            'revenue_today': revenue,
-            'chemical_cost_today': chemical_cost,
-            'labor_cost_today': labor,
-            'general_expenses_today': general_expenses,
-            'net_profit_today': net_profit
-        })
+            # 5. Today's Washed Vehicles count
+            today_washed_count = Booking.objects.filter(
+                status__in=['COMPLETED', 'Completed', 'completed']
+            ).filter(
+                Q(created_at__date=today) | 
+                Q(start_time__date=today) | 
+                Q(end_time__date=today) |
+                Q(time_slot__date=today)
+            ).distinct().count()
+
+            return Response({
+                'revenue_today': revenue,
+                'chemical_cost_today': chemical_cost,
+                'labor_cost_today': labor,
+                'general_expenses_today': general_expenses,
+                'net_profit_today': net_profit,
+                'today_washed_count': today_washed_count
+            })
+        except Exception as e:
+            print(f"Error in kpi_summary: {e}")
+            return Response({
+                'revenue_today': 0.0,
+                'chemical_cost_today': 0.0,
+                'labor_cost_today': 0.0,
+                'general_expenses_today': 0.0,
+                'net_profit_today': 0.0,
+                'today_washed_count': 0,
+                'error': str(e)
+            })
 
     @action(detail=False, methods=['get'])
     def revenue_chart(self, request):

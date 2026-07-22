@@ -17,7 +17,10 @@ import {
     Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
 } from 'recharts';
 
-const API_BASE: string = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
+import { getApiBaseUrl } from '@/lib/api';
+
+const getApiBase = (): string => getApiBaseUrl();
+const API_BASE: string = getApiBaseUrl();
 
 
 import {
@@ -102,6 +105,24 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         enabled: !!token
     });
 
+    const todayWashedQuery = useQuery({
+        queryKey: ['todayWashedVehicles'],
+        queryFn: async () => {
+            const apiBase = getApiBaseUrl();
+            const res = await fetch(`${apiBase}/bookings/today-washed/`, { headers: fetchHeaders });
+            if (!res.ok) {
+                const fallbackRes = await fetch(`${apiBase}/bookings/?status=COMPLETED&date=today`, { headers: fetchHeaders });
+                if (!fallbackRes.ok) throw new Error('Failed to fetch today washed vehicles');
+                const data = await fallbackRes.json();
+                const list = Array.isArray(data) ? data : (data.results || []);
+                return { count: list.length, today_washed_count: list.length, results: list };
+            }
+            return res.json();
+        },
+        enabled: !!token,
+        refetchInterval: 10000
+    });
+
     const expensesQuery = useQuery<Expense[]>({
         queryKey: ['expenses'],
         queryFn: async () => {
@@ -165,10 +186,19 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         enabled: !!token
     });
 
-    const staffQuery = useQuery<StaffMember[]>({
-        queryKey: ['staff'],
+    const [staffStatusFilter, setStaffStatusFilter] = useState<'all' | 'active' | 'terminated'>('active');
+    const [staffSearchQuery, setStaffSearchQuery] = useState('');
+
+    const staffQuery = useQuery<any[]>({
+        queryKey: ['staff', staffStatusFilter, staffSearchQuery],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/staff/directory/`, { headers: fetchHeaders });
+            let url = `${API_BASE}/staff/directory/`;
+            const params = new URLSearchParams();
+            if (staffStatusFilter === 'active') params.append('is_active', 'true');
+            if (staffStatusFilter === 'terminated') params.append('is_active', 'false');
+            if (staffSearchQuery) params.append('search', staffSearchQuery);
+            if (params.toString()) url += `?${params.toString()}`;
+            const res = await fetch(url, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
             return res.json();
         },
@@ -197,9 +227,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const isGlobalLoading = !isMounted || userQuery.isLoading || kpiQuery.isLoading || chartQuery.isLoading || bookingsQuery.isLoading || expensesQuery.isLoading || khataQuery.isLoading || customerCreditsQuery.isLoading || payrollQuery.isLoading || servicesQuery.isLoading || staffQuery.isLoading || eodQuery.isLoading || analyticsQuery.isLoading;
 
-    const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0 };
+    const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 };
     const chartData = chartQuery.data || generateDemoChartData();
     const recentBookings = bookingsQuery.data || [];
+    const todayWashedRaw = todayWashedQuery.data || { count: 0, today_washed_count: 0, results: [] };
+    const todayWashedVehicles = Array.isArray(todayWashedRaw) ? todayWashedRaw : (todayWashedRaw.results || []);
+    const todayWashedCount = todayWashedRaw.today_washed_count ?? todayWashedRaw.count ?? (kpiData.today_washed_count || todayWashedVehicles.length);
     const expenses = expensesQuery.data || [];
     const expenseCategories = expenseCategoriesQuery.data || [];
     const khataCustomers = khataQuery.data || [];
@@ -370,20 +403,28 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         } catch (e) { toast.error('Network error'); }
     };
 
-    const terminateStaff = async (id: number) => {
-        if (!confirm('WARNING: Are you sure you want to remove this staff member? Their past payroll records will be preserved, but their login will be revoked.')) return;
+    const toggleStaffStatus = async (id: number, isCurrentlyActive: boolean) => {
+        const actionText = isCurrentlyActive ? "terminate (soft delete)" : "reactivate";
+        if (!confirm(`Are you sure you want to ${actionText} this staff member?`)) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/staff/directory/${id}/`, {
-                method: 'DELETE',
+            const res = await fetch(`${API_BASE}/staff/directory/${id}/toggle_status/`, {
+                method: 'POST',
                 headers: { 'Authorization': `Token ${token}` }
             });
-            if (res.ok || res.status === 204) {
+            if (res.ok) {
+                const data = await res.json();
                 queryClient.invalidateQueries({ queryKey: ['staff'] });
                 queryClient.invalidateQueries({ queryKey: ['payrollData'] });
-                toast.success("Staff member terminated.");
-            } else { toast.error('Failed to terminate.'); }
+                toast.success(data.message || (isCurrentlyActive ? "Staff member terminated." : "Staff member reactivated!"));
+            } else {
+                toast.error('Failed to update status.');
+            }
         } catch (e) { toast.error('Network error'); }
+    };
+
+    const terminateStaff = async (id: number) => {
+        await toggleStaffStatus(id, true);
     };
 
     // --- Manual Khata Charge ---
@@ -925,7 +966,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         },
         staffState: {
             payrollData, staffDirectory, editingStaff, staffForm, advanceForm, setStaffForm, setAdvanceForm,
-            fetchStaffDirectory, saveStaff, terminateStaff, settleWorkerPay, handleAddAdvance
+            staffStatusFilter, setStaffStatusFilter, staffSearchQuery, setStaffSearchQuery,
+            fetchStaffDirectory, saveStaff, terminateStaff, toggleStaffStatus, settleWorkerPay, handleAddAdvance
         },
         serviceState: {
             services, editingService, serviceForm, setServiceForm, fetchServices, openServiceModal, saveService, deleteService
@@ -939,7 +981,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             fetchDashboardData, handleLogout
         },
         queueState: {
-            recentBookings
+            recentBookings,
+            todayWashedVehicles,
+            todayWashedCount
         }
     };
 

@@ -24,8 +24,9 @@ import {
 } from 'recharts';
 
 import { Skeleton } from '@/components/ui/Skeleton';
+import { getApiBaseUrl } from '@/lib/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
+const API_BASE = getApiBaseUrl();
 
 export default function AdminDashboard() {
     const router = useRouter();
@@ -37,7 +38,7 @@ export default function AdminDashboard() {
     const [adminName, setAdminName] = useState('Loading...');
 
     // --- Data States ---
-    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0 });
+    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 });
     const generateDemoChartData = () => {
         const days = [];
         for (let i = 6; i >= 0; i--) {
@@ -899,18 +900,24 @@ export default function AdminDashboard() {
 
                 {/* REAL-TIME KPI DASHBOARD (Always Visible) */}
                 {isLoading ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-6 mb-8">
+                        <Skeleton className="h-[124px]" />
                         <Skeleton className="h-[124px]" />
                         <Skeleton className="h-[124px]" />
                         <Skeleton className="h-[124px]" />
                         <Skeleton className="h-[124px]" />
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-6 mb-8">
                         <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-6 rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)]">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-[#01FFFF]/10 rounded-full blur-[50px] group-hover:bg-[#01FFFF]/20 transition-all"></div>
                             <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Net Profit Today</p>
                             <h2 className="text-3xl sm:text-4xl font-syncopate font-bold text-white tracking-tighter truncate">₹{kpiData.net_profit_today.toLocaleString()}</h2>
+                        </div>
+                        <div className="bg-[#141518]/60 border border-emerald-500/30 p-6 rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(16,185,129,0.05)]">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-[50px] group-hover:bg-emerald-500/20 transition-all"></div>
+                            <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Washed Today</p>
+                            <h2 className="text-3xl sm:text-4xl font-syncopate font-bold text-white tracking-tighter truncate">{kpiData.today_washed_count || 0} <span className="text-xs font-normal text-[#8E939B] tracking-normal">cars</span></h2>
                         </div>
                         <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Total Revenue</p><h2 className="text-2xl sm:text-3xl font-syncopate font-bold truncate">₹{kpiData.revenue_today.toLocaleString()}</h2></div>
                         <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl"><p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Labor Cost</p><h2 className="text-2xl sm:text-3xl font-syncopate font-bold truncate">₹{kpiData.labor_cost_today.toLocaleString()}</h2></div>

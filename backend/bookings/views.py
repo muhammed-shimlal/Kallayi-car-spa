@@ -51,10 +51,39 @@ class BookingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_staff or user.is_superuser or hasattr(user, 'staff_profile'):
-            return Booking.objects.all().order_by('-created_at')
-        if hasattr(user, 'customer'):
-            return Booking.objects.filter(customer=user.customer).order_by('-created_at')
-        return Booking.objects.none()
+            queryset = Booking.objects.all().order_by('-created_at')
+        elif hasattr(user, 'customer'):
+            queryset = Booking.objects.filter(customer=user.customer).order_by('-created_at')
+        else:
+            queryset = Booking.objects.none()
+
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            statuses = [s.strip() for s in status_param.split(',')]
+            # Match upper or lower or exact match
+            query_statuses = []
+            for s in statuses:
+                query_statuses.extend([s, s.upper(), s.lower(), s.capitalize()])
+            queryset = queryset.filter(status__in=query_statuses)
+
+        date_param = self.request.query_params.get('date')
+        if date_param:
+            if date_param.lower() == 'today':
+                target_date = timezone.localdate()
+            else:
+                try:
+                    target_date = parse_date(date_param) or datetime.strptime(date_param, '%Y-%m-%d').date()
+                except Exception:
+                    target_date = timezone.localdate()
+            if target_date:
+                queryset = queryset.filter(
+                    Q(created_at__date=target_date) | 
+                    Q(start_time__date=target_date) | 
+                    Q(end_time__date=target_date) |
+                    Q(time_slot__date=target_date)
+                ).distinct()
+
+        return queryset
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -92,6 +121,28 @@ class BookingViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(completed_bookings, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='today-washed')
+    def today_washed(self, request):
+        """
+        Returns summary and list of completed bookings for today.
+        """
+        today = timezone.localdate()
+        today_washed_bookings = Booking.objects.filter(
+            status__in=['COMPLETED', 'Completed', 'completed']
+        ).filter(
+            Q(created_at__date=today) | 
+            Q(start_time__date=today) | 
+            Q(end_time__date=today) |
+            Q(time_slot__date=today)
+        ).select_related('customer', 'technician', 'service_package', 'vehicle').order_by('-created_at').distinct()
+        
+        serializer = self.get_serializer(today_washed_bookings, many=True)
+        return Response({
+            'today_washed_count': today_washed_bookings.count(),
+            'count': today_washed_bookings.count(),
+            'results': serializer.data
+        })
 
     @action(detail=True, methods=['post'])
     @transaction.atomic
@@ -359,7 +410,11 @@ def update_booking_stage(request, booking_id):
 
     new_status = request.data.get('new_status')
     bay_assignment = request.data.get('bay_assignment', None)
-    assigned_technician_id = request.data.get('assigned_technician_id', None)
+    assigned_technician_id = (
+        request.data.get('assigned_technician_id') or 
+        request.data.get('technician_id') or 
+        request.data.get('technician')
+    )
 
     payment_cash = float(request.data.get('payment_cash', 0))
     payment_upi = float(request.data.get('payment_upi', 0))
@@ -404,8 +459,27 @@ def update_booking_stage(request, booking_id):
         booking.status = new_status
     if bay_assignment is not None:
         booking.bay_assignment = bay_assignment
-    if assigned_technician_id:
-        booking.technician_id = assigned_technician_id
+    if assigned_technician_id is not None:
+        try:
+            tech_id_int = int(assigned_technician_id)
+        except (TypeError, ValueError):
+            return Response({'error': f'Invalid technician ID format: {assigned_technician_id}'}, status=400)
+
+        from staff.models import StaffProfile
+        from django.contrib.auth.models import User
+        
+        staff_prof = (
+            StaffProfile.objects.filter(user_id=tech_id_int, is_active=True, user__is_active=True).first() or
+            StaffProfile.objects.filter(id=tech_id_int, is_active=True, user__is_active=True).first()
+        )
+        if staff_prof:
+            booking.technician = staff_prof.user
+        else:
+            user_inst = User.objects.filter(id=tech_id_int, is_active=True).first()
+            if user_inst:
+                booking.technician = user_inst
+            else:
+                return Response({'error': f'Technician ID {tech_id_int} is inactive, invalid, or does not exist.'}, status=400)
 
     booking.save()
 

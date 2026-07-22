@@ -1,13 +1,23 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
-const api = axios.create({
-  baseURL: 'http://192.168.1.3:8001/api/',
-});
+export const getApiBaseUrl = (): string => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    return `http://${host}:8001/api`;
+  }
+  return 'http://127.0.0.1:8001/api';
+};
 
-// Request interceptor to attach the auth token to every request
+const api = axios.create();
+
+// Request interceptor to attach the auth token & resolve dynamic baseURL
 api.interceptors.request.use(
   (config) => {
+    config.baseURL = getApiBaseUrl() + '/';
     let token = Cookies.get('auth_token');
     if (!token && typeof window !== 'undefined') {
       token = localStorage.getItem('auth_token') || undefined;
@@ -22,14 +32,11 @@ api.interceptors.request.use(
   }
 );
 
-// Optional response interceptor (e.g., to handle 401s across the app)
+// Response interceptor to handle 401 unauthenticated redirects
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Typically we'd clear the cookie and redirect to login, but handling
-      // redirects gracefully in Next.js Server & Client components requires
-      // a bit more setup or checking if we're in the browser.
       if (typeof window !== 'undefined') {
         Cookies.remove('auth_token');
         window.location.href = '/login';
