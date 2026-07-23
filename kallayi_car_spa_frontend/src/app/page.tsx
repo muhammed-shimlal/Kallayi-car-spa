@@ -3,6 +3,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import { useRouter } from 'next/navigation';
+import HeroSection from '@/components/landing/HeroSection';
+import LoginButton from '@/components/ui/LoginButton';
+import ServicesSection from '@/components/landing/ServicesSection';
+import ServiceAreaMap from '@/components/landing/ServiceAreaMap';
+import TestimonialMarquee from '@/components/landing/TestimonialMarquee';
+import Footer from '@/components/landing/Footer';
 
 const inter = Inter({ subsets: ['latin'] });
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], weight: ['300', '700'] });
@@ -93,7 +99,7 @@ export default function CustomerCinematicPage() {
                     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
                     background-color: var(--bg-vantablack);
                     color: var(--text-pure);
-                    overflow-x: hidden;
+                    overflow-x: clip;
                 }
                 .font-display { font-family: ${spaceGrotesk.style.fontFamily}, sans-serif; }
                 .uppercase { text-transform: uppercase; }
@@ -247,139 +253,40 @@ export default function CustomerCinematicPage() {
             {/* --- NAVBAR --- */}
             <nav className="navbar">
                 <a onClick={handleBookingClick} className="logo font-display">KALLAYI<span>.</span></a>
-                <div 
-                    className="menu-btn magnetic" 
-                    onMouseMove={handleMagneticMove} 
-                    onMouseLeave={handleMagneticLeave}
-                    onClick={() => router.push('/login')} // Easy way to hit login
-                >
-                    <div className="line"></div>
-                    <div className="line"></div>
+                <div className="flex items-center gap-4">
+                    <LoginButton onClick={() => router.push('/login')} />
+                    <div 
+                        className="menu-btn magnetic" 
+                        onMouseMove={handleMagneticMove} 
+                        onMouseLeave={handleMagneticLeave}
+                        onClick={() => router.push('/login')}
+                    >
+                        <div className="line"></div>
+                        <div className="line"></div>
+                    </div>
                 </div>
             </nav>
 
-            {/* --- HERO SECTION --- */}
-            <section className="hero-section">
-                <div className="hero-background"></div>
-                <div className="vignette-overlay"></div>
-                <h1 className="ghost-text font-display">KALLAYI</h1>
-                
-                <div className="hero-content">
-                    <span className="hud-label uppercase">SYS. ONLINE // VEHICLE SPA</span>
-                    <button 
-                        onClick={handleBookingClick} // Triggers routing logic
-                        className="book-btn font-display magnetic"
-                        onMouseMove={handleMagneticMove} 
-                        onMouseLeave={handleMagneticLeave}
-                    >
-                        BOOK
-                        <span className="btn-line"></span>
-                    </button>
-                </div>
+            {/* --- HERO SECTION WITH SCROLL ANIMATION --- */}
+            <HeroSection 
+                onBookingClick={handleBookingClick}
+                onMagneticMove={handleMagneticMove}
+                onMagneticLeave={handleMagneticLeave}
+            />
 
-                <div className="scroll-indicator">
-                    <span className="scroll-text font-display">SCROLL</span>
-                    <div className="scroll-line-container">
-                        <div className="scroll-line"></div>
-                    </div>
-                </div>
-            </section>
+            {/* --- INTERACTIVE SERVICES ARCHIVE & DETAIL SECTION --- */}
+            <ServicesSection />
 
-            {/* --- ARSENAL SECTION --- */}
-            <section className="arsenal-section" id="services">
-                <div className={`arsenal-bg ${activeBg === 'bg-0' ? 'active' : ''}`} style={{ backgroundImage: "url('https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?q=80&w=2000&auto=format&fit=crop')" }}></div>
-                <div className={`arsenal-bg ${activeBg === 'bg-1' ? 'active' : ''}`} style={{ backgroundImage: "url('https://images.unsplash.com/photo-1600880292203-757bb62b4baf?q=80&w=2000&auto=format&fit=crop')" }}></div>
-                <div className={`arsenal-bg ${activeBg === 'bg-2' ? 'active' : ''}`} style={{ backgroundImage: "url('https://images.unsplash.com/photo-1552930294-6b595f4c2974?q=80&w=2000&auto=format&fit=crop')" }}></div>
-                
-                <div className="vignette-overlay" style={{ background: 'radial-gradient(circle, rgba(5,5,5,0.4) 30%, rgba(5,5,5,0.95) 100%)' }}></div>
+            {/* --- SERVICE AREA RADAR MAP --- */}
+            <ServiceAreaMap />
 
-                <div className="arsenal-content">
-                    <span className="hud-label uppercase reveal-up">SYS. ARCHIVE // SELECT SERVICE</span>
-                    <div className="services-list">
-                        <div className="service-item reveal-up" onMouseEnter={() => setActiveBg('bg-0')} onClick={handleBookingClick}>
-                            <span className="service-num font-display">01</span>
-                            <h2 className="service-title font-display">CAR WASH</h2>
-                            <span className="service-arrow font-display">→</span>
-                        </div>
-                        <div className="service-item reveal-up" style={{ transitionDelay: '0.1s' }} onMouseEnter={() => setActiveBg('bg-1')} onClick={handleBookingClick}>
-                            <span className="service-num font-display">02</span>
-                            <h2 className="service-title font-display">DETAILING</h2>
-                            <span className="service-arrow font-display">→</span>
-                        </div>
-                        <div className="service-item reveal-up" style={{ transitionDelay: '0.2s' }} onMouseEnter={() => setActiveBg('bg-2')} onClick={handleBookingClick}>
-                            <span className="service-num font-display">03</span>
-                            <h2 className="service-title font-display">UNLIMITED</h2>
-                            <span className="service-arrow font-display">→</span>
-                        </div>
-                    </div>
-                </div>
-            </section>
+            {/* --- CONTINUOUS TESTIMONIAL MARQUEE --- */}
+            <div id="reviews">
+                <TestimonialMarquee />
+            </div>
 
-            {/* --- VERDICT SECTION --- */}
-            <section className="verdict-section" id="reviews">
-                <div className="verdict-header reveal-up">
-                    <span className="hud-label uppercase">SYS. LOG // CLIENT VERDICT</span>
-                    <h2 className="verdict-title font-display uppercase">The Verdict</h2>
-                </div>
-
-                <div 
-                    className="film-strip reveal-up" 
-                    style={{ transitionDelay: '0.2s' }}
-                    ref={filmStripRef}
-                    onMouseDown={handleMouseDown}
-                    onMouseLeave={handleMouseLeave}
-                    onMouseUp={handleMouseUp}
-                    onMouseMove={handleMouseMove}
-                >
-                    <div className="review-card">
-                        <div className="telemetry-meta">
-                            <span>ID: Kallayi Car Spa</span>
-                            <span>LOG: 20.09.2024</span>
-                        </div>
-                        <div className="reviewer-info">
-                            <div className="neon-avatar neon-slate font-display">MB</div>
-                            <h3 className="reviewer-name font-display">Michael Brown</h3>
-                        </div>
-                        <p className="review-text">"Great service! Very pleased with the result. After washing, the car looks like new, shiny and without a single stain. Fast and quality service, pleasant staff. I will definitely come back!"</p>
-                    </div>
-
-                    <div className="review-card">
-                        <div className="telemetry-meta">
-                            <span>ID: Kallayi Car Spa</span>
-                            <span>LOG: 20.09.2024</span>
-                        </div>
-                        <div className="reviewer-info">
-                            <div className="neon-avatar neon-emerald font-display">EJ</div>
-                            <h3 className="reviewer-name font-display">Emily Jonson</h3>
-                        </div>
-                        <p className="review-text">"Detailing at the highest level! Used the service of full interior cleaning and exterior washing. All small details have been cleaned thoroughly, the interior smells fresh. Very professional work!"</p>
-                    </div>
-
-                    <div className="review-card">
-                        <div className="telemetry-meta">
-                            <span>ID: Kallayi Car Spa</span>
-                            <span>LOG: 20.09.2024</span>
-                        </div>
-                        <div className="reviewer-info">
-                            <div className="neon-avatar neon-orange font-display">JM</div>
-                            <h3 className="reviewer-name font-display">James Miller</h3>
-                        </div>
-                        <p className="review-text">"Extremely fast and high-quality. I liked how quickly they got the job done. Even heavy dirt on the wheels was completely removed. I recommend this car wash to everyone!"</p>
-                    </div>
-
-                    <div className="review-card">
-                        <div className="telemetry-meta">
-                            <span>ID: Kallayi Car Spa</span>
-                            <span>LOG: 18.09.2024</span>
-                        </div>
-                        <div className="reviewer-info">
-                            <div className="neon-avatar neon-blue font-display">AS</div>
-                            <h3 className="reviewer-name font-display">Anna Smith</h3>
-                        </div>
-                        <p className="review-text">"The best car wash in town. I've tried several different washers, but this one is the best. The equipment is modern, the staff is attentive to details."</p>
-                    </div>
-                </div>
-            </section>
+            {/* --- FOOTER SECTION --- */}
+            <Footer />
         </div>
     );
 }

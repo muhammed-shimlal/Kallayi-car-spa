@@ -134,7 +134,7 @@ export default function CinematicCustomerDashboard() {
         />
         <div 
           className={`${styles.arsenalBg} ${activeBg === "bg-1" ? styles.active : ""}`} 
-          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1600880292203-757bb62b4baf?q=80&w=2000&auto=format&fit=crop')" }}
+          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1611239179213-d972da54091a?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')" }}
         />
         <div 
           className={`${styles.arsenalBg} ${activeBg === "bg-2" ? styles.active : ""}`} 
