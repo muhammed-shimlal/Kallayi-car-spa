@@ -13,6 +13,8 @@ from decimal import Decimal
 # Initialize Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
+from core.permissions import get_user_role
+
 class PaymentViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
@@ -26,6 +28,13 @@ class PaymentViewSet(viewsets.ViewSet):
             invoice = Invoice.objects.get(id=invoice_id)
         except Invoice.DoesNotExist:
             return Response({'error': 'Invoice not found'}, status=404)
+
+        # Check ownership: non-admin must own the booking associated with the invoice
+        role = get_user_role(request.user)
+        if role not in ['ADMIN', 'MANAGER']:
+            if hasattr(invoice, 'booking') and invoice.booking and invoice.booking.customer:
+                if invoice.booking.customer.user != request.user:
+                    return Response({'error': 'You do not have permission to pay for this invoice.'}, status=status.HTTP_403_FORBIDDEN)
             
         if invoice.is_paid:
              return Response({'error': 'Invoice already paid'}, status=400)

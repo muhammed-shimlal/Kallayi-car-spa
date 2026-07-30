@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from .models import Booking, ServicePackage
 from .serializers import BookingSerializer, ServicePackageSerializer
 from rest_framework.permissions import BasePermission, SAFE_METHODS, IsAuthenticated, AllowAny
+from core.permissions import IsAdmin, IsStaffUser, IsCustomerUser, IsOwnerOrAdmin, get_user_role
 from django.utils.dateparse import parse_date, parse_datetime
 from datetime import timedelta, datetime, time
 from django.db.models import Q
@@ -14,7 +15,6 @@ from rest_framework.decorators import api_view, permission_classes
 from django.db import transaction
 import random
 from customers.models import Customer, CustomerVehicle
-from customers.models import Customer
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
@@ -27,31 +27,27 @@ class IsAdminUserOrReadOnly(BasePermission):
 class ServicePackageViewSet(viewsets.ModelViewSet):
     queryset = ServicePackage.objects.all().order_by('price')
     serializer_class = ServicePackageSerializer
-
-    def get_permissions(self):
-        if self.request.method in SAFE_METHODS:
-            return [IsAuthenticated()]
-        return [IsAuthenticated()]
+    permission_classes = [IsAuthenticated]
 
     def check_permissions(self, request):
         super().check_permissions(request)
         if request.method not in SAFE_METHODS:
-            user = request.user
-            is_admin_or_manager = (
-                user.is_superuser or
-                user.is_staff or
-                (hasattr(user, 'staff_profile') and user.staff_profile.role in ['ADMIN', 'MANAGER'])
-            )
-            if not is_admin_or_manager:
+            role = get_user_role(request.user)
+            if role not in ['ADMIN', 'MANAGER']:
                 self.permission_denied(request, message="Only Admin or Manager can modify service packages.")
 
 class BookingViewSet(viewsets.ModelViewSet):
+    queryset = Booking.objects.all()
     serializer_class = BookingSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff or user.is_superuser or hasattr(user, 'staff_profile'):
+        role = get_user_role(user)
+        if role in ['ADMIN', 'MANAGER']:
             queryset = Booking.objects.all().order_by('-created_at')
+        elif role in ['WASHER', 'DRIVER', 'TECHNICIAN']:
+            queryset = Booking.objects.filter(Q(technician=user) | ~Q(status__in=['COMPLETED', 'CANCELLED'])).order_by('-created_at')
         elif hasattr(user, 'customer'):
             queryset = Booking.objects.filter(customer=user.customer).order_by('-created_at')
         else:
@@ -269,7 +265,9 @@ class BookingViewSet(viewsets.ModelViewSet):
         return Response({'date': date_str, 'slots': available_slots})
 
 class CalendarViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Booking.objects.all()
     serializer_class = BookingSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def get_queryset(self):
         start_date = self.request.query_params.get('start_date')
@@ -283,7 +281,9 @@ class CalendarViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 class DriverBookingViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Booking.objects.all()
     serializer_class = BookingSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
 
     def get_queryset(self):
         # Allow detail access (update_status) without query param

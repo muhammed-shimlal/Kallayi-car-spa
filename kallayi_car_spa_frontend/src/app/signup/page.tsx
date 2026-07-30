@@ -1,212 +1,475 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
-import { EyeOff, Eye, Lock, ShieldCheck, Loader2, User } from "lucide-react";
-import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { isValidPhoneNumber } from "react-phone-number-input";
-import { CinematicPhoneInput } from "@/components/ui/phone-input";
-import Link from "next/link";
+import React, { useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
+import Cookies from 'js-cookie';
+import {
+    User, Phone, Lock, Eye, EyeOff, ShieldCheck, CheckCircle2,
+    AlertCircle, Car, ChevronDown, Sparkles, ArrowRight, Loader2, KeyRound
+} from 'lucide-react';
 import api from '@/lib/api';
 
-const signupSchema = z.object({
-  name: z.string().min(2, "Full Name is required"),
-  phone: z.string()
-    .min(1, "Phone number is required")
-    .refine((val) => val && isValidPhoneNumber(val), {
-      message: "Invalid phone number",
-    }),
-  password: z.string().min(1, "Password is required"),
-});
+// Password Strength Calculation Helper
+function getPasswordStrength(password: string) {
+    if (!password) return { score: 0, label: '', color: 'bg-neutral-800' };
 
-type SignupFormValues = z.infer<typeof signupSchema>;
+    let score = 0;
+    if (password.length >= 6) score += 1;
+    if (password.length >= 8 && /[0-9]/.test(password)) score += 1;
+    if (password.length >= 10 && /[A-Z]/.test(password)) score += 1;
+    if (/[^A-Za-z0-9]/.test(password)) score += 1;
+
+    switch (score) {
+        case 1:
+            return { score: 1, label: 'WEAK PROTOCOL', color: 'bg-[#E52323] shadow-[0_0_10px_rgba(229,35,35,0.6)]' };
+        case 2:
+            return { score: 2, label: 'FAIR SECURITY', color: 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)]' };
+        case 3:
+            return { score: 3, label: 'HIGH ENCRYPTION', color: 'bg-[#01FFFF] shadow-[0_0_10px_rgba(1,255,255,0.6)]' };
+        case 4:
+            return { score: 4, label: 'ULTIMATE FORTRESS', color: 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)]' };
+        default:
+            return { score: 0, label: '', color: 'bg-neutral-800' };
+    }
+}
 
 export default function SignupPage() {
-  const router = useRouter();
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+    const router = useRouter();
 
-  const {
-    control,
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<SignupFormValues>({
-    resolver: zodResolver(signupSchema),
-    defaultValues: {
-      name: "",
-      phone: "",
-      password: "",
-    },
-  });
+    // Form State
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
-  const onSubmit = async (data: SignupFormValues) => {
-    setError("");
-    setIsLoading(true);
+    // Optional Vehicle Section
+    const [addVehicle, setAddVehicle] = useState(false);
+    const [vehicleMake, setVehicleMake] = useState('');
+    const [vehicleModel, setVehicleModel] = useState('');
+    const [vehiclePlate, setVehiclePlate] = useState('');
 
-    try {
-      // 1. Authenticate with Django Backend API
-      const authRes = await api.post("/customers/register/", {
-        name: data.name,
-        phone: data.phone,
-        password: data.password,
-      });
+    // Status & Feedback State
+    const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-      const token = authRes.data?.token;
+    const handleBlur = (field: string) => {
+        setTouched((prev) => ({ ...prev, [field]: true }));
+    };
 
-      if (!token) throw new Error("No token received from the server.");
+    // Real-time Validation Checks
+    const isNameValid = useMemo(() => name.trim().length >= 2, [name]);
+    const isPhoneValid = useMemo(() => {
+        const cleaned = phone.replace(/\D/g, '');
+        return cleaned.length >= 10 && cleaned.length <= 13;
+    }, [phone]);
+    const isPasswordValid = useMemo(() => password.length >= 6, [password]);
+    const isConfirmPasswordValid = useMemo(() => confirmPassword.length >= 6 && confirmPassword === password, [confirmPassword, password]);
+    const isVehicleValid = useMemo(() => {
+        if (!addVehicle) return true;
+        return vehicleMake.trim().length >= 1 && vehicleModel.trim().length >= 1 && vehiclePlate.trim().length >= 3;
+    }, [addVehicle, vehicleMake, vehicleModel, vehiclePlate]);
 
-      // Force save to Local Storage (This is what the Dashboard looks for!)
-      localStorage.setItem("auth_token", token);
+    const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
 
-      // Keep the cookie if you want, but localStorage is mandatory.
-      document.cookie = `auth_token=${token}; path=/;`;
+    const isFormValid = isNameValid && isPhoneValid && isPasswordValid && isConfirmPasswordValid && isVehicleValid;
 
-      // 2. Routing to Customer Dashboard
-      router.push("/customer/dashboard");
-      
-    } catch (err: any) {
-      setError(err.message || "An authentication error occurred.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
 
-  return (
-    <div className="bg-obsidian min-h-screen relative flex items-center justify-center p-4 overflow-hidden z-0">
-      {/* Cinematic Dark Background with Supercar */}
-      <div className="absolute inset-0 z-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?q=80&w=2669&auto=format&fit=crop')] bg-cover bg-center mix-blend-luminosity" />
-      <div className="absolute inset-0 z-0 bg-gradient-to-t from-obsidian via-obsidian/80 to-transparent" />
+        if (!isFormValid) {
+            setTouched({
+                name: true,
+                phone: true,
+                password: true,
+                confirmPassword: true,
+                vehicleMake: true,
+                vehicleModel: true,
+                vehiclePlate: true
+            });
+            setError('Please complete all required fields correctly.');
+            return;
+        }
 
-      {/* The Glassmorphism HUD Card */}
-      <div className="max-w-lg w-full bg-carbon/60 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-10 shadow-[0_0_50px_rgba(0,0,0,0.5)] relative z-10 transition-all duration-500 hover:shadow-[0_0_80px_rgba(255,42,109,0.15)] flex flex-col">
-        {/* Header Section */}
-        <div className="text-center mb-10 w-full flex flex-col items-center">
-          <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center relative group">
-              <div className="absolute inset-0 bg-cyan/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-              <ShieldCheck className="w-8 h-8 text-cyan relative z-10" />
-            </div>
-          </div>
-          <h2 className="font-grotesk text-xs text-cyan uppercase tracking-[0.3em] font-semibold mb-3">NEW USER PROTOCOL</h2>
-          <h1 className="font-syncopate text-3xl md:text-4xl text-white font-bold tracking-tight">REGISTRATION</h1>
-        </div>
+        setIsLoading(true);
 
-        {/* Signup Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          
-          {/* Full Name Input */}
-          <div className="space-y-2 relative group w-full">
-            <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Full Name</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <User className="h-5 w-5 text-tungsten group-focus-within:text-cyan transition-colors" />
-              </div>
-              <input
-                type="text"
-                {...register("name")}
-                disabled={isLoading}
-                className={`w-full bg-white/5 border ${errors.name ? 'border-[#E52323]' : 'border-white/10'} py-4 pl-12 pr-4 rounded-xl text-white font-mono focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan transition-all placeholder:text-tungsten/40`}
-                placeholder="Enter full name..."
-              />
-            </div>
-            {errors.name && (
-              <p className="text-[10px] text-[#E52323] font-bold tracking-widest uppercase ml-1 mt-2">
-                {errors.name.message}
-              </p>
-            )}
-          </div>
+        try {
+            // Standardized JSON Payload Construction
+            const payload: any = {
+                name: name.trim(),
+                phone: phone.trim(),
+                password: password
+            };
 
-          {/* Phone Input */}
-          <div className="space-y-2 relative group w-full">
-            <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Secure Phone ID</label>
-            <Controller
-              name="phone"
-              control={control}
-              render={({ field }) => (
-                <div className="relative">
-                  <CinematicPhoneInput
-                    value={field.value}
-                    onChange={field.onChange}
-                    error={errors.phone?.message}
-                    disabled={isLoading}
-                  />
+            if (addVehicle) {
+                payload.vehicle = {
+                    make: vehicleMake.trim(),
+                    model: vehicleModel.trim(),
+                    plate_number: vehiclePlate.trim().toUpperCase()
+                };
+            }
+
+            const res = await api.post('/customers/register/', payload);
+            const token = res.data?.token;
+
+            if (!token) {
+                throw new Error('Server returned invalid authentication payload.');
+            }
+
+            // Save authentication token to persistent storage
+            localStorage.setItem('auth_token', token);
+            Cookies.set('auth_token', token, { expires: 30, path: '/' });
+
+            // Smooth redirect to customer portal
+            router.push('/customer/dashboard');
+        } catch (err: any) {
+            console.error('Registration failed:', err);
+            const apiError = err.response?.data?.error || err.response?.data?.detail || err.message || 'Registration failed. Please check your credentials.';
+            setError(apiError);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-[#050505] text-white flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-hidden font-sans selection:bg-[#E52323]/30 selection:text-white">
+            
+            {/* Cinematic Background Image Overlay & Ambient Lighting */}
+            <div className="absolute inset-0 z-0 opacity-15 bg-[url('https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?q=80&w=2669&auto=format&fit=crop')] bg-cover bg-center mix-blend-luminosity" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent pointer-events-none" />
+            <div className="absolute top-1/4 -left-20 w-96 h-96 bg-[#01FFFF]/10 rounded-full blur-[140px] pointer-events-none" />
+            <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-[#E52323]/15 rounded-full blur-[140px] pointer-events-none" />
+
+            <div className="w-full max-w-lg relative z-10 my-8">
+                
+                {/* Header Branding */}
+                <motion.div 
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
+                    className="text-center mb-8"
+                >
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#0a0a0d] shadow-[6px_6px_16px_#020203,-6px_-6px_16px_#14151a] border border-white/10 mb-4 group transition-transform duration-300 hover:scale-105">
+                        <ShieldCheck className="w-8 h-8 text-[#01FFFF] drop-shadow-[0_0_12px_rgba(1,255,255,0.6)]" />
+                    </div>
+                    <h2 className="text-[11px] font-mono text-[#01FFFF] uppercase tracking-[0.3em] font-semibold mb-2">
+                        NEW USER REGISTRATION PROTOCOL
+                    </h2>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-syncopate uppercase">
+                        KALLAYI<span className="text-[#E52323]">.</span>
+                    </h1>
+                </motion.div>
+
+                {/* Tactile Obsidian Neumorphic Card */}
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.5, delay: 0.1 }}
+                    className="bg-[#0a0a0d] rounded-3xl p-6 sm:p-10 shadow-[10px_10px_30px_#020203,-10px_-10px_30px_#14151a] border border-white/10 relative overflow-hidden"
+                >
+                    <form onSubmit={handleSubmit} className="space-y-5">
+                        
+                        {/* 1. Full Name Input */}
+                        <div className="space-y-1.5 group">
+                            <label className="text-[11px] font-mono font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
+                                <span>Full Name *</span>
+                                {touched.name && (
+                                    <span className="text-[10px]">
+                                        {isNameValid ? (
+                                            <span className="text-[#01FFFF] flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Valid</span>
+                                        ) : (
+                                            <span className="text-[#E52323] flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Min 2 characters</span>
+                                        )}
+                                    </span>
+                                )}
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-500 group-focus-within:text-[#01FFFF] transition-colors">
+                                    <User className="w-5 h-5" />
+                                </div>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    onBlur={() => handleBlur('name')}
+                                    disabled={isLoading}
+                                    placeholder="Enter full name..."
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                        touched.name
+                                            ? isNameValid
+                                                ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
+                                                : 'border-[#E52323]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(229,35,35,0.2)]'
+                                            : 'border-transparent focus:border-[#01FFFF] focus:shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_18px_rgba(1,255,255,0.3)]'
+                                    }`}
+                                />
+                            </div>
+                        </div>
+
+                        {/* 2. Phone Number Input */}
+                        <div className="space-y-1.5 group">
+                            <label className="text-[11px] font-mono font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
+                                <span>Phone Number (Username) *</span>
+                                {touched.phone && (
+                                    <span className="text-[10px]">
+                                        {isPhoneValid ? (
+                                            <span className="text-[#01FFFF] flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Valid</span>
+                                        ) : (
+                                            <span className="text-[#E52323] flex items-center gap-1"><AlertCircle className="w-3 h-3" /> 10-13 digits required</span>
+                                        )}
+                                    </span>
+                                )}
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-500 group-focus-within:text-[#01FFFF] transition-colors">
+                                    <Phone className="w-5 h-5" />
+                                </div>
+                                <input
+                                    type="tel"
+                                    value={phone}
+                                    onChange={(e) => setPhone(e.target.value)}
+                                    onBlur={() => handleBlur('phone')}
+                                    disabled={isLoading}
+                                    placeholder="+91 80897 35500"
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-mono tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                        touched.phone
+                                            ? isPhoneValid
+                                                ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
+                                                : 'border-[#E52323]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(229,35,35,0.2)]'
+                                            : 'border-transparent focus:border-[#01FFFF] focus:shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_18px_rgba(1,255,255,0.3)]'
+                                    }`}
+                                />
+                            </div>
+                        </div>
+
+                        {/* 3. Password Input */}
+                        <div className="space-y-1.5 group">
+                            <label className="text-[11px] font-mono font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
+                                <span>Create Password *</span>
+                                {touched.password && (
+                                    <span className="text-[10px]">
+                                        {isPasswordValid ? (
+                                            <span className="text-[#01FFFF] flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Valid</span>
+                                        ) : (
+                                            <span className="text-[#E52323] flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Min 6 chars</span>
+                                        )}
+                                    </span>
+                                )}
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-500 group-focus-within:text-[#01FFFF] transition-colors">
+                                    <Lock className="w-5 h-5" />
+                                </div>
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    onBlur={() => handleBlur('password')}
+                                    disabled={isLoading}
+                                    placeholder="••••••••••••"
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-12 rounded-2xl text-sm font-mono tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                        touched.password
+                                            ? isPasswordValid
+                                                ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
+                                                : 'border-[#E52323]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(229,35,35,0.2)]'
+                                            : 'border-transparent focus:border-[#01FFFF] focus:shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_18px_rgba(1,255,255,0.3)]'
+                                    }`}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-neutral-500 hover:text-[#01FFFF] transition-colors"
+                                >
+                                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                </button>
+                            </div>
+
+                            {/* Password Strength Meter */}
+                            {password && (
+                                <div className="pt-2 space-y-1">
+                                    <div className="flex justify-between items-center text-[10px] font-mono">
+                                        <span className="text-neutral-400 uppercase tracking-widest">Passcode Strength</span>
+                                        <span className="font-bold text-white tracking-wider">{passwordStrength.label}</span>
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-1.5 h-1.5 bg-[#050507] p-0.5 rounded-full shadow-[inset_2px_2px_4px_#000000]">
+                                        {[1, 2, 3, 4].map((step) => (
+                                            <div
+                                                key={step}
+                                                className={`h-full rounded-full transition-all duration-300 ${
+                                                    step <= passwordStrength.score ? passwordStrength.color : 'bg-neutral-800'
+                                                }`}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 4. Confirm Password Input */}
+                        <div className="space-y-1.5 group">
+                            <label className="text-[11px] font-mono font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
+                                <span>Confirm Password *</span>
+                                {touched.confirmPassword && (
+                                    <span className="text-[10px]">
+                                        {isConfirmPasswordValid ? (
+                                            <span className="text-[#01FFFF] flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Matched</span>
+                                        ) : (
+                                            <span className="text-[#E52323] flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Passwords do not match</span>
+                                        )}
+                                    </span>
+                                )}
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-500 group-focus-within:text-[#01FFFF] transition-colors">
+                                    <KeyRound className="w-5 h-5" />
+                                </div>
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    onBlur={() => handleBlur('confirmPassword')}
+                                    disabled={isLoading}
+                                    placeholder="••••••••••••"
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-mono tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                        touched.confirmPassword
+                                            ? isConfirmPasswordValid
+                                                ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
+                                                : 'border-[#E52323]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(229,35,35,0.2)]'
+                                            : 'border-transparent focus:border-[#01FFFF] focus:shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_18px_rgba(1,255,255,0.3)]'
+                                    }`}
+                                />
+                            </div>
+                        </div>
+
+                        {/* 5. Optional Vehicle Section Toggle */}
+                        <div className="pt-2 border-t border-white/10">
+                            <button
+                                type="button"
+                                onClick={() => setAddVehicle(!addVehicle)}
+                                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-[#050507] shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-white/5 hover:border-[#01FFFF]/30 transition-all"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-xl bg-[#0a0a0d] shadow-[2px_2px_6px_#020203,-2px_-2px_6px_#14151a] flex items-center justify-center text-[#01FFFF]">
+                                        <Car className="w-4 h-4" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="text-xs font-semibold text-white">Add Your Vehicle Now?</p>
+                                        <p className="text-[10px] text-neutral-400 font-mono">Optional garage setup for express booking</p>
+                                    </div>
+                                </div>
+                                <ChevronDown className={`w-5 h-5 text-neutral-400 transition-transform duration-300 ${addVehicle ? 'rotate-180 text-[#01FFFF]' : ''}`} />
+                            </button>
+
+                            {/* Animated Expandable Vehicle Section */}
+                            <AnimatePresence>
+                                {addVehicle && (
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        transition={{ duration: 0.3 }}
+                                        className="overflow-hidden space-y-3.5 pt-3"
+                                    >
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">Make (Brand)</label>
+                                                <input
+                                                    type="text"
+                                                    value={vehicleMake}
+                                                    onChange={(e) => setVehicleMake(e.target.value)}
+                                                    onBlur={() => handleBlur('vehicleMake')}
+                                                    placeholder="e.g. Porsche / BMW"
+                                                    className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs font-medium outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">Model Name</label>
+                                                <input
+                                                    type="text"
+                                                    value={vehicleModel}
+                                                    onChange={(e) => setVehicleModel(e.target.value)}
+                                                    onBlur={() => handleBlur('vehicleModel')}
+                                                    placeholder="e.g. 911 GT3 / M4"
+                                                    className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs font-medium outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">License Plate Number</label>
+                                            <input
+                                                type="text"
+                                                value={vehiclePlate}
+                                                onChange={(e) => setVehiclePlate(e.target.value)}
+                                                onBlur={() => handleBlur('vehiclePlate')}
+                                                placeholder="e.g. KL 10 AW 9999"
+                                                className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs font-mono uppercase tracking-wider outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
+                                            />
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        {/* Error Alert Display */}
+                        {error && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="p-3.5 rounded-xl bg-[#E52323]/10 border border-[#E52323]/40 text-[#E52323] text-xs font-mono flex items-center gap-2"
+                            >
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                <span>{error}</span>
+                            </motion.div>
+                        )}
+
+                        {/* Primary Crimson Red Neon Submit Button */}
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full relative group overflow-hidden rounded-2xl p-[1px] focus:outline-none transition-all duration-300 active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none mt-2"
+                        >
+                            <div className="relative bg-gradient-to-r from-[#E52323] via-[#ff2a55] to-[#E52323] rounded-2xl py-4 px-6 flex items-center justify-center gap-2 text-white shadow-[0_0_25px_rgba(229,35,35,0.5)] group-hover:shadow-[0_0_40px_rgba(229,35,35,0.8)] transition-all duration-300">
+                                {isLoading ? (
+                                    <>
+                                        <Loader2 className="w-5 h-5 text-white animate-spin" />
+                                        <span className="font-syncopate font-bold text-xs text-white uppercase tracking-widest">AUTHORIZING ACCOUNT...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="font-syncopate font-bold text-xs text-white uppercase tracking-widest">
+                                            CREATE ACCOUNT
+                                        </span>
+                                        <ArrowRight className="w-4 h-4 text-white group-hover:translate-x-1 transition-transform" />
+                                    </>
+                                )}
+                            </div>
+                        </button>
+
+                    </form>
+
+                    {/* Bottom Navigation Link */}
+                    <div className="mt-6 text-center">
+                        <Link
+                            href="/login"
+                            className="text-xs text-neutral-400 hover:text-[#01FFFF] transition-colors font-mono tracking-wider uppercase inline-flex items-center gap-1.5"
+                        >
+                            <span>Already Registered?</span>
+                            <span className="text-[#01FFFF] font-semibold underline underline-offset-4">Authorize Here</span>
+                        </Link>
+                    </div>
+                </motion.div>
+
+                {/* Footer Security Badge */}
+                <div className="mt-8 text-center">
+                    <p className="text-[10px] text-neutral-600 font-mono tracking-[0.2em] uppercase flex items-center justify-center gap-2">
+                        <ShieldCheck className="w-3.5 h-3.5 text-neutral-500" />
+                        <span>Kallayi Car Spa // Encrypted Protocol v3.0</span>
+                    </p>
                 </div>
-              )}
-            />
-          </div>
-
-          {/* Password Input */}
-          <div className="space-y-2 relative group w-full">
-            <label className="font-grotesk text-[10px] md:text-xs uppercase tracking-[0.2em] text-tungsten font-bold ml-2">Secure Access Code</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-tungsten group-focus-within:text-cyan transition-colors" />
-              </div>
-              <input
-                type={showPassword ? "text" : "password"}
-                {...register("password")}
-                disabled={isLoading}
-                className={`w-full bg-white/5 border ${errors.password ? 'border-[#E52323]' : 'border-white/10'} py-4 pl-12 pr-12 rounded-xl text-white font-mono focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan transition-all placeholder:text-tungsten/40`}
-                placeholder="Create access code..."
-              />
-              <button
-                type="button"
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-tungsten hover:text-white transition-colors"
-                onClick={() => setShowPassword(!showPassword)}
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              </button>
             </div>
-            {errors.password && (
-              <p className="text-[10px] text-[#E52323] font-bold tracking-widest uppercase ml-1 mt-2">
-                {errors.password.message}
-              </p>
-            )}
-          </div>
-
-          {/* Error Message */}
-          <div className={`text-[#E52323] font-mono text-xs text-center min-h-[16px] transition-opacity duration-300 font-semibold tracking-wide ${error ? 'opacity-100' : 'opacity-0'}`}>
-            {error && `> ERR: ${error}`}
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full bg-[#E52323] text-white font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(229,35,35,0.4)] hover:shadow-[0_0_30px_rgba(229,35,35,0.6)] hover:bg-red-700 hover:scale-[1.02] transition-all active:scale-95 flex justify-center items-center gap-2 mt-2 disabled:opacity-70 disabled:hover:scale-100 disabled:hover:shadow-none"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                AUTHORIZING...
-              </>
-            ) : (
-              <>
-                CREATE ACCOUNT <ShieldCheck className="w-5 h-5" />
-              </>
-            )}
-          </button>
-
-          {/* Link back to Login */}
-          <div className="text-center mt-6">
-            <Link href="/login" className="font-grotesk text-[11px] text-tungsten hover:text-cyan transition-colors tracking-widest uppercase">
-              Already registered? Authorize Here
-            </Link>
-          </div>
-        </form>
-        
-        {/* Footer */}
-        <div className="mt-10 text-center border-t border-white/5 pt-6">
-            <p className="font-mono text-[10px] text-tungsten/50 uppercase tracking-widest">
-                Kallayi Car Spa // Encrypted Protocol v2.5
-            </p>
         </div>
-      </div>
-    </div>
-  );
+    );
 }

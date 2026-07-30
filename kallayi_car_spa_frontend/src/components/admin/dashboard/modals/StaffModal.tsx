@@ -52,7 +52,7 @@ function FieldError({ message }: { message?: string }) {
 // ─── Input class helper ───────────────────────────────────────────────────────
 
 function inputClass(hasError: boolean) {
-    return `w-full bg-white/5 border py-4 px-6 rounded-xl text-white focus:outline-none transition-all mt-2 ${
+    return `w-full bg-white/5 border py-3.5 sm:py-4 px-4 sm:px-6 rounded-xl text-white text-base sm:text-sm focus:outline-none transition-all mt-2 ${
         hasError
             ? 'border-[#FF2A6D] focus:border-[#FF2A6D] focus:ring-1 focus:ring-[#FF2A6D]'
             : 'border-white/10 focus:border-[#01FFFF] focus:ring-1 focus:ring-[#01FFFF]'
@@ -117,7 +117,7 @@ export default function StaffModal() {
 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
-            <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+            <div className="bg-[#141518] border border-white/10 p-5 sm:p-8 rounded-3xl sm:rounded-[2.5rem] w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)]">
 
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">

@@ -4,11 +4,13 @@ from rest_framework.response import Response
 from django.contrib.auth.models import User
 from staff.models import StaffProfile
 from .serializers import UserSerializer, StaffProfileSerializer, StaffCreateSerializer
+from .permissions import IsAdmin, IsStaffUser, IsOwnerOrAdmin, get_user_role
+
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    # permission_classes = [permissions.IsAuthenticated] # Commented out for easier testing initially
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def me(self, request):
@@ -27,18 +29,19 @@ class UserViewSet(viewsets.ModelViewSet):
         elif user.is_superuser:
             data['role'] = 'ADMIN'
         elif user.is_staff:
-             data['role'] = 'MANAGER'
+            data['role'] = 'MANAGER'
         else:
             data['role'] = 'UNKNOWN'
             
         return Response(data)
 
+
 class StaffViewSet(viewsets.ModelViewSet):
     queryset = StaffProfile.objects.filter(is_active=True, user__is_active=True)
     serializer_class = StaffProfileSerializer
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsAdmin])
     def create_staff(self, request):
         serializer = StaffCreateSerializer(data=request.data)
         if serializer.is_valid():
@@ -46,9 +49,13 @@ class StaffViewSet(viewsets.ModelViewSet):
             return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsStaffUser])
     def update_location(self, request, pk=None):
         profile = self.get_object()
+        # Ensure user can only update their own location unless Admin
+        if request.user != profile.user and get_user_role(request.user) not in ['ADMIN', 'MANAGER']:
+            return Response({'error': 'You can only update your own location.'}, status=status.HTTP_403_FORBIDDEN)
+
         lat = request.data.get('latitude')
         lng = request.data.get('longitude')
         
@@ -60,3 +67,4 @@ class StaffViewSet(viewsets.ModelViewSet):
             profile.save()
             return Response({'status': 'location updated'})
         return Response({'error': 'latitude and longitude required'}, status=status.HTTP_400_BAD_REQUEST)
+

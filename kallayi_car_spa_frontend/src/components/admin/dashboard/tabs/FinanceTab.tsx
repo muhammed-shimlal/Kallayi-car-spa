@@ -28,19 +28,22 @@ export default function FinanceTab() {
 
     return (
         <div className="animate-[fadeIn_0.5s_ease-out]">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="font-syncopate font-bold tracking-widest text-xl">FINANCIAL LEDGER</h3>
-                            <button onClick={downloadTaxReport} className="flex items-center gap-2 bg-white/10 text-white border border-white/20 px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition">
-                                <Download className="w-4 h-4" /> Export Tax Report
-                            </button>
-                        </div>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div>
+                    <h3 className="font-syncopate font-bold tracking-widest text-lg sm:text-xl text-white">FINANCIAL LEDGER</h3>
+                    <p className="text-xs text-neutral-400 font-mono tracking-wider">Revenue, Khata, Expenses & Invoicing</p>
+                </div>
+                <button onClick={downloadTaxReport} className="w-full sm:w-auto min-h-[48px] flex items-center justify-center gap-2 bg-[#0a0a0d] text-white border border-white/15 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:border-[#01FFFF] transition shadow-[4px_4px_10px_#020203,-4px_-4px_10px_#14151a] active:scale-95 touch-manipulation">
+                    <Download className="w-4 h-4 text-[#01FFFF]" /> Export Tax Report
+                </button>
+            </div>
 
-                        <div className="flex flex-wrap gap-4 border-b border-white/10 pb-4 mb-8">
-                            <button onClick={() => setFinanceSubTab('overview')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'overview' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>Trend Analysis</button>
-                            <button onClick={() => setFinanceSubTab('khata')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'khata' ? 'bg-[#01FFFF]/10 text-[#01FFFF]' : 'text-[#8E939B] hover:text-white'}`}>Khata (Credit)</button>
-                            <button onClick={() => setFinanceSubTab('expenses')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'expenses' ? 'bg-[#FF2A6D]/10 text-[#FF2A6D]' : 'text-[#8E939B] hover:text-white'}`}>Expense Manager</button>
-                            <button onClick={() => setFinanceSubTab('invoices')} className={`px-4 py-2 font-bold text-xs uppercase tracking-widest rounded-lg transition-all ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400' : 'text-[#8E939B] hover:text-white'}`}>PDF Invoices</button>
-                        </div>
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 scrollbar-none">
+                <button onClick={() => setFinanceSubTab('overview')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'overview' ? 'bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>Trend Analysis</button>
+                <button onClick={() => setFinanceSubTab('khata')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'khata' ? 'bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>Khata (Credit)</button>
+                <button onClick={() => setFinanceSubTab('expenses')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'expenses' ? 'bg-[#FF2A6D]/10 text-[#FF2A6D] border border-[#FF2A6D]/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>Expense Manager</button>
+                <button onClick={() => setFinanceSubTab('invoices')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>PDF Invoices</button>
+            </div>
 
                         {financeSubTab === 'overview' && (
                             <div className="animate-[fadeIn_0.3s_ease-out] space-y-6">
@@ -140,8 +143,8 @@ export default function FinanceTab() {
 
         {/* TABLE 1: MANUAL KHATA */}
         <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF] mb-4 mt-8">DIGITAL KHATA ACCOUNTS (MANUAL CREDIT)</h4>
-        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden mb-8">
-            <table className="w-full text-left text-sm">
+        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-x-auto hide-scrollbar mb-8">
+            <table className="w-full text-left text-sm min-w-[540px]">
                 <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
                     <tr><th className="p-4 pl-6">Customer Name</th><th className="p-4">Phone Number</th><th className="p-4">Outstanding Balance</th><th className="p-4 text-right pr-6">Action</th></tr>
                 </thead>
@@ -162,7 +165,7 @@ export default function FinanceTab() {
                                         <button
                                             type="button"
                                             onClick={() => loadKhataLedger(khata)}
-                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-2 rounded-lg bg-white/5 hover:bg-white/10"
+                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-2 rounded-lg bg-white/5 hover:bg-white/10 min-h-[36px] min-w-[36px] flex items-center justify-center active:scale-95 touch-manipulation"
                                             title="View history"
                                         >
                                             <FileText className="w-4 h-4" />
@@ -170,7 +173,7 @@ export default function FinanceTab() {
                                         <button
                                             type="button"
                                             onClick={() => openKhataCustomerModal(khata)}
-                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-2 rounded-lg bg-white/5 hover:bg-white/10"
+                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-2 rounded-lg bg-white/5 hover:bg-white/10 min-h-[36px] min-w-[36px] flex items-center justify-center active:scale-95 touch-manipulation"
                                             title="Edit customer"
                                         >
                                             <Pencil className="w-4 h-4" />
@@ -178,7 +181,7 @@ export default function FinanceTab() {
                                         <button
                                             type="button"
                                             onClick={() => deleteKhataCustomer(khata.id)}
-                                            className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-2 rounded-lg bg-white/5 hover:bg-[#FF2A6D]/10"
+                                            className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-2 rounded-lg bg-white/5 hover:bg-[#FF2A6D]/10 min-h-[36px] min-w-[36px] flex items-center justify-center active:scale-95 touch-manipulation"
                                             title="Delete customer"
                                         >
                                             <Trash2 className="w-4 h-4" />
@@ -186,7 +189,7 @@ export default function FinanceTab() {
                                         <button
                                             type="button"
                                             onClick={() => { setSelectedKhataCustomer(khata); setIsKhataModalOpen(true); }}
-                                            className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 items-center hover:bg-emerald-500 hover:text-black transition"
+                                            className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-2 rounded-sm uppercase tracking-widest font-bold flex gap-1 items-center hover:bg-emerald-500 hover:text-black transition min-h-[36px] active:scale-95 touch-manipulation"
                                         >
                                             <Check className="w-3 h-3" /> Settle
                                         </button>
@@ -200,8 +203,8 @@ export default function FinanceTab() {
 
         {/* TABLE 2: UNPAID BOOKING INVOICES */}
         <h4 className="font-syncopate font-bold text-sm tracking-widest text-purple-400 mb-4 mt-8">UNPAID BOOKING INVOICES (CAR WASHES)</h4>
-        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden">
-            <table className="w-full text-left text-sm">
+        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-x-auto hide-scrollbar">
+            <table className="w-full text-left text-sm min-w-[500px]">
                 <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
                     <tr><th className="p-4 pl-6">Customer</th><th className="p-4">Vehicle</th><th className="p-4">Amount Owed</th><th className="p-4 text-right pr-6">Action</th></tr>
                 </thead>

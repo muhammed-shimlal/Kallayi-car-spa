@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from core.permissions import IsAdmin, IsStaffUser, IsCustomerUser, IsOwnerOrAdmin, get_user_role
 from django.db.models import Sum, F
 from django.utils import timezone
 from decimal import Decimal
@@ -16,6 +17,16 @@ from django.template.loader import render_to_string, get_template
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+        if role in ['ADMIN', 'MANAGER', 'WASHER', 'DRIVER', 'TECHNICIAN']:
+            return Invoice.objects.all()
+        if hasattr(user, 'customer'):
+            return Invoice.objects.filter(booking__customer=user.customer)
+        return Invoice.objects.none()
 
     @action(detail=True, methods=['get'])
     def download_pdf(self, request, pk=None):
@@ -85,7 +96,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 class GeneralExpenseViewSet(viewsets.ModelViewSet):
     queryset = GeneralExpense.objects.filter(is_active=True).select_related('category', 'recorded_by', 'staff')
     serializer_class = GeneralExpenseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def perform_create(self, serializer):
         serializer.save(recorded_by=self.request.user)
@@ -113,7 +124,7 @@ from .serializers import SalaryPaymentSerializer
 class SalaryPaymentViewSet(viewsets.ModelViewSet):
     queryset = SalaryPayment.objects.filter(is_active=True).select_related('staff', 'created_by')
     serializer_class = SalaryPaymentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -123,7 +134,6 @@ class SalaryPaymentViewSet(viewsets.ModelViewSet):
         payment.is_active = False
         payment.save()
         return Response(status=204)
-        return Response({'status': 'Expense approved'})
     
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
@@ -138,10 +148,10 @@ class SalaryPaymentViewSet(viewsets.ModelViewSet):
 class ExpenseCategoryViewSet(viewsets.ModelViewSet):
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCategorySerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
 class DashboardViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     @action(detail=False, methods=['get'])
     def kpi_summary(self, request):

@@ -4,9 +4,9 @@ from .views import CustomerViewSet, SubscriptionPlanViewSet, ReviewViewSet, Coup
 
 router = DefaultRouter()
 router.register(r'customers', CustomerViewSet, basename='customer')
-router.register(r'subscription-plans', SubscriptionPlanViewSet)
-router.register(r'reviews', ReviewViewSet)
-router.register(r'coupons', CouponViewSet)
+router.register(r'subscription-plans', SubscriptionPlanViewSet, basename='subscription-plan')
+router.register(r'reviews', ReviewViewSet, basename='review')
+router.register(r'coupons', CouponViewSet, basename='coupon')
 # This explicitly creates the /api/customers/vehicles/ endpoint!
 router.register(r'vehicles', CustomerVehicleViewSet, basename='customer-vehicle') 
 

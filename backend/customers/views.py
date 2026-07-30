@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAdminUser, SAFE_METHODS, BasePermission, IsAuthenticated
+from core.permissions import IsAdmin, IsStaffUser, IsCustomerUser, IsOwnerOrAdmin, get_user_role
 from django.db import transaction
 from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
@@ -12,6 +13,14 @@ from django.utils import timezone
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+        if role in ['ADMIN', 'MANAGER']:
+            return Customer.objects.all()
+        return Customer.objects.filter(user=user)
 
     def create(self, request, *args, **kwargs):
         name = request.data.get('name', '').strip()
@@ -78,7 +87,23 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
         try:
             user = User.objects.create_user(username=phone, password=password, first_name=name)
-            Customer.objects.create(user=user, phone_number=phone)
+            customer = Customer.objects.create(user=user, phone_number=phone)
+            
+            # Create vehicle if optional vehicle data provided
+            vehicle_data = request.data.get('vehicle')
+            if vehicle_data and isinstance(vehicle_data, dict):
+                make = vehicle_data.get('make', '').strip()
+                model = vehicle_data.get('model', '').strip()
+                plate = vehicle_data.get('plate_number', '').strip()
+                if make or model or plate:
+                    from .models import CustomerVehicle
+                    CustomerVehicle.objects.create(
+                        customer=user,
+                        make=make or 'Unknown',
+                        model=model or 'Unknown',
+                        plate_number=plate or f'KALLAYI-{user.id}'
+                    )
+
             token, _ = Token.objects.get_or_create(user=user)
             
             return Response({
@@ -217,6 +242,7 @@ from .serializers import ReviewSerializer, CouponSerializer
 class ReviewViewSet(viewsets.ModelViewSet):
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
     
     def perform_create(self, serializer):
         # Auto-link customer if possible, though customer field is required in model
@@ -239,6 +265,7 @@ from .models import CustomerVehicle
 from .serializers import CustomerVehicleSerializer
 
 class CustomerVehicleViewSet(viewsets.ModelViewSet):
+    queryset = CustomerVehicle.objects.all()
     serializer_class = CustomerVehicleSerializer
     permission_classes = [IsAuthenticated]
 

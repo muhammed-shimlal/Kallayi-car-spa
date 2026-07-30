@@ -2,7 +2,9 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
+from core.permissions import IsAdmin, IsStaffUser, IsCustomerUser, IsOwnerOrAdmin, get_user_role
 from django.db import transaction
+from django.db.models import Q, Sum
 from django.contrib.auth.models import User
 from .models import StaffProfile, TimeEntry, SOPChecklist, JobInspection
 from .serializers import StaffProfileSerializer, TimeEntrySerializer, SOPChecklistSerializer, JobInspectionSerializer, StaffDirectorySerializer
@@ -11,7 +13,9 @@ from django.utils import timezone
 
 class StaffDirectoryViewSet(viewsets.ModelViewSet):
     """Full CRUD for admin to manage staff members with search, filters, reset password, and stats."""
+    queryset = StaffProfile.objects.all()
     serializer_class = StaffDirectorySerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -168,12 +172,21 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
 class StaffProfileViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = StaffProfile.objects.all()
     serializer_class = StaffProfileSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin]
 
 class TimeEntryViewSet(viewsets.ModelViewSet):
     queryset = TimeEntry.objects.all()
     serializer_class = TimeEntrySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffUser]
+
+    def get_queryset(self):
+        user = self.request.user
+        role = get_user_role(user)
+        if role in ['ADMIN', 'MANAGER']:
+            return TimeEntry.objects.all()
+        if hasattr(user, 'staff_profile'):
+            return TimeEntry.objects.filter(staff=user.staff_profile)
+        return TimeEntry.objects.none()
 
     @action(detail=False, methods=['post'])
     def clock_in(self, request):
@@ -212,15 +225,16 @@ class TimeEntryViewSet(viewsets.ModelViewSet):
 class JobInspectionViewSet(viewsets.ModelViewSet):
     queryset = JobInspection.objects.all()
     serializer_class = JobInspectionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffUser]
 
 class SOPChecklistViewSet(viewsets.ModelViewSet):
     queryset = SOPChecklist.objects.all()
     serializer_class = SOPChecklistSerializer
+    permission_classes = [IsAuthenticated, IsStaffUser]
     
 class StaffDashboardViewSet(viewsets.ViewSet):
     """Modular Staff Dashboard APIs."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffUser]
 
     @action(detail=False, methods=['get'])
     def earnings(self, request):

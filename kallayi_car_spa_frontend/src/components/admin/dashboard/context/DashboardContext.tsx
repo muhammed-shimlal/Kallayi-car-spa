@@ -42,11 +42,51 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         setIsMounted(true);
     }, []);
 
-    // --- Navigation State ---
-    // isLoading replaced by isGlobalLoading
-    const [activeTab, setActiveTab] = useState('overview');
-    const [financeSubTab, setFinanceSubTab] = useState('overview');
+    // --- Navigation State (URL-synced Single Source of Truth) ---
+    const [activeTab, setActiveTabState] = useState('overview');
+    const [financeSubTab, setFinanceSubTabState] = useState('overview');
     const [adminName, setAdminName] = useState('Loading...');
+
+    const setActiveTab = useCallback((tab: string, subTab?: string) => {
+        setActiveTabState(tab);
+        if (subTab) {
+            setFinanceSubTabState(subTab);
+        }
+        if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', tab);
+            if (subTab) {
+                url.searchParams.set('subtab', subTab);
+            } else {
+                url.searchParams.delete('subtab');
+            }
+            window.history.pushState({}, '', url.toString());
+        }
+    }, []);
+
+    const setFinanceSubTab = useCallback((subTab: string) => {
+        setFinanceSubTabState(subTab);
+        if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('subtab', subTab);
+            window.history.pushState({}, '', url.toString());
+        }
+    }, []);
+
+    useEffect(() => {
+        const syncFromUrl = () => {
+            if (typeof window !== 'undefined') {
+                const urlParams = new URLSearchParams(window.location.search);
+                const tab = urlParams.get('tab');
+                const subtab = urlParams.get('subtab');
+                if (tab) setActiveTabState(tab);
+                if (subtab) setFinanceSubTabState(subtab);
+            }
+        };
+        syncFromUrl();
+        window.addEventListener('popstate', syncFromUrl);
+        return () => window.removeEventListener('popstate', syncFromUrl);
+    }, []);
 
     // --- Data States ---
     
@@ -232,7 +272,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const recentBookings = bookingsQuery.data || [];
     const todayWashedRaw = todayWashedQuery.data || { count: 0, today_washed_count: 0, results: [] };
     const todayWashedVehicles = Array.isArray(todayWashedRaw) ? todayWashedRaw : (todayWashedRaw.results || []);
-    const todayWashedCount = todayWashedRaw.today_washed_count ?? todayWashedRaw.count ?? (kpiData.today_washed_count || todayWashedVehicles.length);
+    const todayWashedCount = todayWashedRaw.today_washed_count ?? todayWashedRaw.count ?? ((kpiData as any).today_washed_count || todayWashedVehicles.length);
     const expenses = expensesQuery.data || [];
     const expenseCategories = expenseCategoriesQuery.data || [];
     const khataCustomers = khataQuery.data || [];

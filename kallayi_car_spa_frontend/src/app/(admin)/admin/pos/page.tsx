@@ -170,7 +170,7 @@ export default function AdminExpressPOSPage() {
                 </label>
                 <input
                   {...register("plate_number")}
-                  className={`w-full bg-transparent border-b-2 text-center text-4xl sm:text-5xl md:text-6xl font-syncopate font-bold uppercase transition-all pb-4 outline-none placeholder:text-zinc-800 ${
+                  className={`w-full bg-transparent border-b-2 text-center text-2xl sm:text-4xl md:text-6xl font-syncopate font-bold uppercase transition-all pb-3 sm:pb-4 outline-none placeholder:text-zinc-800 ${
                     errors.plate_number ? "border-[#E52323] text-[#E52323]" : "border-white/10 text-white focus:border-[#01FFFF]"
                   }`}
                   placeholder="KL-11-AA"
@@ -222,7 +222,7 @@ export default function AdminExpressPOSPage() {
                         type="button"
                         key={pkg.id}
                         onClick={() => setValue("package_id", pkg.id, { shouldValidate: true })}
-                        className={`p-4 sm:p-6 rounded-3xl text-left transition-all duration-300 ${
+                        className={`p-4 sm:p-6 rounded-3xl text-left transition-all duration-300 min-h-[52px] touch-manipulation ${
                           isSelected
                             ? "bg-[#01FFFF]/10 border-2 border-[#01FFFF] shadow-[0_0_30px_rgba(1,255,255,0.15)] scale-[1.02] sm:scale-105"
                             : "bg-[#141518]/60 border border-white/5 hover:border-white/20 hover:bg-[#141518]"
@@ -251,7 +251,7 @@ export default function AdminExpressPOSPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-[#E52323] text-white font-syncopate font-bold text-2xl py-8 rounded-[2rem] hover:bg-red-700 hover:scale-[1.02] shadow-[0_0_30px_rgba(229,35,35,0.4)] hover:shadow-[0_0_50px_rgba(229,35,35,0.6)] transition-all active:scale-[0.98] flex justify-center items-center gap-4 disabled:opacity-70 disabled:hover:scale-100 uppercase tracking-[0.2em] mt-10 border border-[#E52323]/50"
+            className="w-full bg-[#E52323] text-white font-syncopate font-bold text-lg sm:text-2xl py-5 sm:py-8 rounded-2xl sm:rounded-[2rem] hover:bg-red-700 hover:scale-[1.02] shadow-[0_0_30px_rgba(229,35,35,0.4)] hover:shadow-[0_0_50px_rgba(229,35,35,0.6)] transition-all active:scale-[0.98] flex justify-center items-center gap-4 disabled:opacity-70 disabled:hover:scale-100 uppercase tracking-[0.2em] mt-8 sm:mt-10 border border-[#E52323]/50 min-h-[56px] touch-manipulation"
           >
             {isSubmitting ? (
               <Loader2 className="w-8 h-8 animate-spin" />

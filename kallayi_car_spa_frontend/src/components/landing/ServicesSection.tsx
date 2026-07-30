@@ -16,28 +16,28 @@ const SERVICES: ServiceData[] = [
         id: "signature-exterior",
         num: "01",
         title: "Signature Exterior Wash",
-        image: "https://images.unsplash.com/photo-1601362840469-51e4d8d58785?q=80&w=2000&auto=format&fit=crop",
+        image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTE5XdC1anAdex0QVPxZa6BFVxum8zF2u3NtrmNbiciz397TESjgKkU8Kw5&s=10",
         story: "We begin by meticulously cleansing every inch of your vehicle's exterior. Our process is designed to restore the original gloss of the paintwork, finishing with detailed wheel and alloy care. A premium tire wax application ensures a flawless, spot-free presentation as it leaves our bay."
     },
     {
         id: "complete-interior-exterior",
         num: "02",
         title: "Complete Interior & Exterior",
-        image: "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?q=80&w=2000&auto=format&fit=crop",
+        image: "https://i.pinimg.com/originals/58/aa/47/58aa4760777d033c9da6f5c5c7857ae7.jpg",
         story: "Beyond the flawless exterior wash, we step inside to rejuvenate your cabin. Every crevice is deeply vacuumed and dusted. We apply a premium shampoo wash to your mats and upholstery, followed by a dedicated conditioning and waxing of the interior trim to bring back that showroom feel."
     },
     {
         id: "ultimate-360",
         num: "03",
         title: "Ultimate 360° Detail",
-        image: "https://images.unsplash.com/photo-1580274455191-1c62238fa333?q=80&w=2000&auto=format&fit=crop",
+        image: "https://i.pinimg.com/originals/bd/29/78/bd2978d979915324c02e9f2a39dea24e.jpg",
         story: "Our most comprehensive transformation. Building upon our full interior and exterior care, we push further into the unseen details. The trunk and cargo areas are deep-cleaned, the engine bay undergoes precision degreasing, and the underbody is entirely pressure-washed for a complete 360-degree reset."
     },
     {
         id: "premium-3m",
         num: "04",
         title: "Premium 3M™ Undercoating",
-        image: "https://images.unsplash.com/photo-1610261168178-59c5d14dfa40?q=80&w=2000&auto=format&fit=crop",
+        image: "https://i.pinimg.com/736x/7b/97/f1/7b97f1a701559036275799affa544dc6.jpg",
         story: "True preservation happens beneath the surface. We apply genuine 3M™ anti-rust protection across the entire chassis. This meticulous coating not only defends your vehicle against harsh weathering and corrosion but significantly dampens road noise and vibration for a quieter, smoother ride."
     }
 ];

@@ -5,6 +5,7 @@ import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, L
 import { useDashboard } from '../context/DashboardContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Car, CheckCircle2, User, Clock } from 'lucide-react';
+import { ResponsiveDataContainer } from '../ResponsiveDataContainer';
 
 export default function OverviewTab() {
     const [isMounted, setIsMounted] = React.useState(false);
@@ -20,20 +21,83 @@ export default function OverviewTab() {
     const completedVehiclesList = Array.isArray(todayWashedVehicles) ? todayWashedVehicles : [];
     const count = todayWashedCount || completedVehiclesList.length;
 
+    const washedVehiclesColumns = [
+        {
+            header: 'Vehicle Number',
+            accessor: (item: any) => (
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[#01FFFF]">
+                        <Car className="w-4 h-4" />
+                    </div>
+                    <span className="font-mono font-bold tracking-wider text-white">
+                        {item.vehicle_plate || item.vehicle_info || item.plate_number || 'Walk-In Vehicle'}
+                    </span>
+                </div>
+            ),
+            mobilePrimary: true
+        },
+        {
+            header: 'Service Package',
+            accessor: (item: any) => (
+                <span className="font-bold text-xs uppercase tracking-widest text-emerald-400">
+                    {item.service_package_name || item.service_package_details?.name || item.service_name || 'Standard Wash'}
+                </span>
+            ),
+            mobileSecondary: true
+        },
+        {
+            header: 'Status',
+            accessor: (item: any) => (
+                <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md">
+                    COMPLETED
+                </span>
+            ),
+            mobileBadge: true
+        },
+        {
+            header: 'Technician',
+            accessor: (item: any) => (
+                <div className="flex items-center gap-2">
+                    <User className="w-3.5 h-3.5 text-[#8E939B]" />
+                    <span className="text-white text-xs">{item.technician_name || item.technician?.username || 'Unassigned'}</span>
+                </div>
+            )
+        },
+        {
+            header: 'Time Completed',
+            accessor: (item: any) => {
+                const rawTime = item.end_time || item.created_at || item.start_time;
+                const timeFormatted = rawTime ? new Date(rawTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Today';
+                return (
+                    <div className="flex items-center gap-1.5 text-xs font-mono text-[#8E939B]">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{timeFormatted}</span>
+                    </div>
+                );
+            }
+        },
+        {
+            header: 'Price',
+            accessor: (item: any) => {
+                const price = item.invoice_amount || item.price || (item.service_package_details?.price ? `${item.service_package_details.price}` : null);
+                return price ? <span className="font-syncopate font-bold text-sm text-white">₹{price}</span> : <span className="text-neutral-500">-</span>;
+            }
+        }
+    ];
+
     return (
-        <div className="animate-[fadeIn_0.5s_ease-out] space-y-8">
+        <div className="animate-[fadeIn_0.5s_ease-out] space-y-6 sm:space-y-8">
             {/* TOP ROW: Revenue Trend Chart + Live Queue */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl h-96 flex flex-col justify-between">
-                    <div className="flex justify-between items-center mb-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
+                <div className="lg:col-span-2 bg-[#0a0a0d] border border-white/10 p-4 sm:p-6 rounded-3xl h-[360px] sm:h-96 flex flex-col justify-between shadow-[4px_4px_12px_#020203,-4px_-4px_12px_#14151a]">
+                    <div className="flex justify-between items-center mb-2 sm:mb-4">
                         <div>
                             <h3 className="font-syncopate font-bold tracking-widest text-xs text-[#8E939B]">REVENUE TREND (LAST 7 DAYS)</h3>
                             <p className="text-[10px] text-[#8E939B] uppercase tracking-wider">Daily gross income performance</p>
                         </div>
                     </div>
                     
-                    {/* Strict Height Container for Recharts ResponsiveContainer */}
-                    <div className="h-[300px] w-full min-h-[300px]">
+                    <div className="h-[260px] sm:h-[300px] w-full">
                         {isLoading || !isMounted ? (
                             <Skeleton className="w-full h-full" />
                         ) : (
@@ -51,20 +115,19 @@ export default function OverviewTab() {
                 </div>
 
                 {/* LIVE QUEUE SUMMARY */}
-                <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl flex flex-col">
-                    <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+                <div className="bg-[#0a0a0d] border border-white/10 p-4 sm:p-6 rounded-3xl flex flex-col shadow-[4px_4px_12px_#020203,-4px_-4px_12px_#14151a]">
+                    <div className="flex justify-between items-center mb-4 sm:mb-6 border-b border-white/5 pb-3 sm:pb-4">
                         <h3 className="font-syncopate font-bold tracking-widest text-sm text-white flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-[#01FFFF] animate-ping"></span>
+                            <span className="w-2 h-2 rounded-full bg-[#01FFFF] animate-ping" />
                             LIVE QUEUE
                         </h3>
                         <span className="text-[10px] font-bold uppercase tracking-widest text-[#01FFFF] bg-[#01FFFF]/10 px-2.5 py-1 rounded-full border border-[#01FFFF]/20">
                             {recentBookings.length} Active
                         </span>
                     </div>
-                    <div className="flex-1 overflow-y-auto space-y-4 pr-2 hide-scrollbar max-h-72">
+                    <div className="flex-1 overflow-y-auto space-y-3 sm:space-y-4 pr-1 hide-scrollbar max-h-72">
                         {isLoading ? (
                             <>
-                                <Skeleton className="w-full h-[76px]" />
                                 <Skeleton className="w-full h-[76px]" />
                                 <Skeleton className="w-full h-[76px]" />
                             </>
@@ -75,11 +138,11 @@ export default function OverviewTab() {
                             </div>
                         ) : (
                             recentBookings.map((booking: any) => (
-                                <div key={booking.id} className="bg-white/5 border border-white/5 hover:border-white/10 p-4 rounded-2xl transition-all">
-                                    <div className="flex justify-between items-start mb-2">
+                                <div key={booking.id} className="bg-[#141518] border border-white/5 p-3.5 sm:p-4 rounded-2xl">
+                                    <div className="flex justify-between items-start mb-1.5">
                                         <div>
                                             <p className="font-bold text-sm text-white font-mono tracking-wider">{booking.vehicle_info || booking.plate_number || 'Unknown Vehicle'}</p>
-                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-1">{booking.service_package_details?.name || booking.service_name || 'Standard Wash'}</p>
+                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-0.5">{booking.service_package_details?.name || booking.service_name || 'Standard Wash'}</p>
                                         </div>
                                         <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${booking.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-[#FF2A6D]/20 text-[#FF2A6D] border border-[#FF2A6D]/30'}`}>
                                             {booking.status}
@@ -93,15 +156,15 @@ export default function OverviewTab() {
             </div>
 
             {/* PROMINENT SECTION: TODAY'S WASHED VEHICLES */}
-            <div className="bg-[#141518]/60 backdrop-blur-xl border border-emerald-500/20 p-6 sm:p-8 rounded-3xl shadow-[0_0_40px_rgba(16,185,129,0.04)]">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 border-b border-white/5 pb-6">
+            <div className="bg-[#0a0a0d] border border-emerald-500/30 p-4 sm:p-8 rounded-3xl shadow-[4px_4px_12px_#020203,-4px_-4px_12px_#14151a]">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-white/5 pb-6">
                     <div>
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                                 <CheckCircle2 className="w-5 h-5" />
                             </div>
                             <div>
-                                <h3 className="font-syncopate font-bold tracking-widest text-lg sm:text-xl text-white flex items-center gap-2">
+                                <h3 className="font-syncopate font-bold tracking-widest text-base sm:text-xl text-white flex items-center gap-2">
                                     TODAY&apos;S WASHED VEHICLES
                                 </h3>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.2em] mt-0.5">Real-time completion log for current date</p>
@@ -109,7 +172,7 @@ export default function OverviewTab() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 self-end sm:self-auto">
                         <div className="bg-emerald-500/10 border border-emerald-500/30 px-4 py-2 rounded-2xl flex items-center gap-3 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Total Washed Today</span>
                             <span className="font-syncopate font-black text-xl text-white">{count}</span>
@@ -118,79 +181,17 @@ export default function OverviewTab() {
                 </div>
 
                 {isLoading ? (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         <Skeleton className="w-full h-16 rounded-2xl" />
                         <Skeleton className="w-full h-16 rounded-2xl" />
-                        <Skeleton className="w-full h-16 rounded-2xl" />
-                    </div>
-                ) : completedVehiclesList.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-white/2 border border-dashed border-white/10 rounded-3xl">
-                        <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4 text-[#8E939B]">
-                            <Car className="w-8 h-8 opacity-60" />
-                        </div>
-                        <h4 className="font-syncopate font-bold text-sm tracking-widest text-white mb-2">No vehicles have been washed yet today.</h4>
-                        <p className="text-xs text-[#8E939B] max-w-md leading-relaxed">
-                            Completed vehicle washes for today will automatically appear here in real-time as staff process and check out vehicles.
-                        </p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto hide-scrollbar">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-white/10 text-[10px] font-syncopate uppercase tracking-widest text-[#8E939B]">
-                                    <th className="py-4 px-4">Vehicle Number</th>
-                                    <th className="py-4 px-4">Service Package</th>
-                                    <th className="py-4 px-4">Technician</th>
-                                    <th className="py-4 px-4">Time Completed</th>
-                                    <th className="py-4 px-4 text-right">Status / Price</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5 text-sm">
-                                {completedVehiclesList.map((item: any, idx: number) => {
-                                    const plateNumber = item.vehicle_plate || item.vehicle_info || item.plate_number || 'Walk-In Vehicle';
-                                    const packageName = item.service_package_name || item.service_package_details?.name || item.service_name || 'Standard Wash';
-                                    const techName = item.technician_name || item.technician?.username || 'Unassigned';
-                                    const rawTime = item.end_time || item.created_at || item.start_time;
-                                    const timeFormatted = rawTime ? new Date(rawTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Today';
-                                    const price = item.invoice_amount || item.price || (item.service_package_details?.price ? `₹${item.service_package_details.price}` : null);
-
-                                    return (
-                                        <tr key={item.id || idx} className="hover:bg-white/5 transition-colors group">
-                                            <td className="py-4 px-4 font-mono font-bold tracking-wider text-white flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[#01FFFF] group-hover:border-[#01FFFF]/40 transition-colors">
-                                                    <Car className="w-4 h-4" />
-                                                </div>
-                                                <span>{plateNumber}</span>
-                                            </td>
-                                            <td className="py-4 px-4 font-bold text-xs uppercase tracking-widest text-emerald-400">
-                                                {packageName}
-                                            </td>
-                                            <td className="py-4 px-4 text-xs font-semibold text-[#8E939B]">
-                                                <div className="flex items-center gap-2">
-                                                    <User className="w-3.5 h-3.5 text-[#8E939B]" />
-                                                    <span className="text-white">{techName}</span>
-                                                </div>
-                                            </td>
-                                            <td className="py-4 px-4 text-xs font-mono text-[#8E939B]">
-                                                <div className="flex items-center gap-1.5">
-                                                    <Clock className="w-3.5 h-3.5 text-[#8E939B]" />
-                                                    <span>{timeFormatted}</span>
-                                                </div>
-                                            </td>
-                                            <td className="py-4 px-4 text-right">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    {price && <span className="font-syncopate font-bold text-sm text-white">₹{price}</span>}
-                                                    <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md">
-                                                        COMPLETED
-                                                    </span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                    <ResponsiveDataContainer
+                        data={completedVehiclesList}
+                        columns={washedVehiclesColumns}
+                        keyExtractor={(item, idx) => item.id || idx}
+                        emptyMessage="No vehicles have been washed yet today."
+                    />
                 )}
             </div>
         </div>
