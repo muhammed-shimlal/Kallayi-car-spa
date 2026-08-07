@@ -15,10 +15,14 @@ export default function ForgotPasswordPage() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!email.trim()) return;
+        const trimmed = email.trim().toLowerCase();
+
+        if (!trimmed) {
+            setStatusMessage({ type: "error", text: "Please enter your registered Gmail address." });
+            return;
+        }
 
         // Front-end Gmail Domain Check
-        const trimmed = email.trim().toLowerCase();
         if (!trimmed.endsWith("@gmail.com")) {
             setStatusMessage({
                 type: "error",
@@ -30,14 +34,30 @@ export default function ForgotPasswordPage() {
         setIsLoading(true);
         setStatusMessage(null);
 
+        console.log("🔒 [FORGOT PASSWORD] Submitting email reset request for:", trimmed);
+
         try {
             const res = await api.post("/password-reset/", { email: trimmed });
+            console.log("✅ [FORGOT PASSWORD SUCCESS] Server response:", res.data);
             setStatusMessage({
                 type: "success",
                 text: res.data.message || "If an account matches that email, a password reset link has been dispatched to your inbox."
             });
         } catch (err: any) {
-            const msg = err.response?.data?.error || err.response?.data?.message || err.message || "An error occurred while requesting password reset.";
+            console.error("❌ [FORGOT PASSWORD ERROR] Request failed:", err);
+            
+            let msg = "An error occurred while requesting password reset.";
+            if (err.response) {
+                console.error("Response data:", err.response.data);
+                console.error("Response status:", err.response.status);
+                msg = err.response.data?.error || err.response.data?.message || err.response.data?.detail || `Server returned error status ${err.response.status}`;
+            } else if (err.request) {
+                console.error("No response received from backend server. Network or CORS error.");
+                msg = "Unable to connect to the backend server. Please verify the backend server is running.";
+            } else if (err.message) {
+                msg = err.message;
+            }
+
             setStatusMessage({ type: "error", text: msg });
         } finally {
             setIsLoading(false);

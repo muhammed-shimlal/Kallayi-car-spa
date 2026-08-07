@@ -128,6 +128,12 @@ from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 
+import smtplib
+import traceback
+import logging
+
+logger = logging.getLogger(__name__)
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def password_reset_request(request):
@@ -136,16 +142,22 @@ def password_reset_request(request):
     Generates a secure password reset token (using default_token_generator and uidb64),
     constructs the frontend reset URL, and emails the user.
     """
+    print("\n==================================================")
+    print("🔒 [PASSWORD RESET API] Incoming Request Received")
+    print(f"👉 Request Payload: {request.data}")
+
     email_input = request.data.get('email') or request.data.get('username') or request.data.get('phone', '')
     email_input = str(email_input).strip()
     
     if not email_input:
+        print("❌ [PASSWORD RESET ERROR] Email input is blank.")
         return Response({'error': 'Please provide a valid email address or phone number.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Domain Validation: Restrict to @gmail.com to prevent temp/disposable emails
     if '@' in email_input:
         domain = email_input.split('@')[-1].lower().strip()
         if domain != 'gmail.com':
+            print(f"❌ [PASSWORD RESET ERROR] Disallowed domain '{domain}'. Must be @gmail.com.")
             return Response({
                 'error': 'Please use a valid Gmail address (@gmail.com). Temp mails are not allowed.'
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -157,6 +169,11 @@ def password_reset_request(request):
         q_filter |= Q(customer__phone_number__icontains=clean_phone)
 
     users = UserModel.objects.filter(q_filter)
+    print(f"🔍 [PASSWORD RESET DB SEARCH] Query filter: {q_filter}")
+    print(f"📊 [PASSWORD RESET DB RESULT] Found {users.count()} matching user(s).")
+
+    email_sent_count = 0
+    smtp_errors = []
 
     if users.exists():
         for user in users:
@@ -166,10 +183,14 @@ def password_reset_request(request):
                 user.save()
                 target_email = email_input
 
+            print(f"👤 [USER MATCH] ID: {user.pk} | Username: {user.username} | Email: {target_email}")
+
             uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
             frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
             reset_url = f"{frontend_url}/reset-password/{uidb64}/{token}"
+
+            print(f"🔗 [RESET URL GENERATED] {reset_url}")
 
             if target_email:
                 subject = "Password Reset Request - Kallayi Car Spa"
@@ -187,16 +208,47 @@ def password_reset_request(request):
                     <p style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px;">KALLAYI CAR SPA // MANJERI</p>
                 </div>
                 """
+                from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Kallayi Car Spa <kallayicarspa@gmail.com>')
+                print(f"✉️ [ATTEMPTING EMAIL DISPATCH] From: {from_email} -> To: {target_email}")
+                
                 try:
-                    msg = EmailMultiAlternatives(subject, message, getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@kallayicarspa.com'), [target_email])
+                    msg = EmailMultiAlternatives(subject, message, from_email, [target_email])
                     msg.attach_alternative(html_content, "text/html")
-                    msg.send(fail_silently=True)
+                    # Set fail_silently=False so errors throw exceptions for logging!
+                    msg.send(fail_silently=False)
+                    email_sent_count += 1
+                    print(f"✅ [EMAIL SENT SUCCESS] Password reset email successfully dispatched to {target_email}!")
+                except smtplib.SMTPAuthenticationError as e:
+                    err_msg = f"Gmail SMTP Authentication Failed: Invalid EMAIL_HOST_USER or App Password. Detail: {e}"
+                    print(f"❌ [SMTP AUTH ERROR] {err_msg}")
+                    smtp_errors.append(err_msg)
+                except smtplib.SMTPException as e:
+                    err_msg = f"SMTP Transmission Error: {e}"
+                    print(f"❌ [SMTP ERROR] {err_msg}")
+                    smtp_errors.append(err_msg)
                 except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning("Password reset email sending failed: %s", str(e))
+                    err_msg = f"Email Sending Failed: {str(e)}"
+                    print(f"❌ [EMAIL FAILED] {err_msg}")
+                    print(traceback.format_exc())
+                    smtp_errors.append(err_msg)
+            else:
+                print(f"⚠️ [NO EMAIL ON USER] User ID {user.pk} does not have an email address associated.")
+    else:
+        print("⚠️ [NO USER MATCH] No registered user found matching query.")
+
+    print("==================================================\n")
+
+    if smtp_errors and email_sent_count == 0:
+        return Response({
+            'error': f"Failed to send reset email due to server mail configuration: {smtp_errors[0]}"
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return Response({
-        'message': 'If an account exists matching that input, a password reset link has been sent to your email.'
+        'message': 'If an account exists matching that email, a password reset link has been sent to your inbox.',
+        'details': {
+            'email_sent': email_sent_count > 0,
+            'match_found': users.exists()
+        }
     }, status=status.HTTP_200_OK)
 
 
