@@ -23,6 +23,81 @@ from customers.models import Customer, CustomerVehicle
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
+def find_or_create_customer_by_phone(phone_number=None, name=None, customer_id=None):
+    """
+    Robust helper to resolve a Customer profile using phone number, name, or customer_id.
+    Ensures normalized phone matching (+91, 0, 10-digits) and links User <-> Customer models cleanly.
+    """
+    from customers.models import Customer
+    from django.contrib.auth.models import User
+    from django.db.models import Q
+    import random
+    import string
+
+    if customer_id:
+        c = Customer.objects.filter(id=customer_id).first()
+        if c:
+            if name and c.user and not c.user.first_name:
+                c.user.first_name = name
+                c.user.save()
+            return c
+
+    raw_phone = (phone_number or '').strip()
+    clean_phone = ''.join(ch for ch in raw_phone if ch.isdigit())
+    if len(clean_phone) == 12 and clean_phone.startswith('91'):
+        clean_phone = clean_phone[2:]
+    elif len(clean_phone) == 11 and clean_phone.startswith('0'):
+        clean_phone = clean_phone[1:]
+
+    if clean_phone and len(clean_phone) >= 7:
+        q_filter = (
+            Q(phone_number__icontains=clean_phone) |
+            Q(user__username__icontains=clean_phone) |
+            Q(phone_number=raw_phone) |
+            Q(user__username=raw_phone)
+        )
+        c = Customer.objects.filter(q_filter).first()
+        if c:
+            if name and c.user and not c.user.first_name:
+                c.user.first_name = name
+                c.user.save()
+            return c
+
+        u = User.objects.filter(
+            Q(username__icontains=clean_phone) | Q(username=raw_phone)
+        ).first()
+        if u:
+            if hasattr(u, 'customer') and u.customer:
+                if name and not u.first_name:
+                    u.first_name = name
+                    u.save()
+                return u.customer
+            else:
+                if name and not u.first_name:
+                    u.first_name = name
+                    u.save()
+                c = Customer.objects.create(user=u, phone_number=raw_phone or clean_phone)
+                return c
+
+    c_name = (name or "Walk-In Customer").strip()
+    phone_val = raw_phone or (clean_phone if clean_phone else "")
+    
+    username_base = f"cust_{clean_phone}" if clean_phone else f"walkin_{random.randint(100000, 999999)}"
+    username = username_base
+    counter = 1
+    while User.objects.filter(username=username).exists():
+        username = f"{username_base}_{counter}"
+        counter += 1
+
+    pwd = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    new_user = User.objects.create(username=username, first_name=c_name)
+    new_user.set_password(pwd)
+    new_user.save()
+
+    c = Customer.objects.create(user=new_user, phone_number=phone_val)
+    return c
+
+
 class IsAdminUserOrReadOnly(BasePermission):
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
@@ -164,60 +239,37 @@ class BookingViewSet(viewsets.ModelViewSet):
         customer_name_param = request.data.get('customer_name')
         phone_param = request.data.get('phone_number') or request.data.get('phone') or ''
 
-        # Link or create Customer profile if Khata is involved or customer details provided
-        from customers.models import Customer
-        from django.contrib.auth.models import User
-
-        target_customer = None
-        if customer_id_param:
-            target_customer = Customer.objects.filter(id=customer_id_param).first()
-
-        if not target_customer and phone_param:
-            target_customer = Customer.objects.filter(phone_number=phone_param).first()
+        # Robust Customer Linking using normalized phone matching
+        target_customer = find_or_create_customer_by_phone(
+            phone_number=phone_param,
+            name=customer_name_param,
+            customer_id=customer_id_param
+        )
 
         if not target_customer and booking.customer:
             target_customer = booking.customer
 
-        if amount_khata > 0 and not target_customer:
-            c_name = customer_name_param or "Walk-In Guest"
-            import random
-            import string
-            
-            username = f"walkin_khata_{random.randint(100000, 999999)}"
-            while User.objects.filter(username=username).exists():
-                username = f"walkin_khata_{random.randint(100000, 999999)}"
-            
-            new_user = User.objects.create(username=username, first_name=c_name)
-            new_user.set_password(''.join(random.choices(string.ascii_letters + string.digits, k=12)))
-            new_user.save()
-            target_customer = Customer.objects.create(user=new_user, phone_number=phone_param)
-
         if target_customer:
-            # Update customer details if provided
-            if customer_name_param and target_customer.user and not target_customer.user.first_name:
-                target_customer.user.first_name = customer_name_param
-                target_customer.user.save()
-            if phone_param and not target_customer.phone_number:
-                target_customer.phone_number = phone_param
-                target_customer.save()
-
             booking.customer = target_customer
+            if booking.vehicle and not booking.vehicle.customer and target_customer.user:
+                booking.vehicle.customer = target_customer.user
+                booking.vehicle.save()
 
         booking.status = 'COMPLETED'
         booking.end_time = timezone.now()
         booking.save()
         
-        if amount_khata > 0 and booking.customer:
+        if amount_khata > 0 and target_customer:
             from finance.models import KhataLedger
             from decimal import Decimal
-            booking.customer.outstanding_balance += Decimal(str(amount_khata))
-            booking.customer.save()
+            target_customer.outstanding_balance += Decimal(str(amount_khata))
+            target_customer.save()
 
             plate_info = booking.vehicle.plate_number if booking.vehicle else request.data.get('plate_number', 'Walk-In')
             svc_info = booking.service_package.name if booking.service_package else 'Car Wash'
 
             KhataLedger.objects.create(
-                customer=booking.customer,
+                customer=target_customer,
                 amount=Decimal(str(amount_khata)),
                 transaction_type='CHARGE',
                 description=f'Khata Wash Charge: {svc_info} ({plate_info})',
@@ -421,12 +473,9 @@ def express_walkin(request):
     elif vehicle_type not in ['CAR', 'BIKE', 'AUTO', 'VAN', 'TRUCK']:
         vehicle_type = 'CAR'
 
-    # Customer Resolution
-    customer = Customer.objects.filter(phone_number=phone).first()
-    if not customer:
-        username = f"guest_{random.randint(100000, 999999)}"
-        new_user = User.objects.create(username=username)
-        customer = Customer.objects.create(user=new_user, phone_number=phone)
+    # Customer Resolution using normalized phone matching
+    customer_name_in = request.data.get('name') or request.data.get('customer_name')
+    customer = find_or_create_customer_by_phone(phone_number=phone, name=customer_name_in)
         
     # Vehicle Resolution (Extract & Save Real Vehicle Details)
     vehicle, created = CustomerVehicle.objects.get_or_create(
@@ -439,6 +488,9 @@ def express_walkin(request):
             'color': color
         }
     )
+    if vehicle and not vehicle.customer and customer.user:
+        vehicle.customer = customer.user
+        vehicle.save()
 
     if not created:
         updated = False
@@ -512,36 +564,22 @@ def update_booking_stage(request, booking_id):
     payment_upi = float(request.data.get('payment_upi', 0))
     payment_khata = float(request.data.get('payment_khata', 0))
 
-    if payment_khata > 0 and not booking.customer:
-        customer_name = request.data.get('customer_name')
-        
-        if not customer_name:
-            customer_name = "Walk-In Guest"
-            
-        from customers.models import Customer
-        from django.contrib.auth.models import User
-        import random
-        import string
-        
-        username = f"walkin_khata_{random.randint(100000, 999999)}"
-        while User.objects.filter(username=username).exists():
-            username = f"walkin_khata_{random.randint(100000, 999999)}"
-        
-        pwd = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-        new_user = User.objects.create(
-            username=username,
-            first_name=customer_name
+    phone_param = request.data.get('phone_number') or request.data.get('phone') or ''
+    customer_id_param = request.data.get('customer_id')
+    customer_name_param = request.data.get('customer_name')
+
+    if (payment_khata > 0 or phone_param or customer_id_param) and not booking.customer:
+        target_customer = find_or_create_customer_by_phone(
+            phone_number=phone_param,
+            name=customer_name_param,
+            customer_id=customer_id_param
         )
-        new_user.set_password(pwd)
-        new_user.save()
-        
-        customer = Customer.objects.create(
-            user=new_user,
-            phone_number=''
-        )
-            
-        booking.customer = customer
-        booking.save()
+        if target_customer:
+            booking.customer = target_customer
+            if booking.vehicle and not booking.vehicle.customer and target_customer.user:
+                booking.vehicle.customer = target_customer.user
+                booking.vehicle.save()
+            booking.save()
 
     valid_statuses = [s[0] for s in Booking.STATUS_CHOICES]
     if new_status and new_status not in valid_statuses:

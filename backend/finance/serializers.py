@@ -10,6 +10,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
     service_package_price = serializers.DecimalField(source='booking.service_package.price', max_digits=10, decimal_places=2, read_only=True, default=0.00)
     booking_id = serializers.IntegerField(source='booking.id', read_only=True)
 
+    payment_status = serializers.SerializerMethodField()
+
     def get_customer_name(self, obj):
         if obj.booking and obj.booking.customer:
             c = obj.booking.customer
@@ -23,11 +25,16 @@ class InvoiceSerializer(serializers.ModelSerializer):
             return str(c)
         return "Walk-In Guest"
 
+    def get_payment_status(self, obj):
+        if (obj.split_khata or 0) > 0 or obj.payment_method in ['KHATA', 'CREDIT']:
+            return 'UNPAID'
+        return 'PAID' if obj.is_paid else 'UNPAID'
+
     class Meta:
         model = Invoice
         fields = [
             'id', 'booking', 'booking_id', 'amount', 'split_cash', 'split_online', 'split_khata',
-            'payment_method', 'is_paid', 'created_at', 'customer_name', 'customer_phone',
+            'payment_method', 'is_paid', 'payment_status', 'created_at', 'customer_name', 'customer_phone',
             'vehicle_plate', 'vehicle_model', 'service_package_name', 'service_package_price'
         ]
 

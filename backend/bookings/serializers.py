@@ -60,7 +60,11 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def get_payment_method(self, obj):
         try:
-            return obj.invoice.payment_method
+            if hasattr(obj, 'invoice') and obj.invoice:
+                if (getattr(obj.invoice, 'split_khata', 0) or 0) > 0 or obj.invoice.payment_method in ['KHATA', 'CREDIT']:
+                    return 'KHATA'
+                return obj.invoice.payment_method or 'CASH'
+            return "CASH"
         except Exception:
             return "CASH"
 
@@ -84,9 +88,13 @@ class BookingSerializer(serializers.ModelSerializer):
         }
 
     def get_invoice_status(self, obj):
-        """Returns 'PAID' or 'UNPAID' based on the related Invoice.is_paid boolean."""
+        """Returns 'PAID', 'UNPAID', or 'CREDIT' based on the related Invoice & Khata payment status."""
         try:
-            return 'PAID' if obj.invoice.is_paid else 'UNPAID'
+            if hasattr(obj, 'invoice') and obj.invoice:
+                if (getattr(obj.invoice, 'split_khata', 0) or 0) > 0 or obj.invoice.payment_method in ['KHATA', 'CREDIT']:
+                    return 'CREDIT'
+                return 'PAID' if obj.invoice.is_paid else 'UNPAID'
+            return 'UNPAID'
         except Exception:
             return 'UNPAID'
 

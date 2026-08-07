@@ -275,7 +275,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const isGlobalLoading = !isMounted || userQuery.isLoading || kpiQuery.isLoading || chartQuery.isLoading || bookingsQuery.isLoading || expensesQuery.isLoading || khataQuery.isLoading || customerCreditsQuery.isLoading || payrollQuery.isLoading || servicesQuery.isLoading || staffQuery.isLoading || eodQuery.isLoading || analyticsQuery.isLoading;
 
-    const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 };
+    const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, today_total_credit: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 };
     const chartData = chartQuery.data || generateDemoChartData();
     const recentBookings = bookingsQuery.data || [];
     const todayWashedRaw = todayWashedQuery.data || { count: 0, today_washed_count: 0, results: [] };

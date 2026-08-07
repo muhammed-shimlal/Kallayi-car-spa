@@ -39,7 +39,7 @@ function AdminDashboardContent() {
     const [adminName, setAdminName] = useState('Loading...');
 
     // --- Data States ---
-    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 });
+    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, today_total_credit: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 });
     const generateDemoChartData = () => {
         const days = [];
         for (let i = 6; i >= 0; i--) {
@@ -1022,6 +1022,12 @@ function AdminDashboardContent() {
                             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-400/5 rounded-full blur-[40px] group-hover:bg-emerald-400/10 transition-all"></div>
                             <p className="text-emerald-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><IndianRupee className="w-3.5 h-3.5 text-emerald-400" /> Today's Revenue</p>
                             <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-white truncate">₹{((kpiData as any).today_revenue ?? kpiData.revenue_today ?? 0).toLocaleString()}</h2>
+                        </div>
+                        {/* Today's Credit (Asset) Card */}
+                        <div className="bg-[#141518]/60 border border-amber-500/30 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(245,158,11,0.05)]">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-[40px] group-hover:bg-amber-500/20 transition-all"></div>
+                            <p className="text-amber-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5 text-amber-400" /> Today's Credit (Asset)</p>
+                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-amber-300 truncate">₹{((kpiData as any).today_total_credit || 0).toLocaleString()}</h2>
                         </div>
                         {/* Pre-booking Advances Card: Conditionally rendered only if > 0 */}
                         {Number((kpiData as any).pre_booking_revenue || 0) > 0 && (

@@ -47,7 +47,18 @@ export function HistoryTab({ history }: HistoryTabProps) {
                                         {(record.vehicle_plate) ? ` • ${record.vehicle_plate}` : ''}
                                     </p>
                                 </div>
-                                <span className="text-[10px] text-spa-sky uppercase tracking-widest font-bold shrink-0">Completed</span>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <span className="text-[10px] text-spa-sky uppercase tracking-widest font-bold">Completed</span>
+                                    {record.payment_status === 'UNPAID' || record.invoice_status === 'CREDIT' || record.payment_method === 'KHATA' ? (
+                                        <span className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                                            Khata (Unpaid Dues)
+                                        </span>
+                                    ) : (
+                                        <span className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                                            Paid
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                             
                             {(!record.status || record.status === 'COMPLETED') && (

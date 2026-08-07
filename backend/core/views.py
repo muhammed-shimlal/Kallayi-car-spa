@@ -3,7 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from staff.models import StaffProfile
-from .serializers import UserSerializer, StaffProfileSerializer, StaffCreateSerializer
+from .serializers import (
+    UserSerializer, StaffProfileSerializer, StaffCreateSerializer,
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+)
 from .permissions import IsAdmin, IsStaffUser, IsOwnerOrAdmin, get_user_role
 
 
@@ -32,6 +35,9 @@ class UserViewSet(viewsets.ModelViewSet):
         elif hasattr(user, 'customer'):
             data['role'] = 'CUSTOMER'
             data['customer_id'] = user.customer.id
+            data['outstanding_balance'] = float(user.customer.outstanding_balance or 0.0)
+            data['credit_limit'] = float(user.customer.credit_limit or 0.0)
+            data['phone_number'] = user.customer.phone_number or ""
         elif user.is_superuser:
             data['role'] = 'ADMIN'
         elif user.is_staff:
@@ -139,117 +145,123 @@ logger = logging.getLogger(__name__)
 def password_reset_request(request):
     """
     Endpoint: POST /api/password-reset/
+    Requires BOTH registered email address AND phone number for dual verification security.
     Generates a secure password reset token (using default_token_generator and uidb64),
-    constructs the frontend reset URL, and emails the user.
+    constructs the Next.js frontend reset URL, and emails the user.
+    Handles SMTP exceptions gracefully with a 400 Bad Request JSON response instead of 500 Internal Server Error.
     """
-    print("\n==================================================")
-    print("🔒 [PASSWORD RESET API] Incoming Request Received")
-    print(f"👉 Request Payload: {request.data}")
+    serializer = PasswordResetRequestSerializer(data=request.data)
+    if not serializer.is_valid():
+        first_err = list(serializer.errors.values())[0]
+        if isinstance(first_err, list):
+            first_err = first_err[0]
+        return Response({'error': first_err, 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-    email_input = request.data.get('email') or request.data.get('username') or request.data.get('phone', '')
-    email_input = str(email_input).strip()
-    
-    if not email_input:
-        print("❌ [PASSWORD RESET ERROR] Email input is blank.")
-        return Response({'error': 'Please provide a valid email address or phone number.'}, status=status.HTTP_400_BAD_REQUEST)
+    email_input = serializer.validated_data['email']
+    phone_input = serializer.validated_data['phone_number']
 
     # Domain Validation: Restrict to @gmail.com to prevent temp/disposable emails
     if '@' in email_input:
         domain = email_input.split('@')[-1].lower().strip()
         if domain != 'gmail.com':
-            print(f"❌ [PASSWORD RESET ERROR] Disallowed domain '{domain}'. Must be @gmail.com.")
             return Response({
                 'error': 'Please use a valid Gmail address (@gmail.com). Temp mails are not allowed.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
-    clean_phone = normalize_phone(email_input)
-    q_filter = Q(email__iexact=email_input) | Q(username__iexact=email_input)
-    if clean_phone and len(clean_phone) >= 7:
-        q_filter |= Q(username__icontains=clean_phone)
-        q_filter |= Q(customer__phone_number__icontains=clean_phone)
+    clean_phone = normalize_phone(phone_input)
+    if not clean_phone or len(clean_phone) < 7:
+        return Response({
+            'error': 'Please enter a valid phone number (at least 7 digits).'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
-    users = UserModel.objects.filter(q_filter)
-    print(f"🔍 [PASSWORD RESET DB SEARCH] Query filter: {q_filter}")
-    print(f"📊 [PASSWORD RESET DB RESULT] Found {users.count()} matching user(s).")
+    # Dual Verification Query: Match user account having BOTH exact email AND phone number
+    q_email = Q(email__iexact=email_input) | Q(username__iexact=email_input)
+    q_phone = (
+        Q(username__icontains=clean_phone) |
+        Q(customer__phone_number__icontains=clean_phone) |
+        Q(staff_profile__phone_number__icontains=clean_phone) |
+        Q(username=clean_phone) |
+        Q(username=f"+91{clean_phone}")
+    )
+
+    users = UserModel.objects.filter(q_email).filter(q_phone).distinct()
+    logger.info(f"[PASSWORD RESET DUAL VERIFICATION] Email: {email_input} | Phone: {phone_input} (Clean: {clean_phone}) | Matches: {users.count()}")
+
+    if not users.exists():
+        return Response({
+            'error': 'No account found with this combination of email address and phone number.'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     email_sent_count = 0
     smtp_errors = []
 
-    if users.exists():
-        for user in users:
-            target_email = user.email
-            if not target_email and '@' in email_input:
-                user.email = email_input
-                user.save()
-                target_email = email_input
+    for user in users:
+        target_email = user.email
+        if not target_email and '@' in email_input:
+            user.email = email_input
+            user.save()
+            target_email = email_input
 
-            print(f"👤 [USER MATCH] ID: {user.pk} | Username: {user.username} | Email: {target_email}")
-
+        if target_email:
             uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
             frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
             reset_url = f"{frontend_url}/reset-password/{uidb64}/{token}"
 
-            print(f"🔗 [RESET URL GENERATED] {reset_url}")
+            subject = "Password Reset Request - Kallayi Car Spa"
+            message = (
+                f"Hello {user.get_full_name() or user.username},\n\n"
+                f"You requested a password reset for your Kallayi Car Spa account.\n\n"
+                f"Please click the link below to reset your password:\n{reset_url}\n\n"
+                f"If you did not request this, please ignore this email."
+            )
+            html_content = f"""
+            <div style="font-family: Arial, sans-serif; background-color: #070709; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 500px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.1);">
+                <h2 style="color: #01FFFF; margin-top: 0; font-size: 20px;">Kallayi Car Spa — Password Reset</h2>
+                <p style="color: #ccc; font-size: 14px;">Hello <strong>{user.get_full_name() or user.username}</strong>,</p>
+                <p style="color: #aaa; font-size: 13px; line-height: 1.5;">We received a request to reset your account password. Click the button below to establish a new password:</p>
+                <p style="margin: 25px 0; text-align: center;">
+                    <a href="{reset_url}" style="background-color: #E52323; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block;">Reset Password</a>
+                </p>
+                <p style="font-size: 11px; color: #8E939B;">Or copy and paste this URL into your browser:<br/><a href="{reset_url}" style="color: #01FFFF;">{reset_url}</a></p>
+                <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;"/>
+                <p style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px;">KALLAYI CAR SPA // MANJERI</p>
+            </div>
+            """
+            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Kallayi Car Spa <kallayicarspa@gmail.com>')
 
-            if target_email:
-                subject = "Password Reset Request - Kallayi Car Spa"
-                message = f"Hello {user.get_full_name() or user.username},\n\nYou requested a password reset for your Kallayi Car Spa account.\n\nPlease click the link below to reset your password:\n{reset_url}\n\nIf you did not request this, please ignore this email."
-                html_content = f"""
-                <div style="font-family: Arial, sans-serif; background-color: #070709; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 500px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.1);">
-                    <h2 style="color: #01FFFF; margin-top: 0; font-size: 20px;">Kallayi Car Spa — Password Reset</h2>
-                    <p style="color: #ccc; font-size: 14px;">Hello <strong>{user.get_full_name() or user.username}</strong>,</p>
-                    <p style="color: #aaa; font-size: 13px; line-height: 1.5;">We received a request to reset your account password. Click the button below to establish a new password:</p>
-                    <p style="margin: 25px 0; text-align: center;">
-                        <a href="{reset_url}" style="background-color: #E52323; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block;">Reset Password</a>
-                    </p>
-                    <p style="font-size: 11px; color: #8E939B;">Or copy and paste this URL into your browser:<br/><a href="{reset_url}" style="color: #01FFFF;">{reset_url}</a></p>
-                    <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;"/>
-                    <p style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px;">KALLAYI CAR SPA // MANJERI</p>
-                </div>
-                """
-                from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Kallayi Car Spa <kallayicarspa@gmail.com>')
-                print(f"✉️ [ATTEMPTING EMAIL DISPATCH] From: {from_email} -> To: {target_email}")
-                
-                try:
-                    msg = EmailMultiAlternatives(subject, message, from_email, [target_email])
-                    msg.attach_alternative(html_content, "text/html")
-                    # Set fail_silently=False so errors throw exceptions for logging!
-                    msg.send(fail_silently=False)
-                    email_sent_count += 1
-                    print(f"✅ [EMAIL SENT SUCCESS] Password reset email successfully dispatched to {target_email}!")
-                except smtplib.SMTPAuthenticationError as e:
-                    err_msg = f"Gmail SMTP Authentication Failed: Invalid EMAIL_HOST_USER or App Password. Detail: {e}"
-                    print(f"❌ [SMTP AUTH ERROR] {err_msg}")
-                    smtp_errors.append(err_msg)
-                except smtplib.SMTPException as e:
-                    err_msg = f"SMTP Transmission Error: {e}"
-                    print(f"❌ [SMTP ERROR] {err_msg}")
-                    smtp_errors.append(err_msg)
-                except Exception as e:
-                    err_msg = f"Email Sending Failed: {str(e)}"
-                    print(f"❌ [EMAIL FAILED] {err_msg}")
-                    print(traceback.format_exc())
-                    smtp_errors.append(err_msg)
-            else:
-                print(f"⚠️ [NO EMAIL ON USER] User ID {user.pk} does not have an email address associated.")
-    else:
-        print("⚠️ [NO USER MATCH] No registered user found matching query.")
-
-    print("==================================================\n")
+            try:
+                msg = EmailMultiAlternatives(subject, message, from_email, [target_email])
+                msg.attach_alternative(html_content, "text/html")
+                msg.send(fail_silently=False)
+                email_sent_count += 1
+                logger.info(f"Password reset email successfully sent to {target_email}")
+            except smtplib.SMTPAuthenticationError as e:
+                err_msg = f"Gmail SMTP Authentication Failed: Check EMAIL_HOST_USER and EMAIL_HOST_PASSWORD App Password. ({e})"
+                logger.error(err_msg)
+                smtp_errors.append(err_msg)
+            except smtplib.SMTPException as e:
+                err_msg = f"SMTP Transmission Error: {e}"
+                logger.error(err_msg)
+                smtp_errors.append(err_msg)
+            except Exception as e:
+                err_msg = f"Email delivery failed: {str(e)}"
+                logger.error(err_msg)
+                smtp_errors.append(err_msg)
 
     if smtp_errors and email_sent_count == 0:
         return Response({
-            'error': f"Failed to send reset email due to server mail configuration: {smtp_errors[0]}"
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            'error': f"Failed to send reset email due to mail configuration issue: {smtp_errors[0]}"
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     return Response({
-        'message': 'If an account exists matching that email, a password reset link has been sent to your inbox.',
+        'message': 'Verification successful! A password reset link has been dispatched to your email inbox.',
         'details': {
             'email_sent': email_sent_count > 0,
-            'match_found': users.exists()
+            'match_found': True
         }
     }, status=status.HTTP_200_OK)
+
 
 
 @api_view(['POST'])
@@ -259,12 +271,14 @@ def password_reset_confirm(request):
     Endpoint: POST /api/password-reset-confirm/
     Verifies the uidb64 and token, and securely sets the new password.
     """
-    uidb64 = request.data.get('uidb64') or request.data.get('uid')
-    token = request.data.get('token')
-    new_password = request.data.get('new_password') or request.data.get('password')
+    serializer = PasswordResetConfirmSerializer(data=request.data)
+    if not serializer.is_valid():
+        first_err = list(serializer.errors.values())[0][0] if serializer.errors else 'Invalid parameters.'
+        return Response({'error': first_err, 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not uidb64 or not token or not new_password:
-        return Response({'error': 'Missing required parameters (uidb64, token, new_password).'}, status=status.HTTP_400_BAD_REQUEST)
+    uidb64 = serializer.validated_data['uidb64']
+    token = serializer.validated_data['token']
+    new_password = serializer.validated_data['new_password']
 
     try:
         uid = force_str(urlsafe_base64_decode(uidb64))
@@ -275,14 +289,12 @@ def password_reset_confirm(request):
     if not default_token_generator.check_token(user, token):
         return Response({'error': 'The password reset link is invalid or has expired. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if len(str(new_password).strip()) < 6:
-        return Response({'error': 'Password must be at least 6 characters long.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    user.set_password(str(new_password).strip())
+    user.set_password(new_password)
     user.save()
 
     return Response({
         'message': 'Password has been updated successfully! You may now log in with your new password.'
     }, status=status.HTTP_200_OK)
+
 
 

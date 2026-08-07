@@ -116,6 +116,25 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return qs
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def me(self, request):
+        user = request.user
+        customer = None
+        if hasattr(user, 'customer'):
+            customer = user.customer
+        else:
+            customer = claim_or_link_customer(user)
+
+        v_count = customer.vehicles.count() if hasattr(customer, 'vehicles') else 0
+        return Response({
+            'id': customer.id,
+            'name': customer.user.get_full_name() or customer.user.first_name or customer.user.username,
+            'phone_number': customer.phone_number or customer.user.username,
+            'outstanding_balance': float(customer.outstanding_balance or 0.0),
+            'credit_limit': float(customer.credit_limit or 0.0),
+            'vehicle_count': v_count
+        })
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def search(self, request):
         """
         Optimized, debounced search API for Khata/Credit customer lookup.

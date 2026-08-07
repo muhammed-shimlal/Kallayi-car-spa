@@ -89,6 +89,7 @@ export interface KpiSummary {
     revenue_today: number;
     today_revenue?: number;
     pre_booking_revenue?: number;
+    today_total_credit?: number;
     chemical_cost_today?: number;
     general_expenses_today: number;
     labor_cost_today: number;

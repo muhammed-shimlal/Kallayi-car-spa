@@ -25,7 +25,14 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         if role in ['ADMIN', 'MANAGER', 'WASHER', 'DRIVER', 'TECHNICIAN']:
             return Invoice.objects.all()
         if hasattr(user, 'customer'):
-            return Invoice.objects.filter(booking__customer=user.customer)
+            from django.db.models import Q
+            from customers.views import normalize_phone
+            c_phone = user.customer.phone_number or ""
+            clean_phone = normalize_phone(c_phone)
+            q = Q(booking__customer=user.customer) | Q(booking__customer__user=user)
+            if clean_phone:
+                q |= Q(booking__customer__phone_number__icontains=clean_phone)
+            return Invoice.objects.filter(q).distinct()
         return Invoice.objects.none()
 
     @action(detail=True, methods=['get'])
@@ -209,9 +216,21 @@ class DashboardViewSet(viewsets.ViewSet):
                 total=Sum('amount')
             )['total'] or 0.0)
 
+            # 6. Today's Total Credit (Khata / Credit generated today)
+            today_khata_ledger = float(KhataLedger.objects.filter(
+                transaction_type='CHARGE',
+                created_at__date=today
+            ).aggregate(total=Sum('amount'))['total'] or 0.0)
+
+            today_invoice_khata = float(Invoice.objects.filter(
+                created_at__date=today
+            ).aggregate(total=Sum('split_khata'))['total'] or 0.0)
+
+            today_total_credit = max(today_khata_ledger, today_invoice_khata)
+
             net_profit = revenue_today - chemical_cost - labor - general_expenses
 
-            # 6. Today's Washed Vehicles count
+            # 7. Today's Washed Vehicles count
             today_washed_count = Booking.objects.filter(
                 status__in=['COMPLETED', 'Completed', 'completed']
             ).filter(
@@ -225,6 +244,7 @@ class DashboardViewSet(viewsets.ViewSet):
                 'revenue_today': round(revenue_today, 2),
                 'today_revenue': round(revenue_today, 2),
                 'pre_booking_revenue': round(pre_booking_revenue, 2),
+                'today_total_credit': round(today_total_credit, 2),
                 'chemical_cost_today': round(chemical_cost, 2),
                 'labor_cost_today': round(labor, 2),
                 'general_expenses_today': round(general_expenses, 2),
@@ -237,6 +257,7 @@ class DashboardViewSet(viewsets.ViewSet):
                 'revenue_today': 0.0,
                 'today_revenue': 0.0,
                 'pre_booking_revenue': 0.0,
+                'today_total_credit': 0.0,
                 'chemical_cost_today': 0.0,
                 'labor_cost_today': 0.0,
                 'general_expenses_today': 0.0,

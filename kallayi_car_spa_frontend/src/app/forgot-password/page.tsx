@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Mail, KeyRound, Loader2, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Mail, Phone, KeyRound, Loader2, CheckCircle2, AlertCircle, Sparkles, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
 
@@ -10,20 +10,22 @@ import { GmailInput } from "@/components/ui/GmailInput";
 
 export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
+    const [phone, setPhone] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const trimmed = email.trim().toLowerCase();
+        const trimmedEmail = email.trim().toLowerCase();
+        const trimmedPhone = phone.trim();
 
-        if (!trimmed) {
+        if (!trimmedEmail) {
             setStatusMessage({ type: "error", text: "Please enter your registered Gmail address." });
             return;
         }
 
         // Front-end Gmail Domain Check
-        if (!trimmed.endsWith("@gmail.com")) {
+        if (!trimmedEmail.endsWith("@gmail.com")) {
             setStatusMessage({
                 type: "error",
                 text: "Please use a valid Gmail address (@gmail.com). Temp mails are not allowed."
@@ -31,17 +33,25 @@ export default function ForgotPasswordPage() {
             return;
         }
 
+        if (!trimmedPhone) {
+            setStatusMessage({ type: "error", text: "Please enter your registered phone number." });
+            return;
+        }
+
         setIsLoading(true);
         setStatusMessage(null);
 
-        console.log("🔒 [FORGOT PASSWORD] Submitting email reset request for:", trimmed);
+        console.log("🔒 [FORGOT PASSWORD DUAL VERIFICATION] Submitting request:", { email: trimmedEmail, phone_number: trimmedPhone });
 
         try {
-            const res = await api.post("/password-reset/", { email: trimmed });
+            const res = await api.post("/password-reset/", {
+                email: trimmedEmail,
+                phone_number: trimmedPhone
+            });
             console.log("✅ [FORGOT PASSWORD SUCCESS] Server response:", res.data);
             setStatusMessage({
                 type: "success",
-                text: res.data.message || "If an account matches that email, a password reset link has been dispatched to your inbox."
+                text: res.data.message || "Dual verification successful! A password reset link has been dispatched to your email inbox."
             });
         } catch (err: any) {
             console.error("❌ [FORGOT PASSWORD ERROR] Request failed:", err);
@@ -79,7 +89,7 @@ export default function ForgotPasswordPage() {
                     </Link>
 
                     <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-500 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
-                        ACCOUNT SECURITY
+                        DUAL VERIFICATION SECURITY
                     </div>
                 </div>
 
@@ -94,14 +104,14 @@ export default function ForgotPasswordPage() {
                         {/* Header Text */}
                         <div className="space-y-2">
                             <div className="inline-flex items-center gap-2 text-xs font-mono tracking-[0.3em] text-[#01FFFF] uppercase">
-                                <KeyRound className="w-4 h-4 text-[#01FFFF]" />
+                                <ShieldCheck className="w-4 h-4 text-[#01FFFF]" />
                                 <span>RECOVERY PORTAL</span>
                             </div>
                             <h1 className="font-display text-3xl sm:text-4xl font-light tracking-tight text-white uppercase">
                                 FORGOT PASSWORD?
                             </h1>
                             <p className="text-sm text-neutral-400 font-light leading-relaxed">
-                                Enter your registered email address below. We'll send you an encrypted link to reset your access key.
+                                Enter your registered Gmail address and phone number for dual identity verification.
                             </p>
                         </div>
 
@@ -113,7 +123,7 @@ export default function ForgotPasswordPage() {
                                         <CheckCircle2 className="w-8 h-8" />
                                     </div>
                                     <div className="space-y-2">
-                                        <h3 className="font-bold text-lg text-white">Check Your Inbox</h3>
+                                        <h3 className="font-bold text-lg text-white">Verification Successful</h3>
                                         <p className="text-xs text-neutral-300 leading-relaxed max-w-xs mx-auto">
                                             {statusMessage.text}
                                         </p>
@@ -123,7 +133,7 @@ export default function ForgotPasswordPage() {
                                             onClick={() => setStatusMessage(null)}
                                             className="text-xs text-neutral-400 hover:text-[#01FFFF] transition-colors font-mono uppercase tracking-wider underline underline-offset-4"
                                         >
-                                            Try another email address
+                                            Try another verification
                                         </button>
                                         <div className="pt-2">
                                             <Link
@@ -136,7 +146,8 @@ export default function ForgotPasswordPage() {
                                     </div>
                                 </div>
                             ) : (
-                                <form onSubmit={handleSubmit} className="space-y-6">
+                                <form onSubmit={handleSubmit} className="space-y-5">
+                                    {/* 1. Gmail Input */}
                                     <GmailInput
                                         value={email}
                                         onChange={setEmail}
@@ -144,6 +155,26 @@ export default function ForgotPasswordPage() {
                                         label="Registered Gmail Address *"
                                         placeholder="yourname@gmail.com"
                                     />
+
+                                    {/* 2. Registered Phone Input */}
+                                    <div className="space-y-1.5 group">
+                                        <label className="block text-xs uppercase tracking-widest text-neutral-300 font-medium">
+                                            Registered Phone Number *
+                                        </label>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-500 group-focus-within:text-[#01FFFF] transition-colors">
+                                                <Phone className="w-4 h-4" />
+                                            </div>
+                                            <input
+                                                type="tel"
+                                                value={phone}
+                                                onChange={(e) => setPhone(e.target.value)}
+                                                disabled={isLoading}
+                                                placeholder="e.g. 9876543210 or +919876543210"
+                                                className="w-full bg-[#08080a] shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),inset_-2px_-2px_5px_rgba(255,255,255,0.03)] border border-white/5 focus:border-[#01FFFF]/50 py-3.5 pl-11 pr-4 rounded-2xl text-white text-sm focus:outline-none focus:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),0_0_14px_rgba(1,255,255,0.15)] transition-all placeholder:text-neutral-600"
+                                            />
+                                        </div>
+                                    </div>
 
                                     <AnimatePresence>
                                         {statusMessage?.type === "error" && (
@@ -161,13 +192,13 @@ export default function ForgotPasswordPage() {
 
                                     <button
                                         type="submit"
-                                        disabled={isLoading || !email.trim()}
+                                        disabled={isLoading || !email.trim() || !phone.trim()}
                                         className="w-full relative overflow-hidden bg-gradient-to-r from-red-600 to-red-700 shadow-[-6px_-6px_14px_rgba(255,255,255,0.03),6px_6px_18px_rgba(0,0,0,0.9)] hover:shadow-[-2px_-2px_8px_rgba(255,255,255,0.05),2px_2px_14px_rgba(229,35,35,0.4)] active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.9)] text-white font-bold text-xs uppercase tracking-[0.2em] py-4 rounded-2xl transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none group"
                                     >
                                         {isLoading ? (
                                             <>
                                                 <Loader2 className="w-4 h-4 animate-spin text-white" />
-                                                <span>DISPATCHING LINK...</span>
+                                                <span>VERIFYING ACCOUNT...</span>
                                             </>
                                         ) : (
                                             <>
@@ -212,7 +243,7 @@ export default function ForgotPasswordPage() {
                     <div className="flex justify-end">
                         <div className="bg-black/70 backdrop-blur-md border border-white/10 px-4 py-1.5 rounded-full font-mono text-xs tracking-widest text-neutral-300 uppercase flex items-center gap-2">
                             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                            <span>ENCRYPTED RECOVERY // 256-BIT TOKEN</span>
+                            <span>DUAL IDENTITY VERIFICATION // 256-BIT TOKEN</span>
                         </div>
                     </div>
 
@@ -226,7 +257,7 @@ export default function ForgotPasswordPage() {
                             </h2>
                         </div>
                         <p className="text-sm text-neutral-300 font-light leading-relaxed">
-                            Reset links expire automatically to protect your account. Ensure you use the link delivered to your primary inbox.
+                            Dual verification ensures password reset requests match both your registered email and phone number before issuing encrypted access links.
                         </p>
                     </div>
                 </div>
@@ -234,3 +265,4 @@ export default function ForgotPasswordPage() {
         </div>
     );
 }
+

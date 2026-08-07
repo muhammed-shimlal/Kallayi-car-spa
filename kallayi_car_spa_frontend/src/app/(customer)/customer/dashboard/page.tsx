@@ -43,7 +43,8 @@ export default function CustomerDashboard() {
             try {
                 setIsLoading(true);
 
-                // Fetch User Profile for dynamic greeting
+                let userOutstandingBalance = 0;
+                // Fetch User Profile for dynamic greeting & outstanding balance
                 try {
                     const userRes = await api.get('/core/users/me/');
                     const user = userRes.data;
@@ -51,16 +52,26 @@ export default function CustomerDashboard() {
                     if (name) {
                         setCustomerName(name.charAt(0).toUpperCase() + name.slice(1));
                     }
+                    if (user.outstanding_balance !== undefined) {
+                        userOutstandingBalance = parseFloat(user.outstanding_balance) || 0;
+                    }
                 } catch (uErr) {
                     console.warn("User profile request skipped or unavailable", uErr);
                 }
+
+                // Try fetching detailed customer profile from /customers/me/
+                try {
+                    const custRes = await api.get('/customers/me/');
+                    if (custRes.data && custRes.data.outstanding_balance !== undefined) {
+                        userOutstandingBalance = parseFloat(custRes.data.outstanding_balance) || 0;
+                    }
+                } catch (cErr) { /* fallback silently */ }
 
                 // Fetch the logged-in customer's bookings
                 const bookingsRes = await api.get('/bookings/');
                 const bookings = bookingsRes.data;
 
                 // 1. Fetch Customer Vehicles natively
-                // Fetch Vehicles directly from our dedicated collision-free endpoint
                 try {
                     const vehiclesRes = await api.get('/customer-vehicles/');
                     const formattedVehicles = vehiclesRes.data.map((v: any) => ({
@@ -91,23 +102,59 @@ export default function CustomerDashboard() {
                     setActiveWash(null);
                 }
 
-                // 3. Set Wash History
-                setWashHistory(bookings.filter((b: any) => b.status === 'COMPLETED'));
+                // 3. Set Wash History with accurate payment status
+                const completedBookings = bookings.filter((b: any) => b.status === 'COMPLETED').map((b: any) => {
+                    const isKhata = b.payment_method === 'KHATA' || b.payment_method === 'CREDIT' || b.invoice_status === 'CREDIT';
+                    return {
+                        ...b,
+                        payment_method: isKhata ? 'KHATA' : (b.payment_method || 'CASH'),
+                        payment_status: isKhata ? 'UNPAID' : (b.invoice_status || 'PAID')
+                    };
+                });
+                setWashHistory(completedBookings);
 
-                // 4. Fetch Invoices for Ledger (Fallback to empty if endpoint doesn't exist yet)
+                // 4. Fetch Invoices & Khata Ledger Dues
                 try {
                     const invoiceRes = await api.get('/finance/invoices/');
-                    const formattedTxns = invoiceRes.data.map((inv: any) => ({
-                        id: `INV-${inv.id}`,
-                        date: new Date(inv.created_at).toISOString().split('T')[0],
-                        service: inv.subscription ? 'Subscription' : 'Service Wash',
-                        amount: parseFloat(inv.amount),
-                        status: inv.is_paid ? 'PAID' : 'UNPAID'
-                    }));
+                    const formattedTxns = invoiceRes.data.map((inv: any) => {
+                        const isKhata = (inv.split_khata || 0) > 0 || inv.payment_method === 'KHATA' || inv.payment_method === 'CREDIT';
+                        const isUnpaid = isKhata || !inv.is_paid;
+                        return {
+                            id: `INV-${inv.id}`,
+                            date: new Date(inv.created_at).toISOString().split('T')[0],
+                            service: inv.service_package_name || (inv.subscription ? 'Subscription' : 'Service Wash'),
+                            amount: parseFloat(inv.amount),
+                            status: isUnpaid ? 'UNPAID' : 'PAID',
+                            payment_method: inv.payment_method || (isKhata ? 'KHATA' : 'CASH')
+                        };
+                    });
+
+                    // If user has outstanding Khata debt but no invoices match yet, inject the summary credit line
+                    if (userOutstandingBalance > 0 && !formattedTxns.some((t: any) => t.status === 'UNPAID')) {
+                        formattedTxns.unshift({
+                            id: `KHATA-DUE`,
+                            date: new Date().toISOString().split('T')[0],
+                            service: 'Outstanding Khata Credit Balance',
+                            amount: userOutstandingBalance,
+                            status: 'UNPAID',
+                            payment_method: 'KHATA'
+                        });
+                    }
+
                     setTransactions(formattedTxns);
                 } catch (invoiceErr) {
-                    console.warn("Invoice endpoint not ready or failed. Defaulting to empty ledger.");
-                    setTransactions([]);
+                    if (userOutstandingBalance > 0) {
+                        setTransactions([{
+                            id: `KHATA-DUE`,
+                            date: new Date().toISOString().split('T')[0],
+                            service: 'Outstanding Khata Credit Balance',
+                            amount: userOutstandingBalance,
+                            status: 'UNPAID',
+                            payment_method: 'KHATA'
+                        }]);
+                    } else {
+                        setTransactions([]);
+                    }
                 }
             } catch (error) {
                 console.error("Failed to fetch customer data", error);
