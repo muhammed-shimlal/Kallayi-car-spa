@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from customers.views import CustomerViewSet, SubscriptionPlanViewSet, ReviewViewSet, CouponViewSet, CustomerVehicleViewSet
 from fleet.views import VehicleViewSet, TechnicianLocationViewSet, ServiceVehicleViewSet, FleetLogViewSet
 from bookings.views import BookingViewSet, ServicePackageViewSet, CalendarViewSet, DriverBookingViewSet
-from finance.views import InvoiceViewSet, DashboardViewSet, GeneralExpenseViewSet, ExpenseCategoryViewSet, ReportingViewSet, KhataViewSet, SalaryPaymentViewSet, close_register, analytics_dashboard, generate_invoice_pdf, manual_khata_charge
+from finance.views import InvoiceViewSet, DashboardViewSet, GeneralExpenseViewSet, ExpenseCategoryViewSet, ReportingViewSet, KhataViewSet, SalaryPaymentViewSet, CollectionBankViewSet, close_register, analytics_dashboard, generate_invoice_pdf, manual_khata_charge
 from staff.views import TimeEntryViewSet, JobInspectionViewSet, SOPChecklistViewSet, StaffDashboardViewSet, StaffProfileViewSet
 
 router = DefaultRouter()
@@ -29,6 +29,8 @@ router.register(r'finance/dashboard', DashboardViewSet, basename='dashboard')
 router.register(r'finance/general-expenses', GeneralExpenseViewSet, basename='general-expense')
 router.register(r'finance/salary-payments', SalaryPaymentViewSet, basename='salary-payments')
 router.register(r'finance/expense-categories', ExpenseCategoryViewSet, basename='expense-category')
+router.register(r'finance/collection-bank', CollectionBankViewSet, basename='collection-bank')
+router.register(r'finance/bank-deposits', CollectionBankViewSet, basename='bank-deposits')
 router.register(r'finance/reports', ReportingViewSet, basename='finance-reports')
 router.register(r'finance/khata', KhataViewSet, basename='khata')
 

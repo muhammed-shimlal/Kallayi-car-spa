@@ -73,3 +73,15 @@ class SalaryPaymentSerializer(serializers.ModelSerializer):
             'updated_at', 'is_active'
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+from .models import CollectionBank
+
+class CollectionBankSerializer(serializers.ModelSerializer):
+    recorded_by_name = serializers.CharField(source='recorded_by.username', read_only=True, default='')
+
+    class Meta:
+        model = CollectionBank
+        fields = ['id', 'date', 'amount', 'notes', 'recorded_by', 'recorded_by_name', 'created_at', 'updated_at']
+        read_only_fields = ['recorded_by', 'created_at', 'updated_at']
+

@@ -4,6 +4,7 @@ import OverviewTab from '@/components/admin/dashboard/tabs/OverviewTab';
 import FinanceTab from '@/components/admin/dashboard/tabs/FinanceTab';
 import StaffTab from '@/components/admin/dashboard/tabs/StaffTab';
 import CrmTab from '@/components/admin/dashboard/tabs/CrmTab';
+import BankDepositTab from '@/components/admin/dashboard/tabs/BankDepositTab';
 import StaffModal from '@/components/admin/dashboard/modals/StaffModal';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { DashboardProvider, useDashboard } from '@/components/admin/dashboard/context/DashboardContext';
@@ -39,7 +40,9 @@ function AdminDashboardContent() {
     const [adminName, setAdminName] = useState('Loading...');
 
     // --- Data States ---
-    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, today_total_credit: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 });
+    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, today_total_credit: 0, today_collection_bank: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 });
+    const [collectionAmount, setCollectionAmount] = useState('');
+    const [isSavingCollection, setIsSavingCollection] = useState(false);
     const generateDemoChartData = () => {
         const days = [];
         for (let i = 6; i >= 0; i--) {
@@ -343,6 +346,40 @@ function AdminDashboardContent() {
                 toast.error(data.error || 'Failed to create Khata charge.');
             }
         } catch (e) { toast.error('Network error'); }
+    };
+
+    // --- Collection Bank (Daily Savings Asset) ---
+    const handleSaveCollectionBank = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!collectionAmount || isNaN(Number(collectionAmount)) || Number(collectionAmount) < 0) {
+            toast.error('Please enter a valid deposit amount.');
+            return;
+        }
+
+        setIsSavingCollection(true);
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${API_BASE}/finance/collection-bank/deposit/`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Token ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ amount: parseFloat(collectionAmount) })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                toast.success(`Today's Collection Bank deposit of ₹${collectionAmount} saved successfully!`);
+                setCollectionAmount('');
+                fetchDashboardData();
+            } else {
+                toast.error(data.error || 'Failed to save Collection Bank deposit.');
+            }
+        } catch (err) {
+            toast.error('Network error saving Collection Bank deposit.');
+        } finally {
+            setIsSavingCollection(false);
+        }
     };
 
     // Effect for re-fetching Global History ONLY when the date changes AND crm tab is active.
@@ -832,6 +869,9 @@ function AdminDashboardContent() {
                     <button onClick={() => setActiveTab('finance')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'finance' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}>
                         <Wallet className="w-4 h-4" /> Finance Dept
                     </button>
+                    <button onClick={() => setActiveTab('bank_deposit')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'bank_deposit' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30' : 'text-[#8E939B] hover:text-white'}`}>
+                        <Landmark className="w-4 h-4" /> Bank Deposit
+                    </button>
                     <button onClick={() => setActiveTab('staff')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'staff' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}>
                         <Users className="w-4 h-4" /> Staff Ops
                     </button>
@@ -1060,6 +1100,11 @@ function AdminDashboardContent() {
                 {/* VIEW B: FINANCE COMMAND CENTER */}
                 {/* ---------------------------------------------------- */}
                 {activeTab === 'finance' && <FinanceTab />}
+
+                {/* ---------------------------------------------------- */}
+                {/* VIEW B2: BANK DEPOSIT & SAVINGS TAB */}
+                {/* ---------------------------------------------------- */}
+                {activeTab === 'bank_deposit' && <BankDepositTab />}
 
                 {/* ---------------------------------------------------- */}
                 {/* VIEW C: STAFF OPS & DYNAMIC PAYROLL TAB */}

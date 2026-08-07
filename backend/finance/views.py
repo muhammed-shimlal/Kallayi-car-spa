@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
@@ -6,8 +6,8 @@ from core.permissions import IsAdmin, IsStaffUser, IsCustomerUser, IsOwnerOrAdmi
 from django.db.models import Sum, F
 from django.utils import timezone
 from decimal import Decimal
-from .models import Invoice, ChemicalUsageLog, PayrollEntry, GeneralExpense, ExpenseCategory, KhataLedger, DailyRegisterAudit
-from .serializers import InvoiceSerializer, GeneralExpenseSerializer, ExpenseCategorySerializer
+from .models import Invoice, ChemicalUsageLog, PayrollEntry, GeneralExpense, ExpenseCategory, KhataLedger, DailyRegisterAudit, CollectionBank
+from .serializers import InvoiceSerializer, GeneralExpenseSerializer, ExpenseCategorySerializer, CollectionBankSerializer
 from customers.models import Customer
 from bookings.models import Booking
 
@@ -265,6 +265,93 @@ class DashboardViewSet(viewsets.ViewSet):
                 'today_washed_count': 0,
                 'error': str(e)
             })
+
+
+class CollectionBankViewSet(viewsets.ModelViewSet):
+    """
+    Dedicated API ViewSet for Collection Bank (Bank Deposits).
+    Endpoints:
+      - GET /api/finance/bank-deposits/ -> Returns real aggregated stats + history
+      - POST /api/finance/bank-deposits/ -> Creates or updates deposit record
+    """
+    queryset = CollectionBank.objects.all().order_by('-date', '-created_at')
+    serializer_class = CollectionBankSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def perform_create(self, serializer):
+        serializer.save(recorded_by=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        today = timezone.localdate()
+        first_day_of_month = today.replace(day=1)
+        start_of_week = today - timezone.timedelta(days=today.weekday())
+
+        total_all_time = float(CollectionBank.objects.aggregate(total=Sum('amount'))['total'] or 0.0)
+        total_this_month = float(CollectionBank.objects.filter(date__gte=first_day_of_month).aggregate(total=Sum('amount'))['total'] or 0.0)
+        total_this_week = float(CollectionBank.objects.filter(date__gte=start_of_week).aggregate(total=Sum('amount'))['total'] or 0.0)
+
+        history_qs = CollectionBank.objects.all().order_by('-date', '-created_at')
+        history_data = CollectionBankSerializer(history_qs, many=True).data
+
+        return Response({
+            'total_all_time': round(total_all_time, 2),
+            'total_this_month': round(total_this_month, 2),
+            'total_this_week': round(total_this_week, 2),
+            'history': history_data
+        })
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        amount_raw = request.data.get('amount')
+        if amount_raw is None or str(amount_raw).strip() == '':
+            return Response({'error': 'Amount is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount = Decimal(str(amount_raw))
+        except Exception:
+            return Response({'error': 'Please enter a valid numeric amount.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amount < 0:
+            return Response({'error': 'Deposit amount cannot be negative.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        date_val = request.data.get('date') or timezone.localdate().isoformat()
+        notes = request.data.get('notes') or 'Daily Reserved Savings Deposit'
+
+        entry, created = CollectionBank.objects.update_or_create(
+            date=date_val,
+            defaults={
+                'amount': amount,
+                'notes': notes,
+                'recorded_by': user if user.is_authenticated else None
+            }
+        )
+
+        today = timezone.localdate()
+        first_day_of_month = today.replace(day=1)
+        start_of_week = today - timezone.timedelta(days=today.weekday())
+
+        total_all_time = float(CollectionBank.objects.aggregate(total=Sum('amount'))['total'] or 0.0)
+        total_this_month = float(CollectionBank.objects.filter(date__gte=first_day_of_month).aggregate(total=Sum('amount'))['total'] or 0.0)
+        total_this_week = float(CollectionBank.objects.filter(date__gte=start_of_week).aggregate(total=Sum('amount'))['total'] or 0.0)
+
+        history_qs = CollectionBank.objects.all().order_by('-date', '-created_at')
+        history_data = CollectionBankSerializer(history_qs, many=True).data
+
+        return Response({
+            'message': 'Bank deposit saved successfully!',
+            'data': CollectionBankSerializer(entry).data,
+            'total_all_time': round(total_all_time, 2),
+            'total_this_month': round(total_this_month, 2),
+            'total_this_week': round(total_this_week, 2),
+            'history': history_data
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post', 'get'])
+    def deposit(self, request):
+        if request.method == 'GET':
+            return self.list(request)
+        return self.create(request)
+
 
     @action(detail=False, methods=['get'])
     def revenue_chart(self, request):

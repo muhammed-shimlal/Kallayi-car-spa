@@ -7,7 +7,7 @@ import Cookies from 'js-cookie';
 import {
     LayoutDashboard, Activity, CreditCard, Menu, X, Wallet, Users,
     Car, Search, FileText, Wrench, BarChart2, Settings, LogOut,
-    Sparkles, ChevronRight, ShieldCheck, Receipt
+    Sparkles, ChevronRight, ShieldCheck, Receipt, Landmark
 } from 'lucide-react';
 
 export const backdropVariants = {
@@ -130,6 +130,14 @@ export default function AdminMobileDrawer({
                                 label="Financial Ledger"
                                 isActive={activeTab === 'finance'}
                                 onClick={() => handleNavigate('tab', 'finance')}
+                            />
+
+                            {/* 4b. Bank Deposit & Savings */}
+                            <DrawerLinkItem
+                                icon={<Landmark className="w-5 h-5 text-purple-400" />}
+                                label="Bank Deposit & Savings"
+                                isActive={activeTab === 'bank_deposit'}
+                                onClick={() => handleNavigate('tab', 'bank_deposit')}
                             />
 
                             {/* 5. Staff Operation & Payroll */}

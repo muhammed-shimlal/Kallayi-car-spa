@@ -222,3 +222,20 @@ class DailyRegisterAudit(models.Model):
 
     def __str__(self):
         return f"Audit for {self.date} - Locked: {self.is_locked}"
+
+
+class CollectionBank(models.Model):
+    """
+    Daily deposit / savings asset set aside from daily revenue.
+    Unique per date (defaults to today).
+    """
+    date = models.DateField(default=timezone.localdate, unique=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    notes = models.TextField(blank=True, default='')
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='collection_bank_entries')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Collection Bank ₹{self.amount} for {self.date}"
+
