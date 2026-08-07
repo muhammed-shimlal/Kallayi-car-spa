@@ -3,6 +3,7 @@
 import OverviewTab from '@/components/admin/dashboard/tabs/OverviewTab';
 import FinanceTab from '@/components/admin/dashboard/tabs/FinanceTab';
 import StaffTab from '@/components/admin/dashboard/tabs/StaffTab';
+import CrmTab from '@/components/admin/dashboard/tabs/CrmTab';
 import StaffModal from '@/components/admin/dashboard/modals/StaffModal';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { DashboardProvider, useDashboard } from '@/components/admin/dashboard/context/DashboardContext';
@@ -38,7 +39,7 @@ function AdminDashboardContent() {
     const [adminName, setAdminName] = useState('Loading...');
 
     // --- Data States ---
-    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 });
+    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 });
     const generateDemoChartData = () => {
         const days = [];
         for (let i = 6; i >= 0; i--) {
@@ -815,8 +816,15 @@ function AdminDashboardContent() {
             {/* SIDEBAR NAVIGATION */}
             <aside className="w-72 bg-[#141518]/60 backdrop-blur-2xl border-r border-white/5 flex-col hidden lg:flex">
                 <div className="p-8 border-b border-white/5">
-                    <h2 className="text-xl font-syncopate font-bold tracking-widest">KALLAYI<span className="text-[#FF2A6D]">.</span></h2>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#8E939B] mt-2">Admin Portal</p>
+                    <div className="flex items-center gap-3 mb-2">
+                        <img 
+                            src="/images/logo/carspa%20logo.png" 
+                            alt="Kallayi Car Spa Logo" 
+                            className="h-10 w-auto rounded-xl object-contain border border-white/10 bg-white/90 p-1 shadow-md"
+                        />
+                        <h2 className="text-xl font-syncopate font-bold tracking-widest">KALLAYI<span className="text-[#FF2A6D]">.</span></h2>
+                    </div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#8E939B]">Admin Portal</p>
                 </div>
                 <nav className="flex-1 p-6 space-y-2">
                     <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}>
@@ -839,12 +847,6 @@ function AdminDashboardContent() {
                     </button>
                     <button onClick={() => setActiveTab('services')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'services' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'text-[#8E939B] hover:text-white'}`}>
                         <Wrench className="w-4 h-4" /> Service Menu
-                    </button>
-                    <button onClick={() => setActiveTab('fleet')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'fleet' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'text-[#8E939B] hover:text-white'}`}>
-                        <Car className="w-4 h-4" /> Fleet & Vehicles
-                    </button>
-                    <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-white/5 text-gray-300 border border-white/10' : 'text-[#8E939B] hover:text-white'}`}>
-                        <Settings className="w-4 h-4" /> System Settings
                     </button>
                     <button onClick={() => router.push('/admin/queue')} className="w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all text-[#8E939B] hover:text-[#01FFFF] hover:bg-[#01FFFF]/5 hover:border hover:border-[#01FFFF]/20">
                         <Activity className="w-4 h-4" /> Live Queue
@@ -874,7 +876,7 @@ function AdminDashboardContent() {
             </aside>
 
             {/* MAIN CONTENT AREA */}
-            <main className="flex-1 p-4 sm:p-8 lg:p-12 w-full overflow-y-auto relative">
+            <main className="flex-1 p-4 sm:p-8 lg:p-12 max-lg:pb-[calc(5.5rem+env(safe-area-inset-bottom))] w-full overflow-y-auto relative">
                 
                 {/* GLOBAL CRM SEARCH BAR */}
                 <div className="mb-6 sm:mb-8">
@@ -913,28 +915,50 @@ function AdminDashboardContent() {
 
                 {/* REAL-TIME KPI DASHBOARD (Always Visible) */}
                 {isLoading ? (
-                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
-                        <Skeleton className="h-[104px] sm:h-[124px] col-span-2 sm:col-span-1" />
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
+                        <Skeleton className="h-[104px] sm:h-[124px]" />
+                        <Skeleton className="h-[104px] sm:h-[124px]" />
                         <Skeleton className="h-[104px] sm:h-[124px]" />
                         <Skeleton className="h-[104px] sm:h-[124px]" />
                         <Skeleton className="h-[104px] sm:h-[124px]" />
                         <Skeleton className="h-[104px] sm:h-[124px]" />
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-6 mb-6 sm:mb-8">
-                        <div className="col-span-2 sm:col-span-1 bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)]">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-[#01FFFF]/10 rounded-full blur-[50px] group-hover:bg-[#01FFFF]/20 transition-all"></div>
-                            <p className="text-[#01FFFF] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 sm:mb-2 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Net Profit Today</p>
-                            <h2 className="text-2xl sm:text-3xl xl:text-4xl font-syncopate font-bold text-white tracking-tighter truncate">₹{kpiData.net_profit_today.toLocaleString()}</h2>
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
+                        <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)]">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-[#01FFFF]/10 rounded-full blur-[40px] group-hover:bg-[#01FFFF]/20 transition-all"></div>
+                            <p className="text-[#01FFFF] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><TrendingUp className="w-3.5 h-3.5" /> Net Profit Today</p>
+                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-white tracking-tighter truncate">₹{(kpiData.net_profit_today || 0).toLocaleString()}</h2>
                         </div>
-                        <div className="bg-[#141518]/60 border border-emerald-500/30 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(16,185,129,0.05)]">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-[50px] group-hover:bg-emerald-500/20 transition-all"></div>
-                            <p className="text-emerald-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 sm:mb-2 flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Washed Today</p>
-                            <h2 className="text-xl sm:text-3xl xl:text-4xl font-syncopate font-bold text-white tracking-tighter truncate">{kpiData.today_washed_count || 0} <span className="text-[10px] sm:text-xs font-normal text-[#8E939B] tracking-normal">cars</span></h2>
+                        <div className="bg-[#141518]/60 border border-emerald-500/30 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(16,185,129,0.05)]">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-[40px] group-hover:bg-emerald-500/20 transition-all"></div>
+                            <p className="text-emerald-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5" /> Washed Today</p>
+                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-white tracking-tighter truncate">{kpiData.today_washed_count || 0} <span className="text-[10px] sm:text-xs font-normal text-[#8E939B] tracking-normal">cars</span></h2>
                         </div>
-                        <div className="bg-[#141518]/60 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl"><p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 sm:mb-2">Total Revenue</p><h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold truncate">₹{kpiData.revenue_today.toLocaleString()}</h2></div>
-                        <div className="bg-[#141518]/60 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl"><p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 sm:mb-2">Labor Cost</p><h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold truncate">₹{kpiData.labor_cost_today.toLocaleString()}</h2></div>
-                        <div className="bg-[#141518]/60 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl"><p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 sm:mb-2">General Expenses</p><h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-[#FF2A6D] truncate">₹{kpiData.general_expenses_today.toLocaleString()}</h2></div>
+                        <div className="bg-[#141518]/60 border border-emerald-400/20 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-400/5 rounded-full blur-[40px] group-hover:bg-emerald-400/10 transition-all"></div>
+                            <p className="text-emerald-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><IndianRupee className="w-3.5 h-3.5 text-emerald-400" /> Today's Revenue</p>
+                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-white truncate">₹{((kpiData as any).today_revenue ?? kpiData.revenue_today ?? 0).toLocaleString()}</h2>
+                        </div>
+                        {/* Pre-booking Advances Card: Conditionally rendered only if > 0 */}
+                        {Number((kpiData as any).pre_booking_revenue || 0) > 0 && (
+                            <div className="bg-[#141518]/60 border border-cyan-500/30 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(6,182,212,0.05)]">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-[40px] group-hover:bg-cyan-500/20 transition-all"></div>
+                                <p className="text-cyan-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-cyan-400" /> Pre-booking Cash</p>
+                                <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-cyan-300 truncate">₹{((kpiData as any).pre_booking_revenue || 0).toLocaleString()}</h2>
+                            </div>
+                        )}
+                        <div className="bg-[#141518]/60 border border-white/5 p-4 sm:p-5 rounded-2xl sm:rounded-3xl">
+                            <p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5">Labor Cost</p>
+                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold truncate">₹{(kpiData.labor_cost_today || 0).toLocaleString()}</h2>
+                        </div>
+                        {/* General Expenses Card: Conditionally rendered only if > 0 */}
+                        {Number(kpiData.general_expenses_today || 0) > 0 && (
+                            <div className="bg-[#141518]/60 border border-white/5 p-4 sm:p-5 rounded-2xl sm:rounded-3xl">
+                                <p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5">General Expenses</p>
+                                <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-[#FF2A6D] truncate">₹{(kpiData.general_expenses_today || 0).toLocaleString()}</h2>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -1072,231 +1096,7 @@ function AdminDashboardContent() {
                 {/* ---------------------------------------------------- */}
                 {/* VIEW F: CRM & HISTORY (Digital Garage)                 */}
                 {/* ---------------------------------------------------- */}
-                {activeTab === 'crm' && (
-                  vehicleData ? (
-                    <div className="animate-[fadeIn_0.5s_ease-out] space-y-8">
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h3 className="font-syncopate font-bold tracking-widest text-2xl flex items-center gap-3">
-                                    <BookOpen className="w-6 h-6 text-emerald-400" /> VEHICLE DOSSIER
-                                </h3>
-                                <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.2em] mt-1">Digital Garage CRM</p>
-                            </div>
-                        </div>
-
-                        {/* SECTION 1: PROFILE ROW & KPIS */}
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Profile Card */}
-                            <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-8 rounded-3xl relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-[50px] group-hover:bg-emerald-500/10 transition-all"></div>
-                                <div className="flex justify-between items-start mb-6">
-                                    <div className="bg-white/10 px-4 py-1 rounded-sm border border-white/20">
-                                        <h2 className="text-2xl font-syncopate font-black tracking-[0.1em]">{vehicleData.vehicle_profile.plate_number}</h2>
-                                    </div>
-                                    {vehicleData.vehicle_profile.outstanding_balance > 0 ? (
-                                        <span className="text-[10px] font-bold uppercase tracking-widest bg-[#FF2A6D]/20 text-[#FF2A6D] border border-[#FF2A6D]/30 px-3 py-1.5 rounded-full flex items-center gap-1">
-                                            <AlertCircle className="w-3 h-3" /> Dept: ₹{vehicleData.vehicle_profile.outstanding_balance}
-                                        </span>
-                                    ) : (
-                                        <span className="text-[10px] font-bold uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-full flex items-center gap-1">
-                                            <CheckCircle className="w-3 h-3" /> Clear Account
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-3">
-                                        <Car className="w-5 h-5 text-[#8E939B]" />
-                                        <div>
-                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">Vehicle Model</p>
-                                            <p className="font-bold text-sm text-white truncate max-w-[200px]">{vehicleData.vehicle_profile.model}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <UserCog className="w-5 h-5 text-[#8E939B]" />
-                                        <div>
-                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">Owner</p>
-                                            <p className="font-bold text-sm text-white truncate max-w-[200px]">{vehicleData.vehicle_profile.owner_name}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* LTV & KPIs */}
-                            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="bg-[#141518]/60 backdrop-blur-xl border border-emerald-500/20 p-6 rounded-3xl shadow-[0_0_20px_rgba(52,211,153,0.05)] flex flex-col justify-center text-center">
-                                    <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center justify-center gap-2">
-                                        <BadgeDollarSign className="w-4 h-4" /> Lifetime Spend
-                                    </p>
-                                    <h2 className="text-4xl font-syncopate font-bold tracking-tighter text-white">₹{vehicleData.kpis.total_lifetime_spend.toLocaleString()}</h2>
-                                </div>
-                                <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-6 rounded-3xl flex flex-col justify-center text-center">
-                                    <p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center justify-center gap-2">
-                                        <MapPin className="w-4 h-4" /> Total Visits
-                                    </p>
-                                    <h2 className="text-4xl font-syncopate font-bold tracking-tighter text-white">{vehicleData.kpis.total_visits} <span className="text-sm font-normal text-[#8E939B] tracking-normal">times</span></h2>
-                                </div>
-                                <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/20 p-6 rounded-3xl flex flex-col justify-center text-center shadow-[0_0_20px_rgba(1,255,255,0.05)]">
-                                    <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center justify-center gap-2">
-                                        <Star className="w-4 h-4" /> Favorite Service
-                                    </p>
-                                    <h2 className="text-sm font-bold text-white uppercase tracking-widest leading-relaxed mt-2">{vehicleData.kpis.favorite_service}</h2>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* SECTION 2: SERVICE TIMELINE */}
-                        <div className="bg-[#141518]/60 backdrop-blur-xl border border-white/5 p-8 rounded-3xl">
-                            <h4 className="font-syncopate font-bold text-sm tracking-widest mb-8 border-b border-white/5 pb-4">SERVICE TIMELINE</h4>
-                            
-                            {vehicleData.timeline.length === 0 ? (
-                                <p className="text-[#8E939B] text-center text-sm py-12 border border-dashed border-white/10 rounded-2xl">No completed services found for this vehicle.</p>
-                            ) : (
-                                <div className="relative pl-4 sm:pl-8 space-y-8 before:content-[''] before:absolute before:left-[11px] sm:before:left-[27px] before:top-2 before:bottom-2 before:w-px before:bg-gradient-to-b before:from-emerald-500/50 before:to-white/5">
-                                    {vehicleData.timeline.map((event: any, idx: number) => (
-                                        <div key={idx} className="relative group">
-                                            {/* Timeline Node */}
-                                            <div className="absolute -left-[30px] sm:-left-[46px] top-1.5 w-4 h-4 rounded-full border-4 border-[#050505] bg-emerald-400 group-hover:shadow-[0_0_15px_rgba(52,211,153,0.5)] transition-all"></div>
-                                            
-                                            <div className="bg-white/2 hover:bg-white/5 border border-white/5 group-hover:border-emerald-500/20 transition-all p-5 rounded-2xl">
-                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                    <div>
-                                                        <div className="flex items-center gap-3 mb-2">
-                                                            <Calendar className="w-4 h-4 text-[#8E939B]" />
-                                                            <span className="text-[#8E939B] font-mono text-xs">{event.date || 'Unknown Date'}</span>
-                                                        </div>
-                                                        <h5 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF] uppercase">{event.service_package_name}</h5>
-                                                    </div>
-                                                    <div className="flex items-center gap-6">
-                                                        <div className="text-left sm:text-right">
-                                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1">Technician</p>
-                                                            <p className="text-xs font-bold">{event.technician_name}</p>
-                                                        </div>
-                                                        <div className="text-left sm:text-right border-l border-white/10 pl-6">
-                                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-1">Price</p>
-                                                            <p className="text-sm font-bold text-emerald-400 font-syncopate">₹{event.price_paid}</p>
-                                                        </div>
-                                                        {event.booking_id && (
-                                                            <button
-                                                                onClick={() => downloadInvoice(event.booking_id)}
-                                                                title="Download PDF Receipt"
-                                                                className="text-[#8E939B] hover:text-[#01FFFF] transition-colors ml-2"
-                                                            >
-                                                                <Download className="w-4 h-4" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                  ) : (
-                    <div className="animate-[fadeIn_0.5s_ease-out] space-y-6">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 border-b border-white/5 pb-4">
-                            <h3 className="font-syncopate font-bold tracking-widest text-xl">DAILY SHOP LEDGER</h3>
-                            <div className="flex items-center gap-4">
-                                <div className="relative">
-                                    <label className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8E939B] pointer-events-none">
-                                        <Calendar className="w-4 h-4" />
-                                    </label>
-                                    <input 
-                                        type="date"
-                                        value={globalHistoryDate}
-                                        onChange={(e) => setGlobalHistoryDate(e.target.value)}
-                                        className="bg-[#141518]/60 border border-white/10 text-white text-xs font-bold font-mono py-2 pl-9 pr-4 rounded-xl outline-none focus:border-[#01FFFF] transition-all cursor-pointer"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {globalHistory?.stats && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                                <div className="bg-[#141518]/60 border border-[#01FFFF]/20 p-5 rounded-2xl flex items-center justify-between shadow-[0_0_15px_rgba(1,255,255,0.05)]">
-                                    <div>
-                                        <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Total Services</p>
-                                        <h3 className="text-2xl font-syncopate font-bold text-white tracking-tighter">{globalHistory.stats.total_services}</h3>
-                                    </div>
-                                    <Car className="w-8 h-8 text-[#01FFFF]/30" />
-                                </div>
-                                <div className="bg-[#141518]/60 border border-emerald-500/20 p-5 rounded-2xl flex items-center justify-between shadow-[0_0_15px_rgba(52,211,153,0.05)]">
-                                    <div>
-                                        <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Ledger Revenue</p>
-                                        <h3 className="text-2xl font-syncopate font-bold text-white tracking-tighter">₹{globalHistory.stats.total_revenue.toLocaleString()}</h3>
-                                    </div>
-                                    <BadgeDollarSign className="w-8 h-8 text-emerald-400/30" />
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6 shadow-2xl">
-                            {!globalHistory?.feed || globalHistory.feed.length === 0 ? (
-                                <p className="text-[#8E939B] text-center py-12 border border-dashed border-white/10 rounded-2xl">No completed services found for {globalHistoryDate}.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {globalHistory.feed.map((entry: any, i: number) => (
-                                        <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white/2 hover:bg-white/5 border border-white/5 hover:border-white/10 rounded-2xl transition-colors gap-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
-                                                    <Car className="w-4 h-4 text-[#8E939B]" />
-                                                </div>
-                                                <div>
-                                                    <p className="font-mono text-white font-bold tracking-wider">{entry.plate_number}</p>
-                                                    <p className="text-[#01FFFF] text-[10px] uppercase font-bold tracking-widest mt-1">{entry.service_package_name}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex flex-col sm:items-end gap-1">
-                                                <div className="flex items-center gap-2">
-                                                    {entry.is_today && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>}
-                                                    <p className="text-[#8E939B] text-xs font-mono">{entry.date}</p>
-                                                </div>
-                                                <div className="flex items-center gap-4">
-                                                    <span className="text-[10px] text-[#8E939B] uppercase tracking-widest">By {entry.technician_name}</span>
-                                                    <span className="font-syncopate font-bold text-[#FF2A6D] text-sm hidden sm:inline-block">₹{entry.price}</span>
-                                                    {entry.booking_id && (
-                                                        <div className="flex items-center gap-2 border-l border-white/10 pl-4 ml-2">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setEditingLedgerEntry(entry);
-                                                                    setLedgerForm({
-                                                                        technician_id: entry.technician_id || '',
-                                                                        status: entry.status || 'COMPLETED'
-                                                                    });
-                                                                    setIsLedgerModalOpen(true);
-                                                                }}
-                                                                title="Edit Entry"
-                                                                className="text-[#8E939B] hover:text-blue-400 transition-colors p-1"
-                                                            >
-                                                                <Pencil className="w-4 h-4" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => deleteLedgerEntry(entry.id || entry.booking_id)}
-                                                                title="Delete Entry"
-                                                                className="text-[#8E939B] hover:text-red-500 transition-colors p-1"
-                                                            >
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => downloadInvoice(entry.booking_id)}
-                                                                title="Download PDF Receipt"
-                                                                className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-1"
-                                                            >
-                                                                <Download className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                  )
-                )}
+                {activeTab === 'crm' && <CrmTab />}
 
                 {/* ---------------------------------------------------- */}
                 {/* VIEW E: 🔒 END OF DAY SETTLEMENT TAB      */}
@@ -1476,117 +1276,6 @@ function AdminDashboardContent() {
                                         ))}
                                     </tbody>
                                 </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* === FLEET & SERVICE VEHICLES TAB === */}
-                {activeTab === 'fleet' && (
-                    <div className="space-y-8 animate-[fadeIn_0.3s_ease-out]">
-                        <div className="flex justify-between items-center">
-                            <div>
-                                <h2 className="font-syncopate font-bold text-xl tracking-widest">FLEET & SERVICE VEHICLES<span className="text-amber-400">.</span></h2>
-                                <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] font-bold mt-1">Operational Support Vehicles & Log Audit</p>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-[#141518]/60 border border-amber-500/20 p-6 rounded-3xl">
-                                <p className="text-amber-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2"><Car className="w-4 h-4" /> Active Fleet Vehicles</p>
-                                <h3 className="text-3xl font-syncopate font-bold text-white">3 Units</h3>
-                            </div>
-                            <div className="bg-[#141518]/60 border border-white/5 p-6 rounded-3xl">
-                                <p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Assigned Technicians</p>
-                                <h3 className="text-3xl font-syncopate font-bold text-white">3 Active</h3>
-                            </div>
-                            <div className="bg-[#141518]/60 border border-emerald-500/20 p-6 rounded-3xl">
-                                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Fleet Status</p>
-                                <h3 className="text-3xl font-syncopate font-bold text-emerald-400">Operational</h3>
-                            </div>
-                        </div>
-                        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
-                            <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF] mb-4">SERVICE VEHICLE DIRECTORY</h4>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
-                                        <tr><th className="p-4 pl-6">Vehicle Model</th><th className="p-4">Plate Number</th><th className="p-4">Odometer</th><th className="p-4">Assigned Tech</th><th className="p-4 text-right pr-6">Status</th></tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/5 text-xs font-mono">
-                                        <tr className="hover:bg-white/5">
-                                            <td className="p-4 pl-6 font-bold text-white">Ford Transit Mobile Spa 01</td>
-                                            <td className="p-4 text-amber-400">KL-07-CC-1001</td>
-                                            <td className="p-4 text-gray-300">42,500 km</td>
-                                            <td className="p-4 text-white">Rahul K.</td>
-                                            <td className="p-4 text-right pr-6 text-emerald-400 font-bold">READY</td>
-                                        </tr>
-                                        <tr className="hover:bg-white/5">
-                                            <td className="p-4 pl-6 font-bold text-white">Tata Ace Service Van 02</td>
-                                            <td className="p-4 text-amber-400">KL-07-CC-1002</td>
-                                            <td className="p-4 text-gray-300">28,100 km</td>
-                                            <td className="p-4 text-white">Sujith M.</td>
-                                            <td className="p-4 text-right pr-6 text-emerald-400 font-bold">ON JOB</td>
-                                        </tr>
-                                        <tr className="hover:bg-white/5">
-                                            <td className="p-4 pl-6 font-bold text-white">Mahindra Supro Mobile Unit 03</td>
-                                            <td className="p-4 text-amber-400">KL-07-CC-1003</td>
-                                            <td className="p-4 text-gray-300">15,800 km</td>
-                                            <td className="p-4 text-white">Anil P.</td>
-                                            <td className="p-4 text-right pr-6 text-emerald-400 font-bold">READY</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* === SYSTEM SETTINGS TAB === */}
-                {activeTab === 'settings' && (
-                    <div className="space-y-8 animate-[fadeIn_0.3s_ease-out]">
-                        <div className="flex justify-between items-center">
-                            <div>
-                                <h2 className="font-syncopate font-bold text-xl tracking-widest">SYSTEM SETTINGS<span className="text-[#01FFFF]">.</span></h2>
-                                <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] font-bold mt-1">Portal Configuration & System Security</p>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
-                                <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF] mb-6 flex items-center gap-2"><Settings className="w-4 h-4" /> Shop Profile & Operations</h4>
-                                <div className="space-y-4 text-xs font-mono">
-                                    <div className="flex justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                                        <span className="text-[#8E939B]">Shop Name</span>
-                                        <span className="text-white font-bold">Kallayi Auto Detailing & Car Spa</span>
-                                    </div>
-                                    <div className="flex justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                                        <span className="text-[#8E939B]">Location</span>
-                                        <span className="text-white font-bold">Calicut / Kozhikode, Kerala</span>
-                                    </div>
-                                    <div className="flex justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                                        <span className="text-[#8E939B]">Operating Hours</span>
-                                        <span className="text-white font-bold">08:00 AM – 08:00 PM (Mon-Sat)</span>
-                                    </div>
-                                    <div className="flex justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                                        <span className="text-[#8E939B]">Currency</span>
-                                        <span className="text-emerald-400 font-bold">INR (₹)</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
-                                <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#FF2A6D] mb-6 flex items-center gap-2"><Lock className="w-4 h-4" /> Role-Based Access Control (RBAC)</h4>
-                                <div className="space-y-4 text-xs font-mono">
-                                    <div className="flex justify-between p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
-                                        <span className="text-emerald-400 font-bold">ADMIN / MANAGER</span>
-                                        <span className="text-white">Full System Access (12 Depts)</span>
-                                    </div>
-                                    <div className="flex justify-between p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-                                        <span className="text-blue-400 font-bold">WASHER / TECHNICIAN</span>
-                                        <span className="text-white">Staff Queue & SOP Inspection</span>
-                                    </div>
-                                    <div className="flex justify-between p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl">
-                                        <span className="text-purple-400 font-bold">CUSTOMER</span>
-                                        <span className="text-white">Customer Portal & Booking Status</span>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>

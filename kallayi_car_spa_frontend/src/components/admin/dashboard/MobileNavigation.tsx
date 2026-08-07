@@ -29,11 +29,13 @@ export default function MobileNavigation() {
         <>
             {/* Top Minimalist Header for Mobile View (< lg) */}
             <div className="lg:hidden fixed top-0 w-full z-40 bg-[#0a0a0d]/90 backdrop-blur-xl border-b border-white/10 px-4 py-3 flex items-center justify-between shadow-[0_4px_25px_rgba(0,0,0,0.8)]">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-[#141518] shadow-[inset_2px_2px_4px_#020203,inset_-2px_-2px_4px_#14151a] border border-white/5 flex items-center justify-center">
-                        <Sparkles className="w-4 h-4 text-[#01FFFF]" />
-                    </div>
-                    <h2 className="text-lg font-syncopate font-bold tracking-widest text-white">
+                <div className="flex items-center gap-3">
+                    <img 
+                        src="/images/logo/carspa%20logo.png" 
+                        alt="Kallayi Car Spa Logo" 
+                        className="h-8 w-auto rounded-lg object-contain border border-white/10 bg-white/90 p-0.5 shadow-sm"
+                    />
+                    <h2 className="text-base font-syncopate font-bold tracking-widest text-white">
                         KALLAYI<span className="text-[#E52323]">.</span>
                     </h2>
                 </div>
@@ -117,7 +119,7 @@ function BottomNavTab({
             className={`min-h-[48px] min-w-[64px] px-3 py-1.5 rounded-2xl flex flex-col items-center justify-center transition-all active:scale-95 touch-manipulation ${
                 isActive
                     ? 'text-[#01FFFF] bg-[#01FFFF]/10 shadow-[0_0_12px_rgba(1,255,255,0.25)] font-bold border border-[#01FFFF]/30'
-                    : 'text-neutral-400 hover:text-white'
+                    : 'text-neutral-400 active:text-white'
             }`}
         >
             <div className={accentColor || (isActive ? 'text-[#01FFFF]' : 'text-neutral-400')}>{icon}</div>

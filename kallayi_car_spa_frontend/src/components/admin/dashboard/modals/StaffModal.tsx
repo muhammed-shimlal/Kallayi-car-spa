@@ -15,7 +15,6 @@ const staffSchema = z.object({
         .string()
         .min(10, 'Phone number must be at least 10 digits')
         .regex(/^\+?[0-9\s\-()]{10,15}$/, 'Enter a valid phone number'),
-    password: z.string().optional(),
     role: z.enum(['WASHER', 'TECHNICIAN', 'MANAGER', 'DRIVER'], {
         message: 'Please select a role',
     }),
@@ -76,7 +75,6 @@ export default function StaffModal() {
         defaultValues: {
             first_name: '',
             phone_number: '',
-            password: '',
             role: 'WASHER',
             salary_type: 'DAILY',
             salary_amount: '',
@@ -88,9 +86,8 @@ export default function StaffModal() {
     useEffect(() => {
         if (editingStaff) {
             reset({
-                first_name: editingStaff.first_name ?? '',
-                phone_number: editingStaff.phone_number ?? '',
-                password: '',
+                first_name: editingStaff.first_name || editingStaff.name || '',
+                phone_number: editingStaff.phone_number || editingStaff.phone || '',
                 role: (editingStaff.role as StaffFormValues['role']) ?? 'WASHER',
                 salary_type: (editingStaff.salary_type as StaffFormValues['salary_type']) ?? 'DAILY',
                 salary_amount: String(editingStaff.salary_amount ?? editingStaff.base_salary ?? ''),
@@ -100,7 +97,6 @@ export default function StaffModal() {
             reset({
                 first_name: '',
                 phone_number: '',
-                password: '',
                 role: 'WASHER',
                 salary_type: 'DAILY',
                 salary_amount: '',
@@ -132,22 +128,6 @@ export default function StaffModal() {
                         <PlusCircle className="w-6 h-6 rotate-45" />
                     </button>
                 </div>
-
-                {/* Initial Access Code */}
-                {!editingStaff && (
-                    <div className="mb-6">
-                        <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">
-                            Initial Access Code (Password)
-                        </label>
-                        <input
-                            type="text"
-                            {...register('password')}
-                            className={inputClass(!!errors.password)}
-                            placeholder="e.g. Kallayi123!"
-                        />
-                        <FieldError message={errors.password?.message} />
-                    </div>
-                )}
 
                 <form onSubmit={handleSubmit(onSubmit)} noValidate>
                     <div className="space-y-4 mb-8">

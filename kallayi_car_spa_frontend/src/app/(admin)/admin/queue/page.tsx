@@ -1,32 +1,34 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { 
     Activity, Car, Clock, RefreshCw, 
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
     AlertCircle, User, Wifi, WifiOff, LayoutDashboard,
-    Pencil, Trash2, X
+    Pencil, Trash2, X, LayoutGrid, Kanban, Filter, BookOpen, Phone, Search, Calendar
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
 import { StaffMember, ServicePackage } from '@/types/admin';
 import { Skeleton } from '@/components/ui/Skeleton';
-
 import api, { getApiBaseUrl } from '@/lib/api';
 
 const getApiBase = () => getApiBaseUrl();
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface BookingCard {
+interface BookingCardData {
     id: number;
     status: string;
     plate_number: string;
+    vehicle_make?: string;
     vehicle_model: string;
     service_name: string;
+    service_details?: string;
     customer_name: string;
+    customer_phone?: string;
     customer_id: number | null;
     price: number;
     technician_name: string | null;
@@ -50,7 +52,7 @@ const COLUMNS: Column[] = [
     {
         id: 'WAITING',
         title: 'Waiting Pool',
-        icon: <Clock className="w-5 h-5" />,
+        icon: <Clock className="w-4 h-4" />,
         accent: 'text-yellow-400',
         glow: 'shadow-[0_0_20px_rgba(234,179,8,0.1)]',
         borderColor: 'border-yellow-500/30',
@@ -59,7 +61,7 @@ const COLUMNS: Column[] = [
     {
         id: 'IN_BAY_1',
         title: 'Washing Bay 1',
-        icon: <Droplets className="w-5 h-5" />,
+        icon: <Droplets className="w-4 h-4" />,
         accent: 'text-[#01FFFF]',
         glow: 'shadow-[0_0_20px_rgba(1,255,255,0.1)]',
         borderColor: 'border-[#01FFFF]/30',
@@ -68,7 +70,7 @@ const COLUMNS: Column[] = [
     {
         id: 'IN_BAY_2',
         title: 'Washing Bay 2',
-        icon: <Droplets className="w-5 h-5" />,
+        icon: <Droplets className="w-4 h-4" />,
         accent: 'text-blue-400',
         glow: 'shadow-[0_0_20px_rgba(96,165,250,0.1)]',
         borderColor: 'border-blue-400/30',
@@ -77,7 +79,7 @@ const COLUMNS: Column[] = [
     {
         id: 'READY',
         title: 'Ready for Pickup',
-        icon: <CheckCircle className="w-5 h-5" />,
+        icon: <CheckCircle className="w-4 h-4" />,
         accent: 'text-emerald-400',
         glow: 'shadow-[0_0_20px_rgba(52,211,153,0.1)]',
         borderColor: 'border-emerald-400/30',
@@ -115,130 +117,223 @@ function ElapsedTimer({ since }: { since: string | null }) {
     );
 }
 
-// ─── Booking Card ─────────────────────────────────────────────────────────────
+// ─── Touch-Optimized Queue Card Component ─────────────────────────────────────
 
-function BookingCard({ 
-    card, index, col, onCheckout, staffMembers, onAssignStaff, onCancel, onEditService 
-}: { 
-    card: BookingCard; index: number; col: Column; 
-    onCheckout?: (bookingId: number) => void; 
-    staffMembers?: StaffMember[]; 
-    onAssignStaff?: (bookingId: number, staffId: number) => void; 
-    onCancel?: (bookingId: number) => void;
-    onEditService?: (bookingId: number) => void;
+function QueueCard({
+    card,
+    col,
+    onCheckout,
+    staffMembers,
+    onAssignStaff,
+    onCancel,
+    onEditService,
+    onMoveStage,
+    isDragging = false,
+    dragProps = {}
+}: {
+    card: BookingCardData;
+    col: Column;
+    onCheckout?: (id: number) => void;
+    staffMembers?: StaffMember[];
+    onAssignStaff?: (bookingId: number, staffId: number) => void;
+    onCancel?: (id: number) => void;
+    onEditService?: (id: number) => void;
+    onMoveStage?: (id: number, targetColId: string) => void;
+    isDragging?: boolean;
+    dragProps?: any;
 }) {
     return (
-        <Draggable draggableId={`card-${card.id}`} index={index}>
-            {(provided, snapshot) => (
-                <div
-                    ref={provided.innerRef}
-                    {...provided.draggableProps}
-                    {...provided.dragHandleProps}
-                    className={`
-                        bg-[#141518] border rounded-2xl p-4 select-none cursor-grab active:cursor-grabbing
-                        transition-all duration-200
-                        ${snapshot.isDragging
-                            ? `${col.borderColor} ${col.glow} scale-105 rotate-1 opacity-95`
-                            : 'border-white/8 hover:border-white/20 hover:bg-white/5'}
-                    `}
-                >
-                    <div className="flex items-center justify-between mb-3">
-                        <div className={`font-syncopate font-black text-3xl tracking-[0.15em] ${col.accent}`}>
-                            {card.plate_number}
-                        </div>
-                        <div className="flex items-center gap-1">
-                            {onEditService && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onEditService(card.id); }}
-                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#8E939B] hover:text-blue-400 transition-colors"
-                                    title="Change Service"
-                                >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                </button>
-                            )}
-                            {onCancel && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onCancel(card.id); }}
-                                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#8E939B] hover:text-red-500 transition-colors"
-                                    title="Cancel Wash"
-                                >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                            )}
-                        </div>
+        <div
+            {...dragProps}
+            className={`
+                bg-[#141518] border rounded-2xl p-4 sm:p-5 select-none transition-all duration-200 shadow-lg relative group
+                ${isDragging
+                    ? `${col.borderColor} ${col.glow} scale-105 rotate-1 opacity-95 z-50`
+                    : 'border-white/10 hover:border-white/20 bg-[#141518]/90 hover:bg-[#181a1f]'}
+            `}
+        >
+            {/* Top Bar: Plate Number & Status Badge */}
+            <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                    <div className={`font-syncopate font-black text-2xl sm:text-3xl tracking-[0.15em] ${col.accent} drop-shadow-sm`}>
+                        {card.plate_number}
                     </div>
-
-                    {/* Customer name — admin-specific extra info */}
-                    <div className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-2 font-bold">{card.customer_name}</div>
-
-                    <div className="flex items-center gap-2 mb-2">
-                        <Car className="w-3.5 h-3.5 text-[#8E939B] flex-shrink-0" />
-                        <span className="text-white text-sm font-bold truncate">{card.vehicle_model}</span>
+                    <div className="text-[10px] text-[#8E939B] uppercase tracking-widest font-bold mt-0.5 flex items-center gap-1.5">
+                        <User className="w-3 h-3 text-[#8E939B]" /> {card.customer_name || 'Walk-In Customer'}
+                        {card.customer_phone && <span className="text-white/60 font-mono">({card.customer_phone})</span>}
                     </div>
-                    <div className="flex items-center gap-2 mb-3">
-                        <Sparkles className="w-3.5 h-3.5 text-[#8E939B] flex-shrink-0" />
-                        <span className="text-[#8E939B] text-xs truncate">{card.service_name}</span>
-                    </div>
+                </div>
 
-                    <div className="flex items-center justify-between pt-3 border-t border-white/5">
-                        <div className="flex items-center gap-1.5">
-                            <div className="relative inline-flex items-center">
-                                <User className="w-3 h-3 absolute left-2 pointer-events-none text-purple-400" />
-                                <select 
-                                    className={`appearance-none border pl-6 pr-6 py-0.5 rounded-full text-[10px] font-bold cursor-pointer focus:outline-none focus:ring-1 
-                                        ${card.technician_id
-                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 focus:ring-emerald-400/50' 
-                                            : 'bg-purple-500/10 text-purple-400 border-purple-500/30 focus:ring-purple-400/50'}`}
-                                    onClick={(e) => e.stopPropagation()}
-                                    value={card.technician_id || ""} 
-                                    onChange={(e) => {
-                                        if (onAssignStaff && e.target.value) {
-                                            const staffId = parseInt(e.target.value);
-                                            if (!isNaN(staffId)) onAssignStaff(card.id, staffId);
-                                        }
-                                    }}
-                                >
-                                    <option value="" disabled className="bg-[#141518] text-[#8E939B]">
-                                        {card.technician_name ? `Assigned: ${card.technician_name}` : "Assign Worker"}
-                                    </option>
-                                    
-                                    {staffMembers?.map(s => (
-                                        <option key={s.id} value={s.user_id || s.id} className="bg-[#141518] text-white">
-                                            {s.first_name || s.username} ({s.role})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                        <ElapsedTimer since={card.time_slot || card.created_at} />
-                    </div>
+                <div className="flex flex-col items-end gap-1.5">
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${col.borderColor} ${col.headerBg} ${col.accent} shadow-sm flex items-center gap-1.5`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${col.id === 'IN_BAY_1' || col.id === 'IN_BAY_2' ? 'bg-[#01FFFF] animate-ping' : col.accent.replace('text-', 'bg-')}`} />
+                        {col.title}
+                    </span>
+                    {card.time_slot ? (
+                        <span className="text-[10px] font-mono text-[#01FFFF] font-bold bg-[#01FFFF]/10 px-2 py-0.5 rounded border border-[#01FFFF]/20">
+                            {new Date(card.time_slot).toLocaleDateString([], { month: 'short', day: 'numeric' })} @ {new Date(card.time_slot).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                    ) : (
+                        <ElapsedTimer since={card.created_at} />
+                    )}
+                </div>
+            </div>
 
-                    {col.id === 'READY' && onCheckout && (
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); onCheckout(card.id); }}
-                            className="w-full mt-4 bg-emerald-500 hover:bg-emerald-400 text-black font-syncopate font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-xs shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+            {/* Main Content Info Box: Vehicle Model & Service Package */}
+            <div className="bg-[#0c0d0f] rounded-xl p-3.5 mb-3 border border-white/5 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <Car className="w-4 h-4 text-white/80 flex-shrink-0" />
+                        <span className="text-white text-sm font-bold truncate">{card.vehicle_model || 'Standard Vehicle'}</span>
+                    </div>
+                    {onEditService && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onEditService(card.id); }}
+                            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#8E939B] hover:text-[#01FFFF] transition-colors active:scale-95 touch-manipulation min-h-[36px] min-w-[36px] flex items-center justify-center"
+                            title="Edit Service Package"
                         >
-                            <CheckCircle className="w-4 h-4" />
-                            COMPLETE & CHECKOUT
+                            <Pencil className="w-3.5 h-3.5" />
                         </button>
                     )}
                 </div>
-            )}
-        </Draggable>
+
+                <div className="flex items-center justify-between text-xs pt-2 border-t border-white/5">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <Sparkles className="w-3.5 h-3.5 text-[#01FFFF] flex-shrink-0" />
+                        <span className="text-[#01FFFF] font-semibold truncate">{card.service_name}</span>
+                    </div>
+                    <span className="font-mono text-white/90 font-bold">₹{card.price}</span>
+                </div>
+            </div>
+
+            {/* Controls: Technician Selector & Quick Stage Switcher */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+                {/* Staff Select */}
+                <div className="relative flex items-center">
+                    <User className="w-3.5 h-3.5 absolute left-3 pointer-events-none text-purple-400 z-10" />
+                    <select
+                        className={`w-full appearance-none border pl-8 pr-7 py-2 rounded-xl text-xs font-bold cursor-pointer focus:outline-none focus:ring-1 min-h-[40px] touch-manipulation ${
+                            card.technician_id
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                        }`}
+                        onClick={(e) => e.stopPropagation()}
+                        value={card.technician_id || ""}
+                        onChange={(e) => {
+                            if (onAssignStaff && e.target.value) {
+                                const staffId = parseInt(e.target.value);
+                                if (!isNaN(staffId)) onAssignStaff(card.id, staffId);
+                            }
+                        }}
+                    >
+                        <option value="" disabled className="bg-[#141518] text-[#8E939B]">
+                            {card.technician_name ? `Tech: ${card.technician_name}` : "Assign Tech..."}
+                        </option>
+                        {staffMembers?.map(s => (
+                            <option key={s.id} value={s.user_id || s.id} className="bg-[#141518] text-white">
+                                {s.first_name || s.username} ({s.role})
+                            </option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Quick Stage Move Dropdown */}
+                <div className="relative flex items-center">
+                    <Activity className="w-3.5 h-3.5 absolute left-3 pointer-events-none text-[#01FFFF] z-10" />
+                    <select
+                        className="w-full appearance-none border border-white/10 bg-white/5 text-white pl-8 pr-7 py-2 rounded-xl text-xs font-bold cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#01FFFF]/50 min-h-[40px] touch-manipulation"
+                        onClick={(e) => e.stopPropagation()}
+                        value={col.id}
+                        onChange={(e) => {
+                            if (onMoveStage && e.target.value) {
+                                onMoveStage(card.id, e.target.value);
+                            }
+                        }}
+                    >
+                        <option value="" disabled className="bg-[#141518] text-[#8E939B]">Move Stage...</option>
+                        {COLUMNS.map(c => (
+                            <option key={c.id} value={c.id} className="bg-[#141518] text-white">
+                                {c.id === col.id ? `✓ ${c.title}` : `Move to ${c.title}`}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
+            {/* Action Bar */}
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5">
+                {col.id === 'READY' && onCheckout ? (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onCheckout(card.id); }}
+                        className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black font-syncopate font-bold py-2.5 rounded-xl transition-all active:scale-95 touch-manipulation flex items-center justify-center gap-2 text-xs shadow-[0_0_15px_rgba(16,185,129,0.3)] min-h-[44px]"
+                    >
+                        <CheckCircle className="w-4 h-4" />
+                        COMPLETE &amp; CHECKOUT
+                    </button>
+                ) : (
+                    <div className="flex items-center gap-2 w-full justify-between">
+                        {/* Stage Quick Move Chips */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            {col.id !== 'IN_BAY_1' && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onMoveStage && onMoveStage(card.id, 'IN_BAY_1'); }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-[#01FFFF]/10 border border-[#01FFFF]/30 text-[#01FFFF] hover:bg-[#01FFFF]/20 text-[10px] font-bold uppercase transition-all active:scale-95 touch-manipulation min-h-[36px]"
+                                >
+                                    Bay 1
+                                </button>
+                            )}
+                            {col.id !== 'IN_BAY_2' && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onMoveStage && onMoveStage(card.id, 'IN_BAY_2'); }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 text-[10px] font-bold uppercase transition-all active:scale-95 touch-manipulation min-h-[36px]"
+                                >
+                                    Bay 2
+                                </button>
+                            )}
+                            {col.id !== 'READY' && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onMoveStage && onMoveStage(card.id, 'READY'); }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-[10px] font-bold uppercase transition-all active:scale-95 touch-manipulation min-h-[36px]"
+                                >
+                                    Ready
+                                </button>
+                            )}
+                        </div>
+
+                        {onCancel && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onCancel(card.id); }}
+                                className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-[#8E939B] hover:text-red-400 transition-colors active:scale-95 touch-manipulation min-h-[36px] min-w-[36px] flex items-center justify-center"
+                                title="Cancel Wash"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Queue Component ────────────────────────────────────────────────────
 
 export default function AdminQueueBoard() {
     const router = useRouter();
-    const [columns, setColumns] = useState<Record<string, BookingCard[]>>({
+    const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+    const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+    const [viewFilter, setViewFilter] = useState<'date' | 'upcoming'>('date');
+    const [columns, setColumns] = useState<Record<string, BookingCardData[]>>({
         WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
     });
     const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+    const [existingCustomers, setExistingCustomers] = useState<{ id: number; name: string; phone_number: string }[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isConnected, setIsConnected] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+    const [activeMobileTab, setActiveMobileTab] = useState<string>('ALL');
+    const [viewMode, setViewMode] = useState<'cards' | 'board'>('cards');
+
     const [checkoutModal, setCheckoutModal] = useState({ 
         isOpen: false, 
         bookingId: null as number | null, 
@@ -248,8 +343,11 @@ export default function AdminQueueBoard() {
         khata: 0, 
         customerName: '',
         customerId: null as number | null,
+        phoneNumber: '',
+        vehicleModel: '',
+        plateNumber: '',
         isSplit: false,
-        method: 'CASH'
+        method: 'CASH' as 'CASH' | 'UPI' | 'KHATA'
     });
 
     const [servicePackages, setServicePackages] = useState<ServicePackage[]>([]);
@@ -257,19 +355,64 @@ export default function AdminQueueBoard() {
     const [editBookingId, setEditBookingId] = useState<number | null>(null);
     const [newPackageId, setNewPackageId] = useState('');
 
+    // Flat queueData array combining all columns
+    const queueData = useMemo(() => {
+        return Object.values(columns).flat();
+    }, [columns]);
+
+    const totalActive = queueData.length;
+
+    // Smart Customer Lookup & Linking
+    const matchedCustomer = useMemo(() => {
+        if (!checkoutModal.isOpen) return null;
+
+        // 1. If explicit customerId set
+        if (checkoutModal.customerId) {
+            const found = existingCustomers.find(c => c.id === checkoutModal.customerId);
+            if (found) return found;
+        }
+
+        // 2. If phone number entered/auto-filled
+        const cleanPhone = (checkoutModal.phoneNumber || '').replace(/\D/g, '');
+        if (cleanPhone.length >= 7) {
+            const found = existingCustomers.find(c => {
+                const cClean = (c.phone_number || '').replace(/\D/g, '');
+                return cClean && (cClean.endsWith(cleanPhone) || cleanPhone.endsWith(cClean));
+            });
+            if (found) return found;
+        }
+
+        return null;
+    }, [checkoutModal.isOpen, checkoutModal.customerId, checkoutModal.phoneNumber, existingCustomers]);
+
+    // Auto-set customerId when matched
+    useEffect(() => {
+        if (matchedCustomer && checkoutModal.customerId !== matchedCustomer.id) {
+            setCheckoutModal(prev => ({
+                ...prev,
+                customerId: matchedCustomer.id,
+                customerName: prev.customerName || matchedCustomer.name,
+                phoneNumber: prev.phoneNumber || matchedCustomer.phone_number
+            }));
+        }
+    }, [matchedCustomer, checkoutModal.customerId]);
+
     const fetchQueue = useCallback(async (silent = false) => {
         const token = localStorage.getItem('auth_token');
         if (!token) return router.push('/login');
         if (!silent) setIsLoading(true);
 
         try {
-            const res = await fetch(`${getApiBase()}/bookings/live-queue/`, {
+            const endpoint = viewFilter === 'upcoming' 
+                ? `${getApiBase()}/bookings/live-queue/?type=upcoming`
+                : `${getApiBase()}/bookings/live-queue/?date=${selectedDate}`;
+            const res = await fetch(endpoint, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             if (!res.ok) throw new Error('API error');
 
-            const data: BookingCard[] = await res.json();
-            const newCols: Record<string, BookingCard[]> = { WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [] };
+            const data: BookingCardData[] = await res.json();
+            const newCols: Record<string, BookingCardData[]> = { WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [] };
             data.forEach(card => {
                 let targetCol = card.status;
                 if (card.status === 'IN_PROGRESS') {
@@ -291,15 +434,12 @@ export default function AdminQueueBoard() {
                     });
                     if (staffRes.ok) {
                         const staffData = await staffRes.json();
-                        console.log('Fetched Staff:', staffData);
                         const list = Array.isArray(staffData) ? staffData : (staffData.results || []);
                         const activeList = list.filter((s: any) => s.is_active !== false);
                         const assignable = activeList.filter((s: StaffMember) => 
                             ['WASHER', 'TECHNICIAN', 'DRIVER', 'MANAGER', 'ADMIN'].includes((s.role || '').toUpperCase())
                         );
                         setStaffMembers(assignable.length > 0 ? assignable : activeList);
-                    } else {
-                        console.error('[fetchQueue] Failed to fetch staff directory:', staffRes.status);
                     }
                 } catch (e) { console.error('[fetchQueue] Staff fetch error:', e); }
 
@@ -319,13 +459,84 @@ export default function AdminQueueBoard() {
         } finally {
             setIsLoading(false);
         }
-    }, [router]);
+    }, [router, selectedDate, viewFilter]);
 
     useEffect(() => {
         fetchQueue();
         const interval = setInterval(() => fetchQueue(true), 30000);
         return () => clearInterval(interval);
     }, [fetchQueue]);
+
+    // Fetch existing customer profiles when checkout modal opens
+    useEffect(() => {
+        if (checkoutModal.isOpen) {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                fetch(`${getApiBase()}/customers/`, {
+                    headers: { 'Authorization': `Token ${token}` }
+                })
+                .then(res => res.ok ? res.json() : [])
+                .then(data => {
+                    const list = Array.isArray(data) ? data : (data.results || []);
+                    const mapped = list.map((c: any) => ({
+                        id: c.id,
+                        name: `${c.user?.first_name || c.user?.username || 'Customer'}`.trim(),
+                        phone_number: c.phone_number || ''
+                    }));
+                    setExistingCustomers(mapped);
+                })
+                .catch(() => {});
+            }
+        }
+    }, [checkoutModal.isOpen]);
+
+    const handleMoveStage = async (bookingId: number, targetColId: string) => {
+        let currentColId = '';
+        let targetCard: BookingCardData | null = null;
+        for (const [colId, cardList] of Object.entries(columns)) {
+            const found = cardList.find(c => c.id === bookingId);
+            if (found) {
+                currentColId = colId;
+                targetCard = found;
+                break;
+            }
+        }
+        if (!targetCard || currentColId === targetColId) return;
+
+        setColumns(prev => {
+            const newCols = { ...prev };
+            const sourceCards = [...(newCols[currentColId] || [])];
+            const destCards = [...(newCols[targetColId] || [])];
+            const index = sourceCards.findIndex(c => c.id === bookingId);
+            if (index > -1) {
+                const [moved] = sourceCards.splice(index, 1);
+                const updated = { ...moved, status: targetColId };
+                destCards.push(updated);
+                newCols[currentColId] = sourceCards;
+                newCols[targetColId] = destCards;
+            }
+            return newCols;
+        });
+
+        const token = localStorage.getItem('auth_token');
+        try {
+            const res = await fetch(`${getApiBase()}/bookings/update-stage/${bookingId}/`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    new_status: targetColId.startsWith('IN_BAY') ? 'IN_PROGRESS' : targetColId,
+                    bay_assignment: targetColId.startsWith('IN_BAY') ? targetColId.replace('IN_BAY_', 'Bay ') : null,
+                }),
+            });
+            if (!res.ok) throw new Error('API failed');
+            const destCol = COLUMNS.find(c => c.id === targetColId);
+            toast.success(`Vehicle moved to ${destCol?.title || targetColId}`);
+            fetchQueue(true);
+        } catch {
+            toast.error("Failed to move vehicle stage.");
+            fetchQueue(true);
+        }
+    };
 
     const handleCancelBooking = async (id: number) => {
         if (!window.confirm("Are you sure you want to cancel this wash?")) return;
@@ -376,7 +587,6 @@ export default function AdminQueueBoard() {
         const token = localStorage.getItem('auth_token');
         const baseUrl = getApiBase();
         try {
-            console.log(`[assignStaff] Sending assignment: bookingId=${bookingId}, staffId=${staffId} to ${baseUrl}`);
             const res = await fetch(`${baseUrl}/bookings/update-stage/${bookingId}/`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
@@ -387,30 +597,38 @@ export default function AdminQueueBoard() {
                 }),
             });
             if (!res.ok) {
-                const errBody = await res.json().catch(() => ({}));
-                console.error('[assignStaff] API error:', res.status, errBody);
-                toast.error(`Failed to assign. (${res.status}: ${errBody.error || errBody.detail || 'See console'})`);
+                toast.error(`Failed to assign technician.`);
                 return;
             }
             toast.success('Worker assigned successfully!');
             fetchQueue(true);
-        } catch (e) {
-            console.error('[assignStaff] Network error:', e);
-            toast.error('Failed to assign worker. Check network connection.');
+        } catch {
+            toast.error('Failed to assign worker.');
         }
     };
 
-    const handleCheckout = (bookingId: number) => {
-        let foundCard = null;
-        for (const col of Object.values(columns)) {
-            const match = col.find(c => c.id === bookingId);
-            if (match) {
-                foundCard = match;
-                break;
-            }
-        }
+    const handleCheckout = async (bookingId: number) => {
+        const foundCard = queueData.find(c => c.id === bookingId);
         if (!foundCard) return;
-        
+
+        let initialPhone = '';
+        let initialCustName = foundCard.customer_name || '';
+        let initialCustId = foundCard.customer_id || null;
+
+        const token = localStorage.getItem('auth_token');
+        if (foundCard.plate_number && token) {
+            try {
+                const res = await fetch(`${getApiBase()}/vehicles/lookup/?plate=${encodeURIComponent(foundCard.plate_number)}`, {
+                    headers: { 'Authorization': `Token ${token}` }
+                });
+                if (res.ok) {
+                    const lookupData = await res.json();
+                    if (lookupData.phone) initialPhone = lookupData.phone;
+                    if (lookupData.customer_name) initialCustName = lookupData.customer_name;
+                }
+            } catch { /* fallback silently */ }
+        }
+
         setCheckoutModal({ 
             isOpen: true, 
             bookingId, 
@@ -418,15 +636,25 @@ export default function AdminQueueBoard() {
             cash: foundCard.price, 
             upi: 0, 
             khata: 0, 
-            customerName: foundCard.customer_name,
-            customerId: foundCard.customer_id,
+            customerName: initialCustName,
+            customerId: initialCustId,
+            phoneNumber: initialPhone,
+            vehicleModel: foundCard.vehicle_model || '',
+            plateNumber: foundCard.plate_number || '',
             isSplit: false,
             method: 'CASH'
         });
     };
 
     const submitPayment = async () => {
-        const totalTendered = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0);
+        const totalKhata = checkoutModal.khata || (checkoutModal.method === 'KHATA' ? checkoutModal.totalAmount : 0);
+
+        if (totalKhata > 0 && !checkoutModal.customerName.trim()) {
+            toast.error("Please enter a Customer Name to log the Khata credit.");
+            return;
+        }
+
+        const totalTendered = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + totalKhata;
         let finalCashAmount = checkoutModal.cash || 0;
         if (totalTendered > checkoutModal.totalAmount) {
             const changeToGiveBack = totalTendered - checkoutModal.totalAmount;
@@ -441,26 +669,46 @@ export default function AdminQueueBoard() {
                 body: JSON.stringify({ 
                     amount_cash: finalCashAmount,
                     amount_upi: checkoutModal.upi,
-                    amount_khata: checkoutModal.khata,
-                    customer_name: checkoutModal.customerName
+                    amount_khata: totalKhata,
+                    customer_id: checkoutModal.customerId || (matchedCustomer ? matchedCustomer.id : null),
+                    customer_name: checkoutModal.customerName,
+                    phone_number: checkoutModal.phoneNumber,
+                    vehicle_model: checkoutModal.vehicleModel,
+                    plate_number: checkoutModal.plateNumber
                 }),
             });
             if (!res.ok) throw new Error('API failed');
 
             toast.dismiss();
             toast((t) => (
-                <div className="flex flex-col gap-3">
-                    <span className="font-bold text-emerald-400">Vehicle Complete & Checkout Successful!</span>
+                <div className="flex items-center justify-between gap-4 p-1">
+                    <span className="font-bold text-emerald-400 text-xs sm:text-sm">
+                        Vehicle Complete &amp; Checkout Successful!
+                    </span>
                     <button 
-                        onClick={() => { toast.dismiss(t.id); window.print(); }} 
-                        className="w-full py-2 bg-[#141518] hover:bg-white/20 border border-white/20 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 tracking-widest uppercase shadow-[0_0_15px_rgba(255,255,255,0.05)]"
+                        onClick={() => toast.dismiss(t.id)} 
+                        className="px-4 py-2 bg-[#141518] hover:bg-white/20 border border-white/20 text-white rounded-xl text-xs font-bold transition flex items-center justify-center tracking-widest uppercase active:scale-95 touch-manipulation"
                     >
-                        🖨️ Print Receipt
+                        Done
                     </button>
                 </div>
-            ), { duration: 8000 });
+            ), { duration: 5000 });
             
-            setCheckoutModal({ isOpen: false, bookingId: null, totalAmount: 0, cash: 0, upi: 0, khata: 0, customerName: '', customerId: null, isSplit: false, method: 'CASH' });
+            setCheckoutModal({ 
+                isOpen: false, 
+                bookingId: null, 
+                totalAmount: 0, 
+                cash: 0, 
+                upi: 0, 
+                khata: 0, 
+                customerName: '', 
+                customerId: null, 
+                phoneNumber: '',
+                vehicleModel: '',
+                plateNumber: '',
+                isSplit: false, 
+                method: 'CASH' 
+            });
             fetchQueue(true);
         } catch {
             toast.error('Failed to checkout vehicle.');
@@ -483,7 +731,7 @@ export default function AdminQueueBoard() {
         });
     };
 
-    const handleMethodChange = (method: string) => {
+    const handleMethodChange = (method: 'CASH' | 'UPI' | 'KHATA') => {
         setCheckoutModal(prev => ({
             ...prev,
             method,
@@ -499,82 +747,122 @@ export default function AdminQueueBoard() {
         if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
         const bookingId = parseInt(draggableId.replace('card-', ''));
-        const sourceCol = source.droppableId;
         const destCol = destination.droppableId;
-
-        // Optimistic update
-        setColumns(prev => {
-            const newCols = { ...prev };
-            const sourceCards = [...newCols[sourceCol]];
-            const destCards = sourceCol === destCol ? sourceCards : [...newCols[destCol]];
-            const [movedCard] = sourceCards.splice(source.index, 1);
-            const updatedCard = { ...movedCard, status: destCol };
-            if (sourceCol === destCol) {
-                sourceCards.splice(destination.index, 0, updatedCard);
-                newCols[sourceCol] = sourceCards;
-            } else {
-                destCards.splice(destination.index, 0, updatedCard);
-                newCols[sourceCol] = sourceCards;
-                newCols[destCol] = destCards;
-            }
-            return newCols;
-        });
-
-        // Backend sync
-        try {
-            const token = localStorage.getItem('auth_token');
-            await fetch(`http://127.0.0.1:8001/api/bookings/update-stage/${bookingId}/`, {
-                method: 'PATCH',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    new_status: destCol.startsWith('IN_BAY') ? 'IN_PROGRESS' : destCol,
-                    bay_assignment: destCol.startsWith('IN_BAY') ? destCol.replace('IN_BAY_', 'Bay ') : null,
-                }),
-            });
-        } catch {
-            fetchQueue(); // Revert on error
-        }
+        handleMoveStage(bookingId, destCol);
     };
 
-    const totalActive = Object.values(columns).flat().length;
+    // Filter cards for list view based on mobile active tab
+    const filteredCards = useMemo(() => {
+        if (activeMobileTab === 'ALL') return queueData;
+        return columns[activeMobileTab] || [];
+    }, [activeMobileTab, queueData, columns]);
 
     return (
-        <div className="min-h-screen bg-[#050505] text-white flex flex-col font-jakarta overflow-hidden">
+        <div className="min-h-screen bg-[#050505] text-white flex flex-col font-jakarta overflow-x-hidden max-w-full">
 
-            {/* ── TOP BAR ───────────────────────────────────────────────────── */}
-            <header className="flex flex-col lg:flex-row items-start lg:items-center gap-4 justify-between px-8 py-5 border-b border-white/5 bg-[#141518]/80 backdrop-blur-xl flex-shrink-0">
-                <div className="flex items-center gap-6">
-                    <button
-                        onClick={() => router.push('/admin/dashboard')}
-                        className="flex items-center gap-2 text-[#8E939B] hover:text-white transition-colors text-xs font-bold uppercase tracking-widest"
-                    >
-                        <ChevronLeft className="w-4 h-4" />
-                        <LayoutDashboard className="w-4 h-4" /> <span className="hidden sm:inline">Admin Dashboard</span>
-                    </button>
-                    <div className="w-px h-6 bg-white/10" />
-                    <div>
-                        <h1 className="font-syncopate font-black text-base sm:text-lg tracking-widest">
-                            LIVE QUEUE<span className="text-[#FF2A6D]">.</span>
-                        </h1>
-                        <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.3em]">Admin Bay Control Board</p>
+            {/* ── TOP HEADER ───────────────────────────────────────────────────── */}
+            <header className="flex flex-col lg:flex-row items-start lg:items-center gap-4 justify-between px-4 sm:px-8 py-4 sm:py-5 border-b border-white/5 bg-[#141518]/90 backdrop-blur-xl flex-shrink-0 sticky top-0 z-30">
+                <div className="flex items-center justify-between w-full lg:w-auto gap-4">
+                    <div className="flex items-center gap-3 sm:gap-6">
+                        <button
+                            onClick={() => router.push('/admin/dashboard')}
+                            className="flex items-center gap-2 text-[#8E939B] hover:text-white transition-colors text-xs font-bold uppercase tracking-widest active:scale-95 touch-manipulation min-h-[44px]"
+                        >
+                            <ChevronLeft className="w-5 h-5 text-[#01FFFF]" />
+                            <LayoutDashboard className="w-4 h-4 hidden sm:inline" />
+                            <span className="hidden sm:inline">Dashboard</span>
+                        </button>
+                        <div className="w-px h-6 bg-white/10 hidden sm:block" />
+                        <div>
+                            <h1 className="font-syncopate font-black text-base sm:text-lg tracking-widest flex items-center gap-2">
+                                LIVE QUEUE<span className="text-[#FF2A6D]">.</span>
+                            </h1>
+                            <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] font-bold">Bay Operations Board</p>
+                        </div>
+                    </div>
+
+                    {/* View Switcher toggle */}
+                    <div className="flex items-center gap-1 bg-[#0a0a0d] p-1 rounded-xl border border-white/10">
+                        <button
+                            onClick={() => setViewMode('cards')}
+                            className={`p-2 rounded-lg text-xs font-bold transition-all ${
+                                viewMode === 'cards'
+                                    ? 'bg-[#01FFFF]/20 text-[#01FFFF] border border-[#01FFFF]/30'
+                                    : 'text-[#8E939B] hover:text-white'
+                            }`}
+                            title="Cards Grid View"
+                        >
+                            <LayoutGrid className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('board')}
+                            className={`p-2 rounded-lg text-xs font-bold transition-all ${
+                                viewMode === 'board'
+                                    ? 'bg-[#01FFFF]/20 text-[#01FFFF] border border-[#01FFFF]/30'
+                                    : 'text-[#8E939B] hover:text-white'
+                            }`}
+                            title="Kanban Board View"
+                        >
+                            <Kanban className="w-4 h-4" />
+                        </button>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-full flex items-center gap-2">
-                        <Car className="w-4 h-4 text-[#01FFFF]" />
-                        <span className="font-bold text-sm">{totalActive}</span>
-                        <span className="text-[10px] text-[#8E939B] uppercase tracking-widest">Vehicles Active</span>
-                    </div>
+                <div className="flex items-center justify-between w-full lg:w-auto gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <div className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-full flex items-center gap-2">
+                            <Car className="w-4 h-4 text-[#01FFFF]" />
+                            <span className="font-bold text-sm font-mono">{totalActive}</span>
+                            <span className="text-[10px] text-[#8E939B] uppercase tracking-widest hidden sm:inline">Active</span>
+                        </div>
 
-                    <div className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-full border ${isConnected ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : 'border-red-500/30 text-red-400 bg-red-500/10'}`}>
-                        {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                        {isConnected ? 'Live' : 'Offline'}
+                        {/* View Filter Mode Selector */}
+                        <div className="flex items-center gap-1 bg-[#0a0a0d] p-1 rounded-full border border-white/10">
+                            <button
+                                onClick={() => setViewFilter('date')}
+                                className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    viewFilter === 'date'
+                                        ? 'bg-[#01FFFF]/20 text-[#01FFFF] border border-[#01FFFF]/30'
+                                        : 'text-[#8E939B] hover:text-white'
+                                }`}
+                            >
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">By Date</span>
+                            </button>
+                            <button
+                                onClick={() => setViewFilter('upcoming')}
+                                className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    viewFilter === 'upcoming'
+                                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                        : 'text-[#8E939B] hover:text-white'
+                                }`}
+                            >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                <span>Upcoming</span>
+                            </button>
+                        </div>
+
+                        {viewFilter === 'date' && (
+                            <div className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-full flex items-center gap-2 animate-[fadeIn_0.2s]">
+                                <Calendar className="w-3.5 h-3.5 text-[#01FFFF]" />
+                                <input 
+                                    type="date" 
+                                    value={selectedDate} 
+                                    onChange={(e) => setSelectedDate(e.target.value)}
+                                    className="bg-transparent text-white outline-none text-xs font-bold font-mono cursor-pointer [color-scheme:dark]"
+                                />
+                            </div>
+                        )}
+
+                        <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border ${isConnected ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' : 'border-red-500/30 text-red-400 bg-red-500/10'}`}>
+                            {isConnected ? <Wifi className="w-3 h-3 animate-pulse" /> : <WifiOff className="w-3 h-3" />}
+                            <span>{isConnected ? 'Live' : 'Offline'}</span>
+                        </div>
                     </div>
 
                     <button
                         onClick={() => fetchQueue()}
-                        className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-full text-[#8E939B] hover:text-white transition-all text-xs font-bold uppercase tracking-widest"
+                        className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 rounded-full text-[#8E939B] hover:text-white transition-all text-xs font-bold uppercase tracking-widest active:scale-95 touch-manipulation min-h-[44px]"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                         <span className="hidden sm:inline">Refresh</span>
@@ -582,40 +870,115 @@ export default function AdminQueueBoard() {
                 </div>
             </header>
 
-            {/* ── KANBAN BOARD ─────────────────────────────────────────────── */}
-            {isLoading ? (
-                <div className="flex-1 flex gap-6 p-6 overflow-x-auto overflow-y-hidden">
-                    {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="flex flex-col flex-shrink-0 w-[85vw] sm:w-80 xl:w-96 bg-[#0C0D0F] border border-white/5 rounded-3xl overflow-hidden shadow-[0_0_20px_rgba(255,255,255,0.02)]">
-                            <div className="bg-white/5 border-b border-white/5 p-5">
-                                <div className="flex items-center justify-between">
-                                    <Skeleton className="h-5 w-32" />
-                                    <Skeleton className="h-7 w-7 rounded-full" />
-                                </div>
-                            </div>
-                            <div className="flex-1 p-4 space-y-3">
-                                <Skeleton className="h-44 w-full" />
-                                <Skeleton className="h-44 w-full" />
-                                <Skeleton className="h-44 w-full opacity-50" />
-                            </div>
-                        </div>
-                    ))}
+            {/* ── MOBILE FILTER TAB BAR ───────────────────────────────────────── */}
+            <div className="w-full bg-[#0a0a0d] border-b border-white/5 px-4 py-3 sticky top-[73px] z-20 overflow-x-auto scrollbar-none shadow-md">
+                <div className="flex items-center gap-2 min-w-max">
+                    <button
+                        onClick={() => setActiveMobileTab('ALL')}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all touch-manipulation flex items-center gap-2 border ${
+                            activeMobileTab === 'ALL'
+                                ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.3)]'
+                                : 'bg-[#141518] text-[#8E939B] border-white/10 hover:text-white'
+                        }`}
+                    >
+                        <Filter className="w-3.5 h-3.5" />
+                        All ({totalActive})
+                    </button>
+
+                    {COLUMNS.map(col => {
+                        const count = (columns[col.id] || []).length;
+                        const isActive = activeMobileTab === col.id;
+                        return (
+                            <button
+                                key={col.id}
+                                onClick={() => setActiveMobileTab(col.id)}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all touch-manipulation flex items-center gap-2 border ${
+                                    isActive
+                                        ? `${col.headerBg} ${col.accent} ${col.borderColor} shadow-md`
+                                        : 'bg-[#141518] text-[#8E939B] border-white/10 hover:text-white'
+                                }`}
+                            >
+                                <span className={isActive ? col.accent : 'text-[#8E939B]'}>{col.icon}</span>
+                                {col.title} ({count})
+                            </button>
+                        );
+                    })}
                 </div>
-            ) : (
-                <DragDropContext onDragEnd={onDragEnd}>
-                    <div className="flex-1 flex gap-6 p-6 overflow-x-auto overflow-y-hidden">
-                        {COLUMNS.map(col => {
-                            const cards = columns[col.id] || [];
-                            return (
-                                <div
-                                    key={col.id}
-                                    className={`flex flex-col flex-shrink-0 w-[85vw] sm:w-80 xl:w-96 bg-[#0C0D0F] border ${col.borderColor} rounded-3xl overflow-hidden ${col.glow}`}
-                                >
-                                    <div className={`${col.headerBg} border-b ${col.borderColor} p-5 flex-shrink-0`}>
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
+            </div>
+
+            {/* ── MAIN QUEUE CONTENT ────────────────────────────────────────────── */}
+            <main className="flex-1 p-4 sm:p-6 max-w-full overflow-x-hidden max-lg:pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+                {isLoading ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                            <div key={i} className="bg-[#141518] border border-white/5 rounded-2xl p-5 space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <Skeleton className="h-7 w-36" />
+                                    <Skeleton className="h-6 w-20 rounded-full" />
+                                </div>
+                                <Skeleton className="h-20 w-full rounded-xl" />
+                                <Skeleton className="h-10 w-full rounded-xl" />
+                            </div>
+                        ))}
+                    </div>
+                ) : viewMode === 'cards' || (typeof window !== 'undefined' && window.innerWidth < 1024) ? (
+                    /* ── STACKED CARD GRID VIEW (MOBILE FIRST) ────────────────── */
+                    <div className="space-y-4">
+                        {filteredCards.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-16 text-center bg-[#141518]/50 border border-white/5 rounded-3xl p-8">
+                                <AlertCircle className="w-12 h-12 text-[#8E939B] mb-3 opacity-40" />
+                                <h3 className="font-syncopate font-bold text-base text-white tracking-widest">
+                                    NO VEHICLES IN QUEUE
+                                </h3>
+                                <p className="text-xs text-[#8E939B] mt-1 max-w-xs">
+                                    {activeMobileTab === 'ALL'
+                                        ? 'There are currently no active wash bookings.'
+                                        : `No vehicles in ${COLUMNS.find(c => c.id === activeMobileTab)?.title}.`}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                                {filteredCards.map((card) => {
+                                    let colKey = card.status;
+                                    if (card.status === 'IN_PROGRESS') {
+                                        if (card.bay_assignment === 'Bay 1') colKey = 'IN_BAY_1';
+                                        else if (card.bay_assignment === 'Bay 2') colKey = 'IN_BAY_2';
+                                        else colKey = 'IN_BAY_1';
+                                    }
+                                    const col = COLUMNS.find(c => c.id === colKey) || COLUMNS[0];
+
+                                    return (
+                                        <QueueCard
+                                            key={card.id}
+                                            card={card}
+                                            col={col}
+                                            onCheckout={handleCheckout}
+                                            staffMembers={staffMembers}
+                                            onAssignStaff={handleAssignStaff}
+                                            onCancel={handleCancelBooking}
+                                            onEditService={openEditServiceModal}
+                                            onMoveStage={handleMoveStage}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    /* ── KANBAN BOARD VIEW (DESKTOP) ────────────────────────── */
+                    <DragDropContext onDragEnd={onDragEnd}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
+                            {COLUMNS.map(col => {
+                                const cards = columns[col.id] || [];
+                                return (
+                                    <div
+                                        key={col.id}
+                                        className={`flex flex-col bg-[#0C0D0F] border ${col.borderColor} rounded-3xl overflow-hidden ${col.glow} min-h-[500px]`}
+                                    >
+                                        <div className={`${col.headerBg} border-b ${col.borderColor} p-4 sm:p-5 flex items-center justify-between`}>
+                                            <div className="flex items-center gap-2.5">
                                                 <span className={col.accent}>{col.icon}</span>
-                                                <span className={`font-syncopate font-bold text-sm tracking-widest uppercase ${col.accent}`}>
+                                                <span className={`font-syncopate font-bold text-xs sm:text-sm tracking-widest uppercase ${col.accent}`}>
                                                     {col.title}
                                                 </span>
                                             </div>
@@ -623,54 +986,59 @@ export default function AdminQueueBoard() {
                                                 {cards.length}
                                             </span>
                                         </div>
+
+                                        <Droppable droppableId={col.id}>
+                                            {(provided, snapshot) => (
+                                                <div
+                                                    ref={provided.innerRef}
+                                                    {...provided.droppableProps}
+                                                    className={`flex-1 p-4 space-y-4 overflow-y-auto transition-colors duration-200 ${snapshot.isDraggingOver ? col.headerBg : ''}`}
+                                                >
+                                                    {cards.length === 0 && !snapshot.isDraggingOver && (
+                                                        <div className="flex flex-col items-center justify-center h-40 text-center opacity-30">
+                                                            <AlertCircle className="w-8 h-8 mb-2 text-[#8E939B]" />
+                                                            <p className="text-[10px] text-[#8E939B] uppercase tracking-widest font-bold">Empty Bay</p>
+                                                        </div>
+                                                    )}
+                                                    {cards.map((card, index) => (
+                                                        <Draggable key={card.id} draggableId={`card-${card.id}`} index={index}>
+                                                            {(dragProvided, dragSnapshot) => (
+                                                                <QueueCard
+                                                                    card={card}
+                                                                    col={col}
+                                                                    onCheckout={handleCheckout}
+                                                                    staffMembers={staffMembers}
+                                                                    onAssignStaff={handleAssignStaff}
+                                                                    onCancel={handleCancelBooking}
+                                                                    onEditService={openEditServiceModal}
+                                                                    onMoveStage={handleMoveStage}
+                                                                    isDragging={dragSnapshot.isDragging}
+                                                                    dragProps={{
+                                                                        ref: dragProvided.innerRef,
+                                                                        ...dragProvided.draggableProps,
+                                                                        ...dragProvided.dragHandleProps
+                                                                    }}
+                                                                />
+                                                            )}
+                                                        </Draggable>
+                                                    ))}
+                                                    {provided.placeholder}
+                                                </div>
+                                            )}
+                                        </Droppable>
                                     </div>
+                                );
+                            })}
+                        </div>
+                    </DragDropContext>
+                )}
+            </main>
 
-                                    <Droppable droppableId={col.id}>
-                                        {(provided, snapshot) => (
-                                            <div
-                                                ref={provided.innerRef}
-                                                {...provided.droppableProps}
-                                                className={`flex-1 p-4 space-y-3 overflow-y-auto transition-colors duration-200 ${snapshot.isDraggingOver ? col.headerBg : ''}`}
-                                                style={{ minHeight: '200px' }}
-                                            >
-                                                {cards.length === 0 && !snapshot.isDraggingOver && (
-                                                    <div className="flex flex-col items-center justify-center h-32 text-center opacity-30">
-                                                        <AlertCircle className="w-8 h-8 mb-2 text-[#8E939B]" />
-                                                        <p className="text-[10px] text-[#8E939B] uppercase tracking-widest font-bold">Empty</p>
-                                                    </div>
-                                                )}
-                                                {cards.map((card, index) => (
-                                                    <BookingCard 
-                                                        key={card.id} 
-                                                        card={card} 
-                                                        index={index} 
-                                                        col={col} 
-                                                        onCheckout={handleCheckout} 
-                                                        staffMembers={staffMembers} 
-                                                        onAssignStaff={handleAssignStaff} 
-                                                        onCancel={handleCancelBooking} 
-                                                        onEditService={openEditServiceModal} 
-                                                    />
-                                                ))}
-                                                {provided.placeholder}
-                                            </div>
-                                        )}
-                                    </Droppable>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </DragDropContext>
-            )}
-
-            <footer className="flex items-center justify-between px-8 py-3 border-t border-white/5 bg-[#141518]/80 backdrop-blur-xl flex-shrink-0">
-                <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">
-                    Admin Control — Drag cards to update bay assignments in real time
-                </p>
+            {/* ── FOOTER BAR ─────────────────────────────────────────────────── */}
+            <footer className="flex items-center justify-between px-6 py-3 border-t border-white/5 bg-[#141518]/90 backdrop-blur-xl flex-shrink-0 text-[10px] text-[#8E939B] uppercase tracking-widest">
+                <span>Live Admin Control — Touch-optimized live wash tracking</span>
                 {lastUpdated && (
-                    <p className="text-[10px] text-[#8E939B] font-mono">
-                        Last sync: {lastUpdated.toLocaleTimeString()}
-                    </p>
+                    <span className="font-mono">Sync: {lastUpdated.toLocaleTimeString()}</span>
                 )}
             </footer>
 
@@ -678,14 +1046,13 @@ export default function AdminQueueBoard() {
             {checkoutModal.isOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
                     <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-                        {/* Modal Header */}
                         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#0C0D0F]">
                             <div>
                                 <h2 className="font-syncopate font-black text-base sm:text-lg tracking-widest text-emerald-400">
-                                    CHECKOUT
+                                    CHECKOUT &amp; SETTLEMENT
                                 </h2>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-1">
-                                    {checkoutModal.customerName || "Walk-in"} • Total: ₹{checkoutModal.totalAmount}
+                                    {checkoutModal.customerName || "Walk-in Customer"} • Total: ₹{checkoutModal.totalAmount}
                                 </p>
                             </div>
                             <button 
@@ -696,7 +1063,6 @@ export default function AdminQueueBoard() {
                             </button>
                         </div>
 
-                        {/* Payment Inputs */}
                         <div className="p-6 space-y-5">
                             <div className="flex items-center justify-between mb-2">
                                 <h3 className="text-sm font-bold uppercase tracking-widest text-white">Payment Method</h3>
@@ -713,13 +1079,19 @@ export default function AdminQueueBoard() {
 
                             {!checkoutModal.isSplit ? (
                                 <div className="grid grid-cols-3 gap-3">
-                                    {['CASH', 'UPI', 'KHATA'].map((method) => (
+                                    {(['CASH', 'UPI', 'KHATA'] as const).map((method) => (
                                         <div 
                                             key={method}
                                             onClick={() => handleMethodChange(method)}
-                                            className={`border p-4 rounded-xl cursor-pointer text-center transition-all ${checkoutModal.method === method ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'border-white/10 bg-white/5 text-[#8E939B] hover:border-white/30 hover:bg-white/10'}`}
+                                            className={`border p-4 rounded-xl cursor-pointer text-center transition-all ${
+                                                checkoutModal.method === method 
+                                                    ? method === 'KHATA'
+                                                        ? 'border-purple-500 bg-purple-500/10 text-purple-400 shadow-[0_0_15px_rgba(147,51,234,0.3)]'
+                                                        : 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                                                    : 'border-white/10 bg-white/5 text-[#8E939B] hover:border-white/30 hover:bg-white/10'
+                                            }`}
                                         >
-                                            <span className="text-xs font-bold uppercase tracking-wider">{method === 'KHATA' ? 'Khata' : method}</span>
+                                            <span className="text-xs font-bold uppercase tracking-wider">{method === 'KHATA' ? 'Khata (Credit)' : method}</span>
                                         </div>
                                     ))}
                                 </div>
@@ -768,13 +1140,132 @@ export default function AdminQueueBoard() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* ── KHATA DETAILS FORM (WITH SMART CUSTOMER LINKING & BADGE) ───────────────── */}
+                            {(checkoutModal.method === 'KHATA' || checkoutModal.khata > 0) && (
+                                <div className="bg-purple-950/30 border border-purple-500/30 p-4 sm:p-5 rounded-2xl space-y-4 animate-in fade-in slide-in-from-top-2 shadow-[0_0_20px_rgba(147,51,234,0.15)]">
+                                    <div className="flex items-center justify-between border-b border-purple-500/20 pb-3">
+                                        <div className="flex items-center gap-2 text-purple-300 font-bold text-xs uppercase tracking-wider">
+                                            <BookOpen className="w-4 h-4 text-purple-400" />
+                                            Khata Customer Details
+                                        </div>
+                                        <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-full font-mono font-bold">
+                                            Credit: ₹{checkoutModal.khata || checkoutModal.totalAmount}
+                                        </span>
+                                    </div>
+
+                                    {/* Existing Customer Selector */}
+                                    {existingCustomers.length > 0 && (
+                                        <div>
+                                            <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
+                                                Link Existing Khata Account
+                                            </label>
+                                            <select
+                                                className="w-full bg-[#141518] border border-purple-500/30 py-2.5 px-3 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-purple-400"
+                                                onChange={(e) => {
+                                                    const custId = parseInt(e.target.value);
+                                                    if (!isNaN(custId)) {
+                                                        const found = existingCustomers.find(c => c.id === custId);
+                                                        if (found) {
+                                                            setCheckoutModal(prev => ({
+                                                                ...prev,
+                                                                customerId: found.id,
+                                                                customerName: found.name,
+                                                                phoneNumber: found.phone_number
+                                                            }));
+                                                        }
+                                                    } else {
+                                                        setCheckoutModal(prev => ({ ...prev, customerId: null }));
+                                                    }
+                                                }}
+                                                value={checkoutModal.customerId || (matchedCustomer ? matchedCustomer.id : '')}
+                                            >
+                                                <option value="">-- New Customer / Auto-Matched Customer --</option>
+                                                {existingCustomers.map(c => (
+                                                    <option key={c.id} value={c.id}>
+                                                        {c.name} ({c.phone_number || 'No Phone'})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {/* Customer Name */}
+                                        <div>
+                                            <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
+                                                Customer Name *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={checkoutModal.customerName}
+                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, customerName: e.target.value }))}
+                                                placeholder="e.g. Rahul Sharma"
+                                                className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-semibold text-xs focus:outline-none focus:border-purple-400"
+                                            />
+                                        </div>
+
+                                        {/* Phone Number with Account Status Badge */}
+                                        <div>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider">
+                                                    Phone Number *
+                                                </label>
+                                                {matchedCustomer ? (
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                                        <CheckCircle className="w-2.5 h-2.5 text-emerald-400" /> Existing Customer
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                                        <Sparkles className="w-2.5 h-2.5 text-amber-400" /> New Customer
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <input
+                                                type="tel"
+                                                value={checkoutModal.phoneNumber}
+                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                                                placeholder="e.g. +91 98765 43210"
+                                                className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-semibold text-xs focus:outline-none focus:border-purple-400"
+                                            />
+                                        </div>
+
+                                        {/* Vehicle Model */}
+                                        <div>
+                                            <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
+                                                Vehicle Model
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={checkoutModal.vehicleModel}
+                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, vehicleModel: e.target.value }))}
+                                                placeholder="e.g. BMW M4"
+                                                className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-semibold text-xs focus:outline-none focus:border-purple-400"
+                                            />
+                                        </div>
+
+                                        {/* Plate Number */}
+                                        <div>
+                                            <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
+                                                Plate Number
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={checkoutModal.plateNumber}
+                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, plateNumber: e.target.value }))}
+                                                placeholder="e.g. KL-07-CC-1001"
+                                                className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-mono font-bold text-xs focus:outline-none focus:border-purple-400 uppercase"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        {/* Modal Footer & Actions */}
-                        <div className="p-6 bg-[#0B0C10] border-t border-white/5 flex items-center justify-between">
-                            {/* Dynamic Remaining / Change Calculator */}
+                        <div className="p-6 bg-[#0B0C10] border-t border-white/5 flex items-center justify-between gap-4">
                             {(() => {
-                                const sum = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0);
+                                const totalKhata = checkoutModal.khata || (checkoutModal.method === 'KHATA' ? checkoutModal.totalAmount : 0);
+                                const sum = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + totalKhata;
                                 const diff = checkoutModal.totalAmount - sum;
                                 
                                 if (diff > 0) {
@@ -810,16 +1301,24 @@ export default function AdminQueueBoard() {
                             <div className="flex gap-3">
                                 <button 
                                     onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))}
-                                    className="px-5 py-3 rounded-xl font-bold text-sm text-[#8E939B] hover:text-white hover:bg-white/5 transition-colors"
+                                    className="px-4 py-3 rounded-xl font-bold text-xs text-[#8E939B] hover:text-white hover:bg-white/5 transition-colors uppercase tracking-wider"
                                 >
                                     Cancel
                                 </button>
                                 <button 
                                     onClick={submitPayment}
-                                    disabled={((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || 0)) < checkoutModal.totalAmount}
-                                    className="px-6 py-3 rounded-xl font-bold text-sm bg-emerald-500 text-black hover:bg-emerald-400 transition-all disabled:opacity-20 disabled:hover:bg-emerald-500 disabled:cursor-not-allowed flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                                    disabled={
+                                        ((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || (checkoutModal.method === 'KHATA' ? checkoutModal.totalAmount : 0))) < checkoutModal.totalAmount
+                                    }
+                                    className={`px-5 py-3 rounded-xl font-bold text-xs transition-all active:scale-95 touch-manipulation disabled:opacity-20 disabled:cursor-not-allowed flex items-center gap-2 uppercase tracking-wider ${
+                                        checkoutModal.method === 'KHATA' || checkoutModal.khata > 0
+                                            ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]'
+                                            : 'bg-emerald-500 text-black hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                                    }`}
                                 >
-                                    Settle Payment
+                                    {checkoutModal.method === 'KHATA' || checkoutModal.khata > 0
+                                        ? 'Confirm Khata & Complete'
+                                        : 'Settle Payment'}
                                 </button>
                             </div>
                         </div>      
@@ -875,10 +1374,6 @@ export default function AdminQueueBoard() {
                     </div>
                 </div>
             )}
-
-            <style dangerouslySetInnerHTML={{ __html: `
-                .font-syncopate { font-family: 'Syncopate', sans-serif; }
-            `}} />
         </div>
     );
 }

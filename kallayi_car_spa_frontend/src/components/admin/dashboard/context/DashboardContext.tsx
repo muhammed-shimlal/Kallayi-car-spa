@@ -48,13 +48,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const [adminName, setAdminName] = useState('Loading...');
 
     const setActiveTab = useCallback((tab: string, subTab?: string) => {
-        setActiveTabState(tab);
+        const targetTab = tab === 'settings' ? 'overview' : tab;
+        setActiveTabState(targetTab);
         if (subTab) {
             setFinanceSubTabState(subTab);
         }
         if (typeof window !== 'undefined') {
             const url = new URL(window.location.href);
-            url.searchParams.set('tab', tab);
+            url.searchParams.set('tab', targetTab);
             if (subTab) {
                 url.searchParams.set('subtab', subTab);
             } else {
@@ -79,7 +80,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
                 const urlParams = new URLSearchParams(window.location.search);
                 const tab = urlParams.get('tab');
                 const subtab = urlParams.get('subtab');
-                if (tab) setActiveTabState(tab);
+                if (tab === 'settings') {
+                    setActiveTabState('overview');
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', 'overview');
+                    window.history.replaceState({}, '', url.toString());
+                } else if (tab) {
+                    setActiveTabState(tab);
+                }
                 if (subtab) setFinanceSubTabState(subtab);
             }
         };
@@ -267,7 +275,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const isGlobalLoading = !isMounted || userQuery.isLoading || kpiQuery.isLoading || chartQuery.isLoading || bookingsQuery.isLoading || expensesQuery.isLoading || khataQuery.isLoading || customerCreditsQuery.isLoading || payrollQuery.isLoading || servicesQuery.isLoading || staffQuery.isLoading || eodQuery.isLoading || analyticsQuery.isLoading;
 
-    const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 };
+    const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 };
     const chartData = chartQuery.data || generateDemoChartData();
     const recentBookings = bookingsQuery.data || [];
     const todayWashedRaw = todayWashedQuery.data || { count: 0, today_washed_count: 0, results: [] };
@@ -411,7 +419,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const openStaffModal = (staff: StaffMember | null = null) => {
         if (staff) {
             setEditingStaff(staff);
-            setStaffForm({ first_name: staff.first_name, phone_number: staff.phone_number || '', role: staff.role, base_salary: String(staff.base_salary), commission_rate: String(staff.commission_rate || '') });
+            setStaffForm({ 
+                first_name: staff.first_name || staff.name || '', 
+                phone_number: staff.phone_number || staff.phone || '', 
+                role: staff.role || 'WASHER', 
+                base_salary: String(staff.salary_amount ?? staff.base_salary ?? ''), 
+                commission_rate: String(staff.commission_rate ?? '') 
+            });
         } else {
             setEditingStaff(null);
             setStaffForm({ first_name: '', phone_number: '', role: 'WASHER', base_salary: '', commission_rate: '' });
@@ -419,26 +433,45 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         setIsStaffModalOpen(true);
     };
 
-    const saveStaff = async (data?: { first_name: string; phone_number: string; role: string; base_salary: string; commission_rate?: string }) => {
+    const saveStaff = async (data?: { first_name?: string; name?: string; phone_number?: string; phone?: string; role: string; salary_type?: string; salary_amount?: string; base_salary?: string; commission_rate?: string }) => {
         const token = localStorage.getItem('auth_token');
         const url = editingStaff
             ? `${API_BASE}/staff/directory/${editingStaff.id}/`
             : `${API_BASE}/staff/directory/`;
         const method = editingStaff ? 'PATCH' : 'POST';
         const formPayload = data ?? staffForm;
+
+        const firstName = formPayload.first_name || (formPayload as any).name || '';
+        const phoneNumber = formPayload.phone_number || (formPayload as any).phone || '';
+        const salaryVal = parseFloat((formPayload as any).salary_amount || formPayload.base_salary || '0') || 0;
+        const commVal = parseFloat(formPayload.commission_rate || '0') || 0;
+
         try {
             const res = await fetch(url, {
                 method,
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...formPayload, base_salary: parseFloat(formPayload.base_salary) || 0, commission_rate: parseFloat(formPayload.commission_rate || '0') || 0 })
+                body: JSON.stringify({ 
+                    first_name: firstName,
+                    name: firstName,
+                    phone_number: phoneNumber,
+                    phone: phoneNumber,
+                    role: formPayload.role,
+                    salary_type: (formPayload as any).salary_type || 'DAILY',
+                    salary_amount: salaryVal,
+                    base_salary: salaryVal,
+                    commission_rate: commVal
+                })
             });
             if (res.ok) {
                 toast.success(editingStaff ? 'Staff updated!' : 'Staff registered successfully!');
                 setIsStaffModalOpen(false);
-                queryClient.invalidateQueries({ queryKey: ['staff'] });
+                setEditingStaff(null);
+                await queryClient.invalidateQueries({ queryKey: ['staff'] });
+                await queryClient.refetchQueries({ queryKey: ['staff'] });
+                await queryClient.invalidateQueries({ queryKey: ['payrollData'] });
             } else {
                 const errData = await res.json();
-                toast.error(errData.detail || 'Failed to save');
+                toast.error(errData.error || errData.detail || 'Failed to save staff member');
             }
         } catch (e) { toast.error('Network error'); }
     };

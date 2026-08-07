@@ -27,6 +27,7 @@ export default function CustomerDashboard() {
     const [activeWash, setActiveWash] = useState<ActiveWash | null>(null);
     const [washHistory, setWashHistory] = useState<any[]>([]);
     const [transactions, setTransactions] = useState<any[]>([]);
+    const [customerName, setCustomerName] = useState<string>('');
     const [isLoading, setIsLoading] = useState(true);
 
     // --- Auth Guard: redirect immediately if no token present ---
@@ -41,6 +42,19 @@ export default function CustomerDashboard() {
         const fetchDashboardData = async () => {
             try {
                 setIsLoading(true);
+
+                // Fetch User Profile for dynamic greeting
+                try {
+                    const userRes = await api.get('/core/users/me/');
+                    const user = userRes.data;
+                    const name = user.first_name || user.username || '';
+                    if (name) {
+                        setCustomerName(name.charAt(0).toUpperCase() + name.slice(1));
+                    }
+                } catch (uErr) {
+                    console.warn("User profile request skipped or unavailable", uErr);
+                }
+
                 // Fetch the logged-in customer's bookings
                 const bookingsRes = await api.get('/bookings/');
                 const bookings = bookingsRes.data;
@@ -113,7 +127,7 @@ export default function CustomerDashboard() {
     if (isLoading) {
         return (
             <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-                <div className="w-16 h-16 border-4 border-[#E52323]/30 border-t-[#E52323] rounded-full animate-spin"></div>
+                <div className="w-16 h-16 border-4 border-spa-sky/30 border-t-spa-sky rounded-full animate-spin"></div>
             </div>
         );
     }
@@ -127,7 +141,7 @@ export default function CustomerDashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-[#050505] text-white flex flex-col md:flex-row font-sans selection:bg-[#E52323]">
+        <div className="min-h-screen bg-[#050505] text-white flex flex-col md:flex-row font-sans selection:bg-spa-sky selection:text-slate-950">
             
             {/* Modular Sidebar */}
             <div className="hidden md:flex">
@@ -139,10 +153,10 @@ export default function CustomerDashboard() {
             </div>
 
             {/* Modular Main Content Area with Animated Mounting */}
-            <main className="flex-1 p-6 md:p-12 pb-24 md:pb-8 overflow-y-auto relative">
+            <main className="flex-1 p-6 md:p-12 max-lg:pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-8 overflow-y-auto relative">
                 <AnimatePresence mode="wait">
                     {activeTab === 'overview' && (
-                        <OverviewTab key="overview" setIsBooking={setIsBooking} handleLogout={handleLogout} />
+                        <OverviewTab key="overview" setIsBooking={setIsBooking} handleLogout={handleLogout} customerName={customerName} />
                     )}
                     
                     {activeTab === 'garage' && (

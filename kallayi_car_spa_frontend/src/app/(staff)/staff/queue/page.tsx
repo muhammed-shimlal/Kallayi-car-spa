@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { 
@@ -164,6 +164,8 @@ function BookingCard({ card, index, col }: { card: BookingCard; index: number; c
 
 export default function QueueBoard() {
     const router = useRouter();
+    const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+    const [selectedDate, setSelectedDate] = useState<string>(todayStr);
     const [columns, setColumns] = useState<Record<string, BookingCard[]>>({
         WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
     });
@@ -176,7 +178,7 @@ export default function QueueBoard() {
         if (!silent) setIsLoading(true);
 
         try {
-            const res = await api.get('/bookings/live-queue/');
+            const res = await api.get('/bookings/live-queue/', { params: { date: selectedDate } });
             const data: BookingCard[] = res.data;
             
             // Distribute into columns
@@ -197,7 +199,7 @@ export default function QueueBoard() {
         } finally {
             setIsLoading(false);
         }
-    }, [router]);
+    }, [router, selectedDate]);
 
     useEffect(() => {
         fetchQueue();

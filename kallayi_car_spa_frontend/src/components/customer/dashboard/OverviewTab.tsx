@@ -20,6 +20,7 @@ interface ActiveWash {
 interface OverviewTabProps {
     setIsBooking: (val: boolean) => void;
     handleLogout: () => void;
+    customerName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,14 +94,14 @@ function ActiveWashCard({ wash }: { wash: ActiveWash }) {
                     <h3 className="text-xl font-bold">{wash.vehicle}</h3>
                     <p className="text-white/40 text-xs uppercase tracking-widest font-bold mt-1">{wash.package}</p>
                 </div>
-                <span className="bg-[#E52323] text-white px-4 py-1.5 rounded-sm text-[10px] uppercase tracking-widest font-bold animate-pulse">
+                <span className="bg-spa-sky text-slate-950 px-4 py-1.5 rounded-sm text-[10px] uppercase tracking-widest font-extrabold animate-pulse">
                     {wash.status}
                 </span>
             </div>
             {/* Animated progress bar */}
             <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-2">
                 <motion.div
-                    className="h-full bg-[#E52323] shadow-[0_0_8px_rgba(229,35,35,0.6)]"
+                    className="h-full bg-spa-sky shadow-[0_0_8px_rgba(135,189,216,0.6)]"
                     initial={{ width: 0 }}
                     animate={{ width: `${wash.progress}%` }}
                     transition={{ duration: 0.8, ease: 'easeOut' }}
@@ -122,16 +123,16 @@ function NoActiveWash({ onBook }: { onBook: () => void }) {
     return (
         <div className="w-full bg-white/5 border border-white/10 p-6 md:p-10 rounded-3xl flex flex-col items-center justify-center text-center shadow-inner">
             <Activity className="w-12 h-12 text-white/10 mb-4" aria-hidden="true" />
-            <h3 className="text-xl font-bold text-gray-500">No Active Operations</h3>
+            <h3 className="text-xl font-bold text-gray-500">No Active Bookings</h3>
             <p className="text-[10px] text-gray-600 uppercase tracking-widest mt-2 font-bold">
-                Your fleet is currently secure.
+                You have no car washes currently in progress.
             </p>
             <button
                 onClick={onBook}
                 aria-label="Book a new car wash"
-                className="mt-6 bg-[#E52323] text-white px-6 py-2.5 rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-red-700 transition flex items-center gap-2 shadow-[0_0_20px_rgba(229,35,35,0.3)]"
+                className="mt-6 bg-spa-sky text-slate-950 px-6 py-3 min-h-[44px] rounded-full font-extrabold text-xs uppercase tracking-widest hover:bg-[#6FA8C8] transition flex items-center gap-2 shadow-[0_0_20px_rgba(135,189,216,0.4)] active:scale-95"
             >
-                <Plus className="w-4 h-4" aria-hidden="true" /> Schedule a Wash
+                <Plus className="w-4 h-4 text-slate-950" aria-hidden="true" /> Schedule a Wash
             </button>
         </div>
     );
@@ -140,9 +141,23 @@ function NoActiveWash({ onBook }: { onBook: () => void }) {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-export function OverviewTab({ setIsBooking, handleLogout }: OverviewTabProps) {
+export function OverviewTab({ setIsBooking, handleLogout, customerName }: OverviewTabProps) {
     const { data: activeWash, isLoading } = useActiveWash();
     const queryClient = useQueryClient();
+
+    // Profile query fallback if customerName prop is missing
+    const { data: fetchedProfile } = useQuery({
+        queryKey: ['customerProfile'],
+        queryFn: async () => {
+            const res = await api.get('/core/users/me/');
+            return res.data;
+        },
+        enabled: !customerName,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const rawName = customerName || fetchedProfile?.first_name || fetchedProfile?.username || '';
+    const displayName = rawName ? rawName.charAt(0).toUpperCase() + rawName.slice(1) : '';
 
     // ------------------------------------------------------------------
     // WebSocket stub — listens to the live_queue channel from Django Channels
@@ -196,24 +211,26 @@ export function OverviewTab({ setIsBooking, handleLogout }: OverviewTabProps) {
                 <div className="w-full md:w-auto flex justify-between items-start">
                     <div>
                         <span className="text-white/30 text-[10px] font-bold tracking-[0.3em] uppercase" aria-hidden="true">
-                            Sys. Online
+                            Live Dashboard
                         </span>
-                        <h1 className="text-4xl font-bold tracking-tighter mt-2">Welcome Back.</h1>
+                        <h1 className="text-4xl font-bold tracking-tighter mt-2">
+                            Welcome Back{displayName ? <span className="text-spa-sky">, {displayName}</span> : '.'}
+                        </h1>
                     </div>
                     <button
                         onClick={handleLogout}
                         aria-label="Log out of your account"
                         className="md:hidden flex items-center gap-2 text-gray-500 hover:text-white transition-colors font-bold text-[10px] uppercase tracking-widest mt-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10"
                     >
-                        <LogOut className="w-4 h-4" aria-hidden="true" /> Disconnect
+                        <LogOut className="w-4 h-4" aria-hidden="true" /> Log Out
                     </button>
                 </div>
                 <button
                     onClick={() => setIsBooking(true)}
                     aria-label="Open booking wizard to schedule a car wash"
-                    className="w-full md:w-auto justify-center bg-[#E52323] text-white px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:scale-105 hover:bg-red-700 transition flex items-center gap-2 shadow-[0_0_20px_rgba(229,35,35,0.35)]"
+                    className="w-full md:w-auto justify-center bg-spa-sky text-slate-950 px-6 py-3 min-h-[44px] rounded-full font-extrabold text-xs uppercase tracking-widest hover:scale-105 hover:bg-[#6FA8C8] transition flex items-center gap-2 shadow-[0_0_20px_rgba(135,189,216,0.4)] active:scale-95"
                 >
-                    <Plus className="w-4 h-4" aria-hidden="true" /> Book Wash
+                    <Plus className="w-4 h-4 text-slate-950" aria-hidden="true" /> Book Wash
                 </button>
             </div>
 

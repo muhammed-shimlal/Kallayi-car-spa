@@ -33,17 +33,10 @@ def get_staff_balance_summary(user):
     # 3. Calculate gross earned based on salary_type
     gross_earned = 0.0
     if salary_type == 'COMMISSION':
+        from finance.logic import calculate_staff_booking_commission
         completed_bookings = Booking.objects.filter(technician=user, status='COMPLETED')
-        comm_rate = (float(staff_profile.commission_rate) / 100.0) if (staff_profile and staff_profile.commission_rate) else 0.15
         for b in completed_bookings:
-            if b.service_package:
-                if b.service_package.commission_rule:
-                    rule = b.service_package.commission_rule
-                    flat = float(rule.flat_amount or 0.0)
-                    pct = float(b.service_package.price or 0.0) * (float(rule.percentage or 0.0) / 100.0)
-                    gross_earned += flat + pct
-                else:
-                    gross_earned += float(b.service_package.price or 0.0) * comm_rate
+            gross_earned += float(calculate_staff_booking_commission(staff_profile, b.service_package))
     elif salary_type == 'DAILY':
         days_worked = TimeEntry.objects.filter(staff=staff_profile, clock_in_time__isnull=False).values('clock_in_time__date').distinct().count()
         days_worked = max(days_worked, 1) # Default to at least 1 day if active

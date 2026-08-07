@@ -11,6 +11,11 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from staff.models import StaffProfile
 from django.utils import timezone
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    import pytz
+    ZoneInfo = lambda tz_name: pytz.timezone(tz_name)
 from rest_framework.decorators import api_view, permission_classes
 from django.db import transaction
 import random
@@ -62,22 +67,28 @@ class BookingViewSet(viewsets.ModelViewSet):
                 query_statuses.extend([s, s.upper(), s.lower(), s.capitalize()])
             queryset = queryset.filter(status__in=query_statuses)
 
-        date_param = self.request.query_params.get('date')
-        if date_param:
-            if date_param.lower() == 'today':
-                target_date = timezone.localdate()
-            else:
-                try:
-                    target_date = parse_date(date_param) or datetime.strptime(date_param, '%Y-%m-%d').date()
-                except Exception:
+        type_param = self.request.query_params.get('type')
+        if type_param == 'upcoming':
+            ist_tz = ZoneInfo('Asia/Kolkata')
+            today_date = timezone.now().astimezone(ist_tz).date()
+            queryset = queryset.filter(time_slot__date__gte=today_date).exclude(status__in=['COMPLETED', 'CANCELLED']).order_by('time_slot')
+        else:
+            date_param = self.request.query_params.get('date')
+            if date_param:
+                if date_param.lower() == 'today':
                     target_date = timezone.localdate()
-            if target_date:
-                queryset = queryset.filter(
-                    Q(created_at__date=target_date) | 
-                    Q(start_time__date=target_date) | 
-                    Q(end_time__date=target_date) |
-                    Q(time_slot__date=target_date)
-                ).distinct()
+                else:
+                    try:
+                        target_date = parse_date(date_param) or datetime.strptime(date_param, '%Y-%m-%d').date()
+                    except Exception:
+                        target_date = timezone.localdate()
+                if target_date:
+                    queryset = queryset.filter(
+                        Q(created_at__date=target_date) | 
+                        Q(start_time__date=target_date) | 
+                        Q(end_time__date=target_date) |
+                        Q(time_slot__date=target_date)
+                    ).distinct()
 
         return queryset
 
@@ -149,10 +160,26 @@ class BookingViewSet(viewsets.ModelViewSet):
         amount_upi = float(request.data.get('amount_upi', 0))
         amount_khata = float(request.data.get('amount_khata', 0))
 
-        if amount_khata > 0 and not booking.customer:
-            customer_name = request.data.get('customer_name') or "Walk-In Guest"
-            from customers.models import Customer
-            from django.contrib.auth.models import User
+        customer_id_param = request.data.get('customer_id')
+        customer_name_param = request.data.get('customer_name')
+        phone_param = request.data.get('phone_number') or request.data.get('phone') or ''
+
+        # Link or create Customer profile if Khata is involved or customer details provided
+        from customers.models import Customer
+        from django.contrib.auth.models import User
+
+        target_customer = None
+        if customer_id_param:
+            target_customer = Customer.objects.filter(id=customer_id_param).first()
+
+        if not target_customer and phone_param:
+            target_customer = Customer.objects.filter(phone_number=phone_param).first()
+
+        if not target_customer and booking.customer:
+            target_customer = booking.customer
+
+        if amount_khata > 0 and not target_customer:
+            c_name = customer_name_param or "Walk-In Guest"
             import random
             import string
             
@@ -160,12 +187,21 @@ class BookingViewSet(viewsets.ModelViewSet):
             while User.objects.filter(username=username).exists():
                 username = f"walkin_khata_{random.randint(100000, 999999)}"
             
-            new_user = User.objects.create(username=username, first_name=customer_name)
+            new_user = User.objects.create(username=username, first_name=c_name)
             new_user.set_password(''.join(random.choices(string.ascii_letters + string.digits, k=12)))
             new_user.save()
-            customer = Customer.objects.create(user=new_user, phone_number='')
-            booking.customer = customer
-            booking.save()
+            target_customer = Customer.objects.create(user=new_user, phone_number=phone_param)
+
+        if target_customer:
+            # Update customer details if provided
+            if customer_name_param and target_customer.user and not target_customer.user.first_name:
+                target_customer.user.first_name = customer_name_param
+                target_customer.user.save()
+            if phone_param and not target_customer.phone_number:
+                target_customer.phone_number = phone_param
+                target_customer.save()
+
+            booking.customer = target_customer
 
         booking.status = 'COMPLETED'
         booking.end_time = timezone.now()
@@ -174,13 +210,17 @@ class BookingViewSet(viewsets.ModelViewSet):
         if amount_khata > 0 and booking.customer:
             from finance.models import KhataLedger
             from decimal import Decimal
-            booking.customer.outstanding_balance += Decimal(amount_khata)
+            booking.customer.outstanding_balance += Decimal(str(amount_khata))
             booking.customer.save()
+
+            plate_info = booking.vehicle.plate_number if booking.vehicle else request.data.get('plate_number', 'Walk-In')
+            svc_info = booking.service_package.name if booking.service_package else 'Car Wash'
+
             KhataLedger.objects.create(
                 customer=booking.customer,
-                amount=amount_khata,
+                amount=Decimal(str(amount_khata)),
                 transaction_type='CHARGE',
-                description=f'Service completed for {booking.vehicle.plate_number if booking.vehicle else "Walk-In"}',
+                description=f'Khata Wash Charge: {svc_info} ({plate_info})',
                 related_booking=booking
             )
 
@@ -234,35 +274,44 @@ class BookingViewSet(viewsets.ModelViewSet):
         except ValueError:
             return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
 
-        # 1. Define Standard Operating Hours (1-hour blocks from 9:00 AM to 6:00 PM)
-        all_slots = []
-        for hour in range(9, 18):
-            t = time(hour, 0)
-            all_slots.append(t.strftime("%I:%M %p"))
+        # 1. Server current time converted explicitly to Indian Standard Time (IST)
+        ist_tz = ZoneInfo('Asia/Kolkata')
+        now_ist = timezone.now().astimezone(ist_tz)
 
-        # 2. Query ONLINE scheduled bookings that fall on the specified date (ignoring CANCELLED ones)
-        # Walk-ins (created via POS at current time) are ignored because they do not fall exactly on the hour.
+        # 2. Query ONLINE scheduled bookings on target_date (ignoring CANCELLED ones)
         existing_bookings = Booking.objects.filter(
-            time_slot__date=target_date,
-            time_slot__minute=0
+            time_slot__date=target_date
         ).exclude(status='CANCELLED')
 
-        # 3. Find booked slot times
+        # 3. Find booked slot times and integer hours in IST
+        booked_hours = set()
         booked_slots = set()
         for b in existing_bookings:
             if b.time_slot:
-                local_b_time = timezone.localtime(b.time_slot)
-                # Ensure the string explicitly matches the '%I:%M %p' format (e.g., '09:00 AM', '02:00 PM')
-                # On Windows %I could give '09', just strip leading zeros if necessary, but standard is keep.
+                local_b_time = b.time_slot.astimezone(ist_tz)
+                booked_hours.add(local_b_time.hour)
                 formatted_time_slot = local_b_time.strftime("%I:%M %p")
-                if formatted_time_slot.startswith("0"): 
-                     pass # It's matched identically with our `for hour in range(9, 18): t.strftime("%I:%M %p")`
                 booked_slots.add(formatted_time_slot)
 
-        # 4. Filter remaining blocks
-        available_slots = [slot for slot in all_slots if slot not in booked_slots]
-            
-        return Response({'date': date_str, 'slots': available_slots})
+        # 4. Define Standard Operating Hours (1-hour blocks from 9:00 AM to 6:00 PM) with availability flags
+        slots = []
+        for hour in range(9, 18):
+            t = time(hour, 0)
+            slot_time_str = t.strftime("%I:%M %p")
+
+            slot_naive = datetime.combine(target_date, t)
+            slot_dt = timezone.make_aware(slot_naive, ist_tz)
+
+            is_past = slot_dt <= now_ist
+            is_booked = (hour in booked_hours) or (slot_time_str in booked_slots)
+            is_available = not (is_past or is_booked)
+
+            slots.append({
+                'time': slot_time_str,
+                'is_available': is_available
+            })
+
+        return Response({'date': date_str, 'slots': slots})
 
 class CalendarViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Booking.objects.all()
@@ -362,6 +411,16 @@ def express_walkin(request):
     except ServicePackage.DoesNotExist:
         return Response({'error': 'Invalid service package'}, status=400)
         
+    make = (request.data.get('make') or request.data.get('vehicle_make') or '').strip()
+    model = (request.data.get('model') or request.data.get('vehicle_model') or '').strip()
+    vehicle_type = (request.data.get('vehicle_type') or 'CAR').strip().upper()
+    color = (request.data.get('color') or '').strip()
+
+    if vehicle_type in ['HATCHBACK', 'SEDAN', 'SUV', 'LUXURY']:
+        vehicle_type = 'CAR'
+    elif vehicle_type not in ['CAR', 'BIKE', 'AUTO', 'VAN', 'TRUCK']:
+        vehicle_type = 'CAR'
+
     # Customer Resolution
     customer = Customer.objects.filter(phone_number=phone).first()
     if not customer:
@@ -369,11 +428,44 @@ def express_walkin(request):
         new_user = User.objects.create(username=username)
         customer = Customer.objects.create(user=new_user, phone_number=phone)
         
-    # Vehicle Resolution
+    # Vehicle Resolution (Extract & Save Real Vehicle Details)
     vehicle, created = CustomerVehicle.objects.get_or_create(
         plate_number=plate_number, 
-        defaults={'customer': customer.user, 'model': 'Unknown Walk-In', 'make': 'Unknown Walk-In'}
+        defaults={
+            'customer': customer.user,
+            'make': make or 'Standard',
+            'model': model or 'Vehicle',
+            'vehicle_type': vehicle_type,
+            'color': color
+        }
     )
+
+    if not created:
+        updated = False
+        if make and vehicle.make != make:
+            vehicle.make = make
+            updated = True
+        elif not vehicle.make or vehicle.make in ['Unknown', 'Unknown Walk-In', 'working']:
+            vehicle.make = make or 'Standard'
+            updated = True
+
+        if model and vehicle.model != model:
+            vehicle.model = model
+            updated = True
+        elif not vehicle.model or vehicle.model in ['Unknown', 'Unknown Walk-In', 'working']:
+            vehicle.model = model or 'Vehicle'
+            updated = True
+
+        if vehicle_type and vehicle.vehicle_type != vehicle_type:
+            vehicle.vehicle_type = vehicle_type
+            updated = True
+
+        if color and vehicle.color != color:
+            vehicle.color = color
+            updated = True
+
+        if updated:
+            vehicle.save()
     
     # Booking Creation (Bypass Slot Validations & Overlaps)
     current_time = timezone.now()
@@ -533,21 +625,60 @@ def update_booking_stage(request, booking_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def live_queue(request):
-    """Fetch all active bookings for the Kanban board (excludes COMPLETED & CANCELLED)."""
-    bookings = Booking.objects.exclude(
-        status__in=['COMPLETED', 'CANCELLED']
-    ).select_related('vehicle', 'customer', 'service_package', 'technician').order_by('time_slot')
+    """Fetch active bookings for the Kanban board filtered by date, today in IST, or type='upcoming'."""
+    ist_tz = ZoneInfo('Asia/Kolkata')
+    date_param = request.GET.get('date')
+    type_param = request.GET.get('type')
+
+    today_date = timezone.now().astimezone(ist_tz).date()
+
+    if type_param == 'upcoming':
+        bookings = Booking.objects.filter(
+            time_slot__date__gte=today_date
+        ).exclude(
+            status__in=['COMPLETED', 'CANCELLED']
+        ).select_related('vehicle', 'customer', 'service_package', 'technician').order_by('time_slot')
+    elif date_param:
+        try:
+            target_date = parse_date(date_param)
+            if not target_date:
+                raise ValueError
+        except ValueError:
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+
+        bookings = Booking.objects.filter(
+            time_slot__date=target_date
+        ).exclude(
+            status__in=['COMPLETED', 'CANCELLED']
+        ).select_related('vehicle', 'customer', 'service_package', 'technician').order_by('time_slot')
+    else:
+        bookings = Booking.objects.filter(
+            time_slot__date=today_date
+        ).exclude(
+            status__in=['COMPLETED', 'CANCELLED']
+        ).select_related('vehicle', 'customer', 'service_package', 'technician').order_by('time_slot')
 
     data = []
     for b in bookings:
+        vehicle_make = getattr(b.vehicle, 'make', '') if b.vehicle else ''
+        vehicle_model = getattr(b.vehicle, 'model', 'Unknown') if b.vehicle else 'Unknown'
+        full_vehicle = f"{vehicle_make} {vehicle_model}".strip() if vehicle_make else vehicle_model
+        
+        customer_phone = ''
+        if b.customer:
+            customer_phone = getattr(b.customer, 'phone_number', '')
+
         data.append({
             'id': b.id,
             'status': b.status,
             'bay_assignment': b.bay_assignment,
             'plate_number': b.vehicle.plate_number if b.vehicle else '???',
-            'vehicle_model': b.vehicle.model if b.vehicle else 'Unknown',
+            'vehicle_make': vehicle_make,
+            'vehicle_model': full_vehicle,
             'service_name': b.service_package.name if b.service_package else 'Walk-In',
+            'service_details': b.service_package.description if b.service_package else '',
             'customer_name': str(b.customer) if b.customer else 'Walk-In',
+            'customer_phone': customer_phone,
             'customer_id': b.customer.id if b.customer else None,
             'price': float(b.service_package.price) if b.service_package else 0.0,
             'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else None,
@@ -671,11 +802,27 @@ def global_service_history(request):
         else:
             display_date = local_dt.strftime(f"%b {local_dt.day}, %Y, %I:%M %p")
             
+        vehicle_model = 'Standard Vehicle'
+        if b.vehicle:
+            vehicle_model = f"{b.vehicle.make} {b.vehicle.model}".strip() or b.vehicle.model
+            
+        cust_name = 'Walk-In Customer'
+        cust_phone = ''
+        if b.customer and b.customer.user:
+            cust_name = f"{b.customer.user.first_name} {b.customer.user.last_name}".strip() or b.customer.user.username
+            cust_phone = b.customer.phone_number
+        elif b.vehicle and b.vehicle.customer:
+            cust_name = f"{b.vehicle.customer.first_name} {b.vehicle.customer.last_name}".strip() or b.vehicle.customer.username
+
         data.append({
             'id': b.id,
+            'booking_id': b.id,
             'date': display_date,
             'is_today': local_dt.date() == now,
             'plate_number': b.vehicle.plate_number if b.vehicle else 'Walk-In',
+            'vehicle_model': vehicle_model,
+            'customer_name': cust_name,
+            'customer_phone': cust_phone,
             'service_package_name': b.service_package.name if b.service_package else 'Custom Service',
             'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else 'Unassigned',
             'price': float(b.service_package.price) if b.service_package else 0.0,

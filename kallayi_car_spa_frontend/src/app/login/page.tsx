@@ -77,10 +77,21 @@ export default function LoginPage() {
         router.push("/customer/dashboard");
       }
     } catch (err: any) {
-      if (err.response?.status === 400 || err.response?.status === 401) {
-        setError("Invalid phone number or access password");
+      const errData = err.response?.data;
+      if (err.response?.status === 404 || errData?.error === "user_not_found") {
+        // Securely store credentials in sessionStorage (DO NOT pass via URL)
+        sessionStorage.setItem('pendingSignup', JSON.stringify({
+          phone: data.phone,
+          password: data.password
+        }));
+        router.push('/signup');
+        return;
+      }
+
+      if (err.response?.status === 400 || errData?.error === "invalid_credentials") {
+        setError("Incorrect access password. Please try again.");
       } else {
-        setError(err.message || "An authentication error occurred.");
+        setError(errData?.message || err.message || "An authentication error occurred.");
       }
     } finally {
       setIsLoading(false);
@@ -104,7 +115,7 @@ export default function LoginPage() {
           </Link>
 
           <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-neutral-500 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
-            ENCRYPTED SESSION // v2.5
+            CUSTOMER PORTAL
           </div>
         </div>
 
@@ -119,15 +130,15 @@ export default function LoginPage() {
           >
             {/* Header Text */}
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 text-xs font-mono tracking-[0.3em] text-neutral-500 uppercase">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>SECURE PORTAL</span>
+              <div className="inline-flex items-center gap-2 text-xs font-mono tracking-[0.3em] text-[#01FFFF] uppercase">
+                <ShieldCheck className="w-4 h-4 text-[#01FFFF]" />
+                <span>WELCOME BACK</span>
               </div>
               <h1 className="font-display text-3xl sm:text-4xl font-light tracking-tight text-white uppercase">
-                AUTHENTICATE
+                LOG IN
               </h1>
               <p className="text-sm text-neutral-400 font-light leading-relaxed">
-                Enter your registered phone identity and access key to access your private dashboard.
+                Enter your mobile number to continue.
               </p>
             </div>
 
@@ -138,8 +149,8 @@ export default function LoginPage() {
                 
                 {/* Phone Field */}
                 <div className="space-y-2">
-                  <label className="block font-mono text-[11px] uppercase tracking-widest text-neutral-400 font-medium">
-                    Registered Phone ID
+                  <label className="block text-xs uppercase tracking-widest text-neutral-300 font-medium">
+                    Mobile Number
                   </label>
                   <Controller
                     name="phone"
@@ -159,8 +170,8 @@ export default function LoginPage() {
 
                 {/* Password Field */}
                 <div className="space-y-2">
-                  <label className="block font-mono text-[11px] uppercase tracking-widest text-neutral-400 font-medium">
-                    Access Password
+                  <label className="block text-xs uppercase tracking-widest text-neutral-300 font-medium">
+                    Password
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-500">
@@ -170,10 +181,10 @@ export default function LoginPage() {
                       type={showPassword ? "text" : "password"}
                       {...register("password")}
                       disabled={isLoading}
-                      placeholder="ENTER ACCESS KEY..."
+                      placeholder="Enter password..."
                       className={`w-full bg-[#08080a] shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),inset_-2px_-2px_5px_rgba(255,255,255,0.03)] border ${
                         errors.password ? 'border-red-500/80' : 'border-white/5 focus:border-white/30'
-                      } py-3.5 pl-11 pr-11 rounded-2xl text-white font-mono text-sm focus:outline-none focus:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),0_0_14px_rgba(255,255,255,0.12)] transition-all placeholder:text-neutral-600`}
+                      } py-3.5 pl-11 pr-11 rounded-2xl text-white text-sm focus:outline-none focus:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),0_0_14px_rgba(255,255,255,0.12)] transition-all placeholder:text-neutral-600`}
                     />
                     <button
                       type="button"
@@ -185,7 +196,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                   {errors.password && (
-                    <p className="text-[10px] font-mono text-red-400 tracking-wider uppercase mt-1.5 ml-1">
+                    <p className="text-[10px] text-red-400 tracking-wider uppercase mt-1.5 ml-1">
                       {errors.password.message}
                     </p>
                   )}
@@ -198,7 +209,7 @@ export default function LoginPage() {
                       initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -6 }}
-                      className="bg-red-950/30 border border-red-500/30 p-3.5 rounded-xl font-mono text-xs text-red-400 flex items-center gap-2"
+                      className="bg-red-950/30 border border-red-500/30 p-3.5 rounded-xl text-xs text-red-400 flex items-center gap-2"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
                       <span>{error}</span>
@@ -210,16 +221,16 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full relative overflow-hidden bg-gradient-to-r from-red-600 to-red-700 shadow-[-6px_-6px_14px_rgba(255,255,255,0.03),6px_6px_18px_rgba(0,0,0,0.9)] hover:shadow-[-2px_-2px_8px_rgba(255,255,255,0.05),2px_2px_14px_rgba(229,35,35,0.4)] active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.9)] text-white font-mono font-bold text-xs uppercase tracking-[0.2em] py-4 rounded-2xl transition-all duration-200 transform hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none group"
+                  className="w-full relative overflow-hidden bg-gradient-to-r from-red-600 to-red-700 shadow-[-6px_-6px_14px_rgba(255,255,255,0.03),6px_6px_18px_rgba(0,0,0,0.9)] hover:shadow-[-2px_-2px_8px_rgba(255,255,255,0.05),2px_2px_14px_rgba(229,35,35,0.4)] active:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.9)] text-white font-bold text-xs uppercase tracking-[0.2em] py-4 rounded-2xl transition-all duration-200 transform hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 disabled:opacity-60 disabled:pointer-events-none group"
                 >
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      <span>AUTHENTICATING SECURE CHANNEL...</span>
+                      <span>LOGGING IN...</span>
                     </>
                   ) : (
                     <>
-                      <span>INITIALIZE SESSION</span>
+                      <span>LOG IN</span>
                       <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </>
                   )}
@@ -231,10 +242,10 @@ export default function LoginPage() {
               <div className="pt-2 text-center border-t border-white/5">
                 <Link
                   href="/signup"
-                  className="inline-flex items-center gap-1.5 font-mono text-xs text-neutral-400 hover:text-white transition-colors tracking-wider uppercase group"
+                  className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-white transition-colors tracking-wider uppercase group"
                 >
-                  <span>REQUEST NEW PORTAL REGISTRATION</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                  <span>Don't have an account? <strong className="text-[#01FFFF] underline underline-offset-4">Sign Up</strong></span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform text-[#01FFFF]" />
                 </Link>
               </div>
 
@@ -243,9 +254,9 @@ export default function LoginPage() {
 
         </div>
 
-        {/* Footer Protocol Notice */}
-        <div className="text-center font-mono text-[10px] text-neutral-600 uppercase tracking-widest">
-          KALLAYI CAR SPA // 256-BIT ENCRYPTED AUTHORIZATION PROTOCOL
+        {/* Footer Notice */}
+        <div className="text-center text-[10px] text-neutral-500 uppercase tracking-widest">
+          KALLAYI CAR SPA // MANJERI
         </div>
 
       </div>

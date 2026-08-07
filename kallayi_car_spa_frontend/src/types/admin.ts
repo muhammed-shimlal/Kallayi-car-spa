@@ -10,11 +10,16 @@ export interface StaffMember {
     id: number;
     user_id: number;
     first_name: string;
+    name?: string;
     username: string;
     phone_number?: string;
+    phone?: string;
     role: string;
+    salary_type?: string;
+    salary_amount?: number | string;
     base_salary: number | string;
     commission_rate?: number | string;
+    is_active?: boolean;
 }
 
 export interface KhataCustomer {
@@ -82,8 +87,12 @@ export interface Invoice {
 export interface KpiSummary {
     net_profit_today: number;
     revenue_today: number;
+    today_revenue?: number;
+    pre_booking_revenue?: number;
+    chemical_cost_today?: number;
     general_expenses_today: number;
     labor_cost_today: number;
+    today_washed_count?: number;
 }
 
 export interface ChartDataPoint {

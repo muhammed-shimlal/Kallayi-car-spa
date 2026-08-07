@@ -56,6 +56,22 @@ export default function SignupPage() {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
+    // Auto-fill phone & password from pendingSignup if user was redirected from Login
+    React.useEffect(() => {
+        try {
+            const pending = sessionStorage.getItem('pendingSignup');
+            if (pending) {
+                const parsed = JSON.parse(pending);
+                if (parsed.phone) setPhone(parsed.phone);
+                if (parsed.password) setPassword(parsed.password);
+                // IMMEDIATELY remove pendingSignup from sessionStorage for security
+                sessionStorage.removeItem('pendingSignup');
+            }
+        } catch (e) {
+            console.error('Error reading pending signup credentials:', e);
+        }
+    }, []);
+
     const handleBlur = (field: string) => {
         setTouched((prev) => ({ ...prev, [field]: true }));
     };
@@ -157,11 +173,14 @@ export default function SignupPage() {
                         <ShieldCheck className="w-8 h-8 text-[#01FFFF] drop-shadow-[0_0_12px_rgba(1,255,255,0.6)]" />
                     </div>
                     <h2 className="text-[11px] font-mono text-[#01FFFF] uppercase tracking-[0.3em] font-semibold mb-2">
-                        NEW USER REGISTRATION PROTOCOL
+                        JOIN KALLAYI CAR SPA
                     </h2>
-                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-syncopate uppercase">
-                        KALLAYI<span className="text-[#E52323]">.</span>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-syncopate uppercase mb-2">
+                        CREATE AN ACCOUNT
                     </h1>
+                    <p className="text-sm text-neutral-400 font-light">
+                        Sign up to book your wash and track your history.
+                    </p>
                 </motion.div>
 
                 {/* Tactile Obsidian Neumorphic Card */}
@@ -175,7 +194,7 @@ export default function SignupPage() {
                         
                         {/* 1. Full Name Input */}
                         <div className="space-y-1.5 group">
-                            <label className="text-[11px] font-mono font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
+                            <label className="text-xs uppercase tracking-wider text-neutral-300 font-medium flex items-center justify-between">
                                 <span>Full Name *</span>
                                 {touched.name && (
                                     <span className="text-[10px]">
@@ -209,10 +228,10 @@ export default function SignupPage() {
                             </div>
                         </div>
 
-                        {/* 2. Phone Number Input */}
+                        {/* 2. Mobile Number Input */}
                         <div className="space-y-1.5 group">
-                            <label className="text-[11px] font-mono font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
-                                <span>Phone Number (Username) *</span>
+                            <label className="text-xs uppercase tracking-wider text-neutral-300 font-medium flex items-center justify-between">
+                                <span>Mobile Number *</span>
                                 {touched.phone && (
                                     <span className="text-[10px]">
                                         {isPhoneValid ? (
@@ -233,8 +252,8 @@ export default function SignupPage() {
                                     onChange={(e) => setPhone(e.target.value)}
                                     onBlur={() => handleBlur('phone')}
                                     disabled={isLoading}
-                                    placeholder="+91 80897 35500"
-                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-mono tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                    placeholder="+91 98765 43210"
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
                                         touched.phone
                                             ? isPhoneValid
                                                 ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
@@ -247,7 +266,7 @@ export default function SignupPage() {
 
                         {/* 3. Password Input */}
                         <div className="space-y-1.5 group">
-                            <label className="text-[11px] font-mono font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
+                            <label className="text-xs uppercase tracking-wider text-neutral-300 font-medium flex items-center justify-between">
                                 <span>Create Password *</span>
                                 {touched.password && (
                                     <span className="text-[10px]">
@@ -270,7 +289,7 @@ export default function SignupPage() {
                                     onBlur={() => handleBlur('password')}
                                     disabled={isLoading}
                                     placeholder="••••••••••••"
-                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-12 rounded-2xl text-sm font-mono tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-12 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
                                         touched.password
                                             ? isPasswordValid
                                                 ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
@@ -290,8 +309,8 @@ export default function SignupPage() {
                             {/* Password Strength Meter */}
                             {password && (
                                 <div className="pt-2 space-y-1">
-                                    <div className="flex justify-between items-center text-[10px] font-mono">
-                                        <span className="text-neutral-400 uppercase tracking-widest">Passcode Strength</span>
+                                    <div className="flex justify-between items-center text-[10px]">
+                                        <span className="text-neutral-400 uppercase tracking-widest">Password Strength</span>
                                         <span className="font-bold text-white tracking-wider">{passwordStrength.label}</span>
                                     </div>
                                     <div className="grid grid-cols-4 gap-1.5 h-1.5 bg-[#050507] p-0.5 rounded-full shadow-[inset_2px_2px_4px_#000000]">
@@ -310,7 +329,7 @@ export default function SignupPage() {
 
                         {/* 4. Confirm Password Input */}
                         <div className="space-y-1.5 group">
-                            <label className="text-[11px] font-mono font-semibold uppercase tracking-wider text-neutral-300 flex items-center justify-between">
+                            <label className="text-xs uppercase tracking-wider text-neutral-300 font-medium flex items-center justify-between">
                                 <span>Confirm Password *</span>
                                 {touched.confirmPassword && (
                                     <span className="text-[10px]">
@@ -333,7 +352,7 @@ export default function SignupPage() {
                                     onBlur={() => handleBlur('confirmPassword')}
                                     disabled={isLoading}
                                     placeholder="••••••••••••"
-                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-mono tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
                                         touched.confirmPassword
                                             ? isConfirmPasswordValid
                                                 ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
@@ -356,8 +375,8 @@ export default function SignupPage() {
                                         <Car className="w-4 h-4" />
                                     </div>
                                     <div className="text-left">
-                                        <p className="text-xs font-semibold text-white">Add Your Vehicle Now?</p>
-                                        <p className="text-[10px] text-neutral-400 font-mono">Optional garage setup for express booking</p>
+                                        <p className="text-xs font-semibold text-white">Add Your Vehicle (Optional)</p>
+                                        <p className="text-[10px] text-neutral-400">Save vehicle details for express booking</p>
                                     </div>
                                 </div>
                                 <ChevronDown className={`w-5 h-5 text-neutral-400 transition-transform duration-300 ${addVehicle ? 'rotate-180 text-[#01FFFF]' : ''}`} />
@@ -375,37 +394,37 @@ export default function SignupPage() {
                                     >
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">Make (Brand)</label>
+                                                <label className="text-[10px] uppercase tracking-wider text-neutral-400">Make (Brand)</label>
                                                 <input
                                                     type="text"
                                                     value={vehicleMake}
                                                     onChange={(e) => setVehicleMake(e.target.value)}
                                                     onBlur={() => handleBlur('vehicleMake')}
-                                                    placeholder="e.g. Porsche / BMW"
+                                                    placeholder="e.g. Maruti Suzuki / Hyundai"
                                                     className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs font-medium outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
                                                 />
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">Model Name</label>
+                                                <label className="text-[10px] uppercase tracking-wider text-neutral-400">Model Name</label>
                                                 <input
                                                     type="text"
                                                     value={vehicleModel}
                                                     onChange={(e) => setVehicleModel(e.target.value)}
                                                     onBlur={() => handleBlur('vehicleModel')}
-                                                    placeholder="e.g. 911 GT3 / M4"
+                                                    placeholder="e.g. Swift / Creta"
                                                     className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs font-medium outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
                                                 />
                                             </div>
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">License Plate Number</label>
+                                            <label className="text-[10px] uppercase tracking-wider text-neutral-400">License Plate Number</label>
                                             <input
                                                 type="text"
                                                 value={vehiclePlate}
                                                 onChange={(e) => setVehiclePlate(e.target.value)}
                                                 onBlur={() => handleBlur('vehiclePlate')}
                                                 placeholder="e.g. KL 10 AW 9999"
-                                                className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs font-mono uppercase tracking-wider outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
+                                                className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs uppercase tracking-wider outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
                                             />
                                         </div>
                                     </motion.div>
@@ -418,7 +437,7 @@ export default function SignupPage() {
                             <motion.div
                                 initial={{ opacity: 0, y: -5 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="p-3.5 rounded-xl bg-[#E52323]/10 border border-[#E52323]/40 text-[#E52323] text-xs font-mono flex items-center gap-2"
+                                className="p-3.5 rounded-xl bg-[#E52323]/10 border border-[#E52323]/40 text-[#E52323] text-xs flex items-center gap-2"
                             >
                                 <AlertCircle className="w-4 h-4 shrink-0" />
                                 <span>{error}</span>
@@ -435,7 +454,7 @@ export default function SignupPage() {
                                 {isLoading ? (
                                     <>
                                         <Loader2 className="w-5 h-5 text-white animate-spin" />
-                                        <span className="font-syncopate font-bold text-xs text-white uppercase tracking-widest">AUTHORIZING ACCOUNT...</span>
+                                        <span className="font-syncopate font-bold text-xs text-white uppercase tracking-widest">CREATING ACCOUNT...</span>
                                     </>
                                 ) : (
                                     <>
@@ -454,19 +473,19 @@ export default function SignupPage() {
                     <div className="mt-6 text-center">
                         <Link
                             href="/login"
-                            className="text-xs text-neutral-400 hover:text-[#01FFFF] transition-colors font-mono tracking-wider uppercase inline-flex items-center gap-1.5"
+                            className="text-xs text-neutral-400 hover:text-[#01FFFF] transition-colors tracking-wider uppercase inline-flex items-center gap-1.5"
                         >
-                            <span>Already Registered?</span>
-                            <span className="text-[#01FFFF] font-semibold underline underline-offset-4">Authorize Here</span>
+                            <span>Already have an account?</span>
+                            <span className="text-[#01FFFF] font-semibold underline underline-offset-4">Log In</span>
                         </Link>
                     </div>
                 </motion.div>
 
                 {/* Footer Security Badge */}
                 <div className="mt-8 text-center">
-                    <p className="text-[10px] text-neutral-600 font-mono tracking-[0.2em] uppercase flex items-center justify-center gap-2">
+                    <p className="text-[10px] text-neutral-500 tracking-[0.2em] uppercase flex items-center justify-center gap-2">
                         <ShieldCheck className="w-3.5 h-3.5 text-neutral-500" />
-                        <span>Kallayi Car Spa // Encrypted Protocol v3.0</span>
+                        <span>Kallayi Car Spa // Manjeri</span>
                     </p>
                 </div>
             </div>

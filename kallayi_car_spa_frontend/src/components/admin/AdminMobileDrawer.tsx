@@ -140,15 +140,7 @@ export default function AdminMobileDrawer({
                                 onClick={() => handleNavigate('tab', 'staff')}
                             />
 
-                            {/* 6. Fleet & Service Vehicle */}
-                            <DrawerLinkItem
-                                icon={<Car className="w-5 h-5 text-amber-400" />}
-                                label="Fleet & Service Vehicle"
-                                isActive={activeTab === 'fleet'}
-                                onClick={() => handleNavigate('tab', 'fleet')}
-                            />
-
-                            {/* 7. Customer & Vehicle CRM */}
+                            {/* 6. Customer & Vehicle CRM */}
                             <DrawerLinkItem
                                 icon={<Search className="w-5 h-5 text-teal-400" />}
                                 label="Customer & Vehicle CRM"
@@ -187,15 +179,6 @@ export default function AdminMobileDrawer({
                                 isActive={activeTab === 'services'}
                                 onClick={() => handleNavigate('tab', 'services')}
                             />
-
-                            {/* 12. System Settings */}
-                            <DrawerLinkItem
-                                icon={<Settings className="w-5 h-5 text-neutral-400" />}
-                                label="System Settings"
-                                isActive={activeTab === 'settings'}
-                                onClick={() => handleNavigate('tab', 'settings')}
-                            />
-
                         </div>
 
                         {/* Disconnect Session / Logout */}

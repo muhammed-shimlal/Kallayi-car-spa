@@ -17,20 +17,28 @@ function InvoiceContent() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    // BUG FIX: Reset state immediately when idStr changes to prevent stale data cross-contamination
+    setData(null);
+    setError('');
+    setIsLoading(true);
+
     if (!idStr) {
       setError("No invoice ID provided.");
       setIsLoading(false);
       return;
     }
 
+    let isMounted = true;
+
     const fetchData = async () => {
       try {
-        // Single request — invoice_status & invoice_amount are now embedded in the booking response
         const bookingRes = await api.get(`/bookings/${idStr}/`);
         const b = bookingRes.data;
 
+        if (!isMounted) return;
+
         const pkgName = b.service_package_name || b.service_package_details?.name || 'Service Wash';
-        const vehiclePlate = b.vehicle_plate || b.vehicle_info || 'Unknown Plate';
+        const vehiclePlate = b.vehicle_plate || (typeof b.vehicle_info === 'string' ? b.vehicle_info : 'Unknown Plate');
 
         // invoice_amount is the source of truth; fall back to package price
         const rawAmount = b.invoice_amount
@@ -40,6 +48,7 @@ function InvoiceContent() {
         setData({
             invoiceId: `INV-${b.id.toString().padStart(4, '0')}`,
             customerName: b.customer_name || 'Walk-In Guest',
+            customerPhone: b.customer_phone || '',
             vehiclePlate,
             date: new Date(b.created_at || b.end_time || b.time_slot).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
             packageName: pkgName,
@@ -48,14 +57,20 @@ function InvoiceContent() {
             paymentMethod: b.payment_method || null,
         });
       } catch (err) {
+          if (!isMounted) return;
           console.error(err);
           setError("Failed to fetch invoice details. Ensure you are logged in.");
       } finally {
-          setIsLoading(false);
+          if (isMounted) setIsLoading(false);
       }
     };
 
     fetchData();
+
+    return () => {
+      isMounted = false;
+      setData(null);
+    };
   }, [idStr]);
 
   if (isLoading) {

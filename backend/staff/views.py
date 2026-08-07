@@ -19,17 +19,16 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        phone_number = request.data.get('phone_number', '').strip()
-        first_name = request.data.get('first_name', '').strip()
-        password = request.data.get('password')
+        phone_number = str(request.data.get('phone_number') or request.data.get('phone') or '').strip()
+        first_name = str(request.data.get('first_name') or request.data.get('name') or '').strip()
         role = request.data.get('role', 'WASHER')
         salary_type = request.data.get('salary_type', 'COMMISSION')
-        salary_amount = request.data.get('salary_amount', 0)
-        base_salary = request.data.get('base_salary', 0)
+        salary_amount = request.data.get('salary_amount') or request.data.get('base_salary') or 0
+        base_salary = request.data.get('base_salary') or salary_amount or 0
         commission_rate = request.data.get('commission_rate', 0)
 
-        if not phone_number or not password or not first_name:
-            return Response({'error': 'First name, phone number, and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not phone_number or not first_name:
+            return Response({'error': 'First name and phone number are required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(username=phone_number).exists():
             return Response({'error': 'A user with this phone number already exists.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -37,8 +36,9 @@ class StaffDirectoryViewSet(viewsets.ModelViewSet):
         try:
             user = User.objects.create_user(
                 username=phone_number,
-                password=password,
-                first_name=first_name
+                password='Kallayi@123',
+                first_name=first_name,
+                is_staff=True
             )
             
             staff_profile = StaffProfile.objects.create(
@@ -370,13 +370,17 @@ class StaffDashboardViewSet(viewsets.ViewSet):
     def change_password(self, request):
         """POST /api/staff/dashboard/change_password/"""
         user = request.user
-        current_password = request.data.get('current_password')
+        old_password = request.data.get('old_password') or request.data.get('current_password')
         new_password = request.data.get('new_password')
 
-        if not user.check_password(current_password):
-            return Response({'error': 'Current password is incorrect.'}, status=400)
+        if not old_password:
+            return Response({'error': 'Current password is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(old_password):
+            return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
+
         if not new_password or len(new_password) < 6:
-            return Response({'error': 'New password must be at least 6 characters.'}, status=400)
+            return Response({'error': 'New password must be at least 6 characters.'}, status=status.HTTP_400_BAD_REQUEST)
 
         user.set_password(new_password)
         user.save()
@@ -402,10 +406,10 @@ def daily_settlement_ledger(request):
     ledger = []
     
     from bookings.models import Booking
-    from finance.models import GeneralExpense, PayrollEntry, CommissionRule
+    from finance.models import GeneralExpense, PayrollEntry
     
     for staff in staff_users:
-        base_salary = float(staff.base_salary)
+        base_salary = float(staff.base_salary or 0.0)
         
         # Bookings completed today by this staff member
         completed_bookings = Booking.objects.filter(
@@ -416,20 +420,29 @@ def daily_settlement_ledger(request):
         
         jobs_completed = completed_bookings.count()
         
-        # --- NEW: Fetch exact math from database ---
+        from finance.logic import calculate_staff_booking_commission
+        
         payroll_entry = PayrollEntry.objects.filter(staff_user=staff.user, date=today).first()
-        commission_earned = float(payroll_entry.commission_earned) if payroll_entry else 0.0
+        if payroll_entry and float(payroll_entry.commission_earned) > 0:
+            commission_earned = float(payroll_entry.commission_earned)
+        else:
+            commission_earned = 0.0
+            for b in completed_bookings:
+                commission_earned += float(calculate_staff_booking_commission(staff, b.service_package))
+
+        commission_earned = round(commission_earned, 2)
         status = 'Paid' if (payroll_entry and payroll_entry.is_settled) else 'Pending'
-        # -------------------------------------------
         
-        advances = GeneralExpense.objects.filter(
-            recorded_by=staff.user,
-            category__name='Advances',
-            date=today
-        ).aggregate(Sum('amount'))['amount__sum'] or 0.0
+        advances_qs = GeneralExpense.objects.filter(
+            Q(staff=staff.user) | Q(recorded_by=staff.user),
+            Q(category__name__iexact='Advances') | Q(transaction_type='ADVANCE'),
+            date=today,
+            is_active=True
+        )
+        advances = float(advances_qs.aggregate(Sum('amount'))['amount__sum'] or 0.0)
+        advances = round(advances, 2)
         
-        advances = float(advances)
-        final_payout = base_salary + commission_earned - advances
+        final_payout = round(base_salary + commission_earned - advances, 2)
         
         ledger.append({
             'id': staff.user.id,
@@ -463,10 +476,6 @@ def settle_daily_pay(request, staff_id):
         
     today = timezone.localdate()
     
-    # We will compute the day's values again or use ones passed in payload, 
-    # but the simplest per instructions is just marking the ledger for *today* as Paid 
-    # (e.g. creating a Payroll record).
-    
     from bookings.models import Booking
     completed_bookings = Booking.objects.filter(
         technician=staff_user,
@@ -474,14 +483,12 @@ def settle_daily_pay(request, staff_id):
         time_slot__date=today
     )
     
+    from finance.logic import calculate_staff_booking_commission
     commission = 0.0
     for booking in completed_bookings:
-        if booking.service_package and booking.service_package.commission_rule:
-            rule = booking.service_package.commission_rule
-            commission += float(rule.flat_amount)
-            commission += float(booking.service_package.price) * (float(rule.percentage) / 100.0)
+        commission += float(calculate_staff_booking_commission(staff_profile, booking.service_package))
             
-    base_wage = float(staff_profile.base_salary)
+    base_wage = float(staff_profile.base_salary or 0.0)
     
     payroll, created = PayrollEntry.objects.get_or_create(
         staff_user=staff_user,
@@ -508,7 +515,6 @@ def add_staff_advance(request, staff_id):
     This ensures it deducts correctly from their daily settlement.
     """
     user = request.user
-    # Ensure only Admin/Manager can grant advances
     if not user.is_staff and not (hasattr(user, 'staff_profile') and user.staff_profile.role in ['ADMIN', 'MANAGER']):
         return Response({'error': 'Forbidden'}, status=403)
         
@@ -526,17 +532,18 @@ def add_staff_advance(request, staff_id):
     if not amount or float(amount) <= 0:
         return Response({'error': 'A valid positive amount is required'}, status=400)
         
-    # Get or create the 'Advances' category so the ledger finds it
     category, _ = ExpenseCategory.objects.get_or_create(name='Advances')
     
-    # Create the expense. 
-    # NOTE: We set recorded_by=staff_user so the daily_settlement_ledger math picks it up!
     GeneralExpense.objects.create(
         category=category,
         amount=amount,
         description=description,
         date=timezone.localdate(),
-        recorded_by=staff_user 
+        staff=staff_user,
+        recorded_by=user,
+        expense_type='STAFF',
+        transaction_type='ADVANCE',
+        status='APPROVED'
     )
     
     return Response({
@@ -555,11 +562,9 @@ def settle_staff_payroll(request, payroll_id):
     from django.utils import timezone
     
     try:
-        # Since the frontend sends the staff user's ID as payroll_id, check for today's entry
         payroll_entry = PayrollEntry.objects.filter(staff_user_id=payroll_id, date=timezone.localdate()).first()
         
         if not payroll_entry:
-            # If it doesn't exist yet, we create it dynamically for today
             from django.contrib.auth.models import User
             from bookings.models import Booking
             staff_user = User.objects.get(id=payroll_id)
@@ -569,12 +574,11 @@ def settle_staff_payroll(request, payroll_id):
                 status='COMPLETED',
                 time_slot__date=today
             )
+            from finance.logic import calculate_staff_booking_commission
             commission = 0.0
+            staff_prof = getattr(staff_user, 'staff_profile', None)
             for booking in completed_bookings:
-                if booking.service_package and booking.service_package.commission_rule:
-                    rule = booking.service_package.commission_rule
-                    commission += float(rule.flat_amount)
-                    commission += float(booking.service_package.price) * (float(rule.percentage) / 100.0)
+                commission += float(calculate_staff_booking_commission(staff_prof, booking.service_package))
             
             base_wage = getattr(staff_user.staff_profile, 'base_salary', 0.0)
             payroll_entry = PayrollEntry.objects.create(

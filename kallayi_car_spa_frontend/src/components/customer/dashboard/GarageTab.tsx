@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Car, Edit2, Trash2 } from 'lucide-react';
 import api from '@/lib/api';
+import { toast } from 'sonner';
 import { Vehicle } from './types';
 
 interface GarageTabProps {
@@ -38,9 +39,10 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
         try {
             await api.delete(`/customer-vehicles/${id}/`);
             setVehicles(prev => prev.filter(v => v.id !== id));
+            toast.success('Vehicle successfully removed from garage.');
         } catch (error) {
             console.error('Failed to delete vehicle', error);
-            alert('Failed to remove vehicle. Please try again.');
+            toast.error('Failed to remove vehicle. Please try again.');
         }
     };
 
@@ -58,6 +60,7 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
                         ? { ...v, make: updated.make, model: updated.model, plate: updated.plate_number }
                         : v
                 ));
+                toast.success('Vehicle updated successfully!');
             } else {
                 // POST to create new
                 const res = await api.post('/customer-vehicles/', payload);
@@ -68,14 +71,15 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
                     model: created.model,
                     plate: created.plate_number,
                 }]);
+                toast.success('Vehicle registered successfully!');
             }
             handleCloseModal();
         } catch (error: any) {
             console.error('Vehicle save failed', error);
             const errMsg = error.response?.data
-                ? JSON.stringify(error.response.data)
+                ? (typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data))
                 : 'Please check the details and try again.';
-            alert(`Failed to save vehicle: ${errMsg}`);
+            toast.error(`Failed to save vehicle: ${errMsg}`);
         } finally {
             setIsLoading(false);
         }
@@ -108,7 +112,7 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
                                         required
                                         value={form.make}
                                         onChange={e => setForm({ ...form, make: e.target.value })}
-                                        className="w-full mt-1 bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-white focus:outline-none focus:border-[#E52323] transition-colors"
+                                        className="w-full mt-1 bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-white focus:outline-none focus:border-spa-sky transition-colors"
                                     />
                                 </div>
                                 <div>
@@ -117,7 +121,7 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
                                         required
                                         value={form.model}
                                         onChange={e => setForm({ ...form, model: e.target.value })}
-                                        className="w-full mt-1 bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-white focus:outline-none focus:border-[#E52323] transition-colors"
+                                        className="w-full mt-1 bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-white focus:outline-none focus:border-spa-sky transition-colors"
                                     />
                                 </div>
                                 <div>
@@ -126,7 +130,7 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
                                         required
                                         value={form.plate}
                                         onChange={e => setForm({ ...form, plate: e.target.value })}
-                                        className="w-full mt-1 bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-white focus:outline-none focus:border-[#E52323] transition-colors uppercase"
+                                        className="w-full mt-1 bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-white focus:outline-none focus:border-spa-sky transition-colors uppercase"
                                         placeholder="KL-10-XX-1234"
                                     />
                                 </div>
@@ -142,7 +146,7 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
                                     <button
                                         type="submit"
                                         disabled={isLoading}
-                                        className="flex-1 py-3 bg-[#E52323] text-white font-bold tracking-widest text-xs uppercase rounded-xl hover:bg-red-700 transition disabled:opacity-50"
+                                        className="flex-1 py-3 bg-spa-sky text-slate-950 font-extrabold tracking-widest text-xs uppercase rounded-xl hover:bg-[#6FA8C8] transition disabled:opacity-50 shadow-[0_0_15px_rgba(135,189,216,0.3)]"
                                     >
                                         {isLoading ? 'Saving...' : editingVehicle ? 'Update' : 'Confirm'}
                                     </button>
@@ -162,22 +166,22 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
             >
                 <div className="flex justify-between items-end mb-10">
                     <div>
-                        <span className="text-gray-500 text-[10px] font-bold tracking-[0.3em] uppercase">Fleet Data</span>
+                        <span className="text-spa-sky text-[10px] font-bold tracking-[0.3em] uppercase">My Vehicles</span>
                         <h1 className="text-4xl font-bold tracking-tighter mt-2">My Garage</h1>
                     </div>
                     <button
                         onClick={openAddModal}
-                        className="bg-white/10 border border-white/20 text-white px-6 py-3 rounded-full font-bold text-xs uppercase tracking-widest hover:bg-white hover:text-black transition flex items-center gap-2"
+                        className="bg-spa-sky text-slate-950 px-6 py-3 min-h-[44px] rounded-full font-extrabold text-xs uppercase tracking-widest hover:bg-[#6FA8C8] transition flex items-center gap-2 shadow-[0_0_15px_rgba(135,189,216,0.3)] active:scale-95"
                     >
-                        <Plus className="w-4 h-4" /> Add Vehicle
+                        <Plus className="w-4 h-4 text-slate-950" /> Add Vehicle
                     </button>
                 </div>
 
                 {vehicles.length === 0 ? (
                     <div className="bg-white/5 border border-white/10 p-10 rounded-3xl flex flex-col items-center text-center">
                         <Car className="w-12 h-12 text-white/10 mb-4" />
-                        <h3 className="text-xl font-bold text-gray-500">No Vehicles Registered</h3>
-                        <p className="text-[10px] text-gray-600 uppercase tracking-widest mt-2 font-bold">Click "Add Vehicle" to register your first car.</p>
+                        <h3 className="text-xl font-bold text-gray-500">No Vehicles Added</h3>
+                        <p className="text-[10px] text-gray-600 uppercase tracking-widest mt-2 font-bold">Click "Add Vehicle" to register your car for fast booking.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -189,8 +193,8 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
                                 <div className="flex items-center justify-between">
                                     {/* Left: Icon + Info */}
                                     <div className="flex items-center gap-5">
-                                        <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center border border-white/10 group-hover:shadow-[0_0_20px_rgba(229,35,35,0.15)] transition shrink-0">
-                                            <Car className="text-gray-400 group-hover:text-[#E52323] transition" />
+                                        <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center border border-white/10 group-hover:shadow-[0_0_20px_rgba(135,189,216,0.2)] transition shrink-0">
+                                            <Car className="text-gray-400 group-hover:text-spa-sky transition" />
                                         </div>
                                         <div>
                                             <h3 className="text-lg font-bold text-white">{v.make} {v.model}</h3>
@@ -203,14 +207,14 @@ export function GarageTab({ myVehicles: initialVehicles }: GarageTabProps) {
                                         <button
                                             onClick={() => handleEditClick(v)}
                                             title="Edit vehicle"
-                                            className="p-2 rounded-xl border border-white/10 bg-white/5 text-gray-500 hover:text-[#01FFFF] hover:border-[#01FFFF]/30 hover:bg-[#01FFFF]/10 transition"
+                                            className="p-2 rounded-xl border border-white/10 bg-white/5 text-gray-500 hover:text-spa-sky hover:border-spa-sky/30 hover:bg-spa-sky/10 transition"
                                         >
                                             <Edit2 className="w-4 h-4" />
                                         </button>
                                         <button
                                             onClick={() => handleDeleteVehicle(v.id!)}
                                             title="Remove vehicle"
-                                            className="p-2 rounded-xl border border-white/10 bg-white/5 text-gray-500 hover:text-[#E52323] hover:border-[#E52323]/30 hover:bg-[#E52323]/10 transition"
+                                            className="p-2 rounded-xl border border-white/10 bg-white/5 text-gray-500 hover:text-red-400 hover:border-red-400/30 hover:bg-red-400/10 transition"
                                         >
                                             <Trash2 className="w-4 h-4" />
                                         </button>

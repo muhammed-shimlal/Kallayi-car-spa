@@ -161,31 +161,57 @@ class DashboardViewSet(viewsets.ViewSet):
         today = timezone.localdate()
         
         try:
-            # 1. Revenue Today
-            revenue = float(Invoice.objects.filter(
-                created_at__date=today
-            ).aggregate(total=Sum('amount'))['total'] or 0.0)
-            
-            # 2. Chemical Cost Today
+            # 1. Today's Actual Service Revenue (Actual service date time_slot__date is today)
+            today_service_invoices = Invoice.objects.filter(
+                Q(booking__time_slot__date=today) | Q(booking__isnull=True, created_at__date=today)
+            )
+            revenue_today = float(today_service_invoices.aggregate(total=Sum('amount'))['total'] or 0.0)
+
+            # Standalone bookings for today with no attached invoice yet
+            bookings_today_no_inv = Booking.objects.filter(
+                time_slot__date=today,
+                invoice__isnull=True
+            )
+            for b in bookings_today_no_inv:
+                if b.service_package and b.service_package.price:
+                    revenue_today += float(b.service_package.price)
+
+            # 2. Pre-booking Advances (Future bookings paid/created today)
+            pre_booking_invoices = Invoice.objects.filter(
+                created_at__date=today,
+                booking__time_slot__date__gt=today
+            )
+            pre_booking_revenue = float(pre_booking_invoices.aggregate(total=Sum('amount'))['total'] or 0.0)
+
+            bookings_future_no_inv = Booking.objects.filter(
+                created_at__date=today,
+                time_slot__date__gt=today,
+                invoice__isnull=True
+            )
+            for b in bookings_future_no_inv:
+                if b.service_package and b.service_package.price:
+                    pre_booking_revenue += float(b.service_package.price)
+
+            # 3. Chemical Cost Today
             chemical_logs = ChemicalUsageLog.objects.filter(timestamp__date=today).select_related('inventory_item')
             chemical_cost = 0.0
             for log in chemical_logs:
                 if log.inventory_item and log.inventory_item.cost_per_unit and log.amount_used:
                     chemical_cost += float(log.amount_used) * float(log.inventory_item.cost_per_unit)
 
-            # 3. Labor Cost Today
+            # 4. Labor Cost Today
             labor = float(PayrollEntry.objects.filter(date=today).aggregate(
                 total=Sum(F('base_wage') + F('commission_earned') + F('tips_earned'))
             )['total'] or 0.0)
             
-            # 4. General Expenses Today
+            # 5. General Expenses Today
             general_expenses = float(GeneralExpense.objects.filter(date=today).aggregate(
                 total=Sum('amount')
             )['total'] or 0.0)
 
-            net_profit = revenue - chemical_cost - labor - general_expenses
+            net_profit = revenue_today - chemical_cost - labor - general_expenses
 
-            # 5. Today's Washed Vehicles count
+            # 6. Today's Washed Vehicles count
             today_washed_count = Booking.objects.filter(
                 status__in=['COMPLETED', 'Completed', 'completed']
             ).filter(
@@ -196,17 +222,21 @@ class DashboardViewSet(viewsets.ViewSet):
             ).distinct().count()
 
             return Response({
-                'revenue_today': revenue,
-                'chemical_cost_today': chemical_cost,
-                'labor_cost_today': labor,
-                'general_expenses_today': general_expenses,
-                'net_profit_today': net_profit,
+                'revenue_today': round(revenue_today, 2),
+                'today_revenue': round(revenue_today, 2),
+                'pre_booking_revenue': round(pre_booking_revenue, 2),
+                'chemical_cost_today': round(chemical_cost, 2),
+                'labor_cost_today': round(labor, 2),
+                'general_expenses_today': round(general_expenses, 2),
+                'net_profit_today': round(net_profit, 2),
                 'today_washed_count': today_washed_count
             })
         except Exception as e:
             print(f"Error in kpi_summary: {e}")
             return Response({
                 'revenue_today': 0.0,
+                'today_revenue': 0.0,
+                'pre_booking_revenue': 0.0,
                 'chemical_cost_today': 0.0,
                 'labor_cost_today': 0.0,
                 'general_expenses_today': 0.0,
@@ -351,12 +381,14 @@ class KhataViewSet(viewsets.ViewSet):
         customers = Customer.objects.filter(outstanding_balance__gt=0)
         data = []
         for c in customers:
+            v_count = c.vehicles.count() if hasattr(c, 'vehicles') else 0
             data.append({
                 'id': c.id,
                 'name': f"{c.user.first_name} {c.user.last_name}".strip() or c.user.username,
                 'phone_number': c.phone_number,
                 'outstanding_balance': float(c.outstanding_balance),
                 'credit_limit': float(c.credit_limit),
+                'vehicle_count': v_count,
             })
         return Response(data)
 
@@ -370,16 +402,25 @@ class KhataViewSet(viewsets.ViewSet):
         entries = KhataLedger.objects.filter(customer=customer).order_by('-created_at')
         data = []
         for entry in entries:
-            # Need description or formatted name for booking if exists
             desc = entry.description
             if entry.related_booking:
                 desc += f" (Booking #{entry.related_booking.id})"
                 
+            plate_number = 'N/A'
+            if entry.related_booking and entry.related_booking.vehicle:
+                plate_number = entry.related_booking.vehicle.plate_number
+            else:
+                import re
+                match = re.search(r'([A-Z]{2}-\d{2}-[A-Z0-9]+-\d{4})', desc)
+                if match:
+                    plate_number = match.group(1)
+
             data.append({
                 'id': entry.id,
                 'amount': float(entry.amount),
                 'transaction_type': entry.transaction_type,
                 'description': desc,
+                'plate_number': plate_number,
                 'date': entry.created_at.strftime("%Y-%m-%d %H:%M"),
             })
         return Response(data)

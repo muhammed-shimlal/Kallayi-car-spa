@@ -15,22 +15,12 @@ def get_staff_earnings(user):
 
     completed_bookings = Booking.objects.filter(technician=user, status='COMPLETED')
 
-    staff_profile = getattr(user, 'staff_profile', None)
-    comm_rate = (float(staff_profile.commission_rate) / 100.0) if (staff_profile and staff_profile.commission_rate) else 0.0
+    from finance.logic import calculate_staff_booking_commission
 
     def calc_booking_earnings(bookings_qs):
         total = 0.0
         for b in bookings_qs:
-            if b.service_package:
-                if b.service_package.commission_rule:
-                    rule = b.service_package.commission_rule
-                    flat = float(rule.flat_amount or 0.0)
-                    pct = float(b.service_package.price or 0.0) * (float(rule.percentage or 0.0) / 100.0)
-                    total += flat + pct
-                elif comm_rate > 0:
-                    total += float(b.service_package.price or 0.0) * comm_rate
-                else:
-                    total += float(b.service_package.price or 0.0) * 0.15
+            total += float(calculate_staff_booking_commission(staff_profile, b.service_package))
         return round(total, 2)
 
     today_earnings = calc_booking_earnings(completed_bookings.filter(time_slot__date=today_date))

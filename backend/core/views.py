@@ -15,6 +15,12 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def me(self, request):
         user = request.user
+        
+        # Auto-claim/link guest Customer profile if customer user
+        if not user.is_staff and not user.is_superuser:
+            from customers.views import claim_or_link_customer
+            claim_or_link_customer(user)
+
         data = UserSerializer(user).data
         # Attach Role Info
         data['is_staff_user'] = user.is_staff
@@ -31,7 +37,7 @@ class UserViewSet(viewsets.ModelViewSet):
         elif user.is_staff:
             data['role'] = 'MANAGER'
         else:
-            data['role'] = 'UNKNOWN'
+            data['role'] = 'CUSTOMER'
             
         return Response(data)
 
@@ -67,4 +73,50 @@ class StaffViewSet(viewsets.ModelViewSet):
             profile.save()
             return Response({'status': 'location updated'})
         return Response({'error': 'latitude and longitude required'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.authtoken.models import Token
+from django.contrib.auth import get_user_model
+from django.db.models import Q
+from core.backends import normalize_phone
+
+UserModel = get_user_model()
+
+class CustomObtainAuthToken(ObtainAuthToken):
+    """
+    Custom Token Auth View that differentiates between:
+    1) User Not Found (404 response with error="user_not_found")
+    2) Incorrect Password (400 response with error="invalid_credentials")
+    """
+    def post(self, request, *args, **kwargs):
+        username = request.data.get('username') or request.data.get('phone')
+
+        if username:
+            clean_phone = normalize_phone(str(username))
+            q_filter = Q(username__iexact=username) | Q(email__iexact=username)
+            if clean_phone and len(clean_phone) >= 7:
+                q_filter |= Q(username__icontains=clean_phone)
+                q_filter |= Q(customer__phone_number__icontains=clean_phone)
+                q_filter |= Q(username=clean_phone)
+                q_filter |= Q(username=f"+91{clean_phone}")
+
+            user_exists = UserModel.objects.filter(q_filter).exists()
+            if not user_exists:
+                return Response(
+                    {"error": "user_not_found", "message": "Phone number or email is not registered."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"error": "invalid_credentials", "message": "Incorrect access password."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = serializer.validated_data['user']
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({'token': token.key, 'user_id': user.pk, 'username': user.username})
+
 

@@ -36,10 +36,42 @@ def calculate_wash_cost(booking):
         except ChemicalInventory.DoesNotExist:
             print(f"Warning: Chemical {chemical_name} not found in inventory.")
 
+def calculate_staff_booking_commission(staff_profile, service_package):
+    """
+    Calculates dynamic commission for a completed booking based on individual staff settings:
+    - PERCENTAGE: (gross_service_price * staff.commission_rate) / 100
+    - FIXED: staff.commission_amount (or staff.salary_amount if fixed amount per service)
+    Gross service price is used directly (ignoring shop operational expenses).
+    Does NOT deduct advances (advances are deducted only at final payroll settlement).
+    """
+    if not service_package:
+        return Decimal('0.00')
+
+    # 1. Check if the package has a specific override rule
+    rule = getattr(service_package, 'commission_rule', None)
+    if rule and (getattr(rule, 'flat_amount', 0) > 0 or getattr(rule, 'percentage', 0) > 0):
+        flat = Decimal(str(getattr(rule, 'flat_amount', 0) or 0))
+        pct = Decimal(str(service_package.price or 0)) * (Decimal(str(getattr(rule, 'percentage', 0) or 0)) / Decimal('100.0'))
+        return flat + pct
+
+    if not staff_profile:
+        return Decimal('0.00')
+
+    gross_price = Decimal(str(service_package.price or 0))
+    comm_type = getattr(staff_profile, 'commission_type', 'PERCENTAGE')
+    
+    if comm_type == 'FIXED':
+        fixed_val = Decimal(str(getattr(staff_profile, 'commission_amount', 0) or getattr(staff_profile, 'salary_amount', 0) or 0))
+        return fixed_val
+    else:
+        comm_rate = Decimal(str(getattr(staff_profile, 'commission_rate', 0) or 0))
+        return gross_price * (comm_rate / Decimal('100.0'))
+
 def process_payroll_event(booking):
     """
-    Calculates commission for the technician upon job completion.
-    Uses the worker's individual commission percentage from their StaffProfile.
+    Calculates dynamic commission for the technician upon job completion.
+    Uses the worker's individual commission structure (PERCENTAGE or FIXED).
+    Store operational expenses are NOT subtracted from total revenue.
     """
     technician = booking.technician
     if not technician:
@@ -49,29 +81,11 @@ def process_payroll_event(booking):
     if not package:
         return
 
-    commission_amount = Decimal('0.00')
+    staff_profile = getattr(technician, 'staff_profile', None)
+    commission_amount = calculate_staff_booking_commission(staff_profile, package)
 
-    # 1. Check if the package has a specific override rule
-    rule = package.commission_rule if hasattr(package, 'commission_rule') else None
-    
-    if rule and (rule.flat_amount > 0 or rule.percentage > 0):
-        commission_amount += Decimal(str(rule.flat_amount))
-        if rule.percentage > 0:
-            commission_amount += Decimal(str(package.price)) * (Decimal(str(rule.percentage)) / Decimal('100.0'))
-    else:
-        # 2. STANDARD BEHAVIOR: Use the individual worker's profile percentage
-        try:
-            # E.g., if package is 500, and worker rate is 50.0, commission = 250
-            if hasattr(technician, 'staff_profile') and technician.staff_profile.commission_rate > 0:
-                worker_rate = Decimal(str(technician.staff_profile.commission_rate))
-                commission_amount += Decimal(str(package.price)) * (worker_rate / Decimal('100.0'))
-        except Exception as e:
-            print(f"Could not calculate individual staff commission: {e}")
-
-    # Always ensure a payroll entry exists for today so the worker shows up in the table
     today = timezone.localdate()
     
-    # We must handle is_settled safely in case the migration hasn't fully applied
     defaults_dict = {
         'base_wage': Decimal('0.00'), 
         'commission_earned': Decimal('0.00'), 
@@ -84,8 +98,7 @@ def process_payroll_event(booking):
         defaults=defaults_dict
     )
     
-    # Add the earned amount to their total for the day
-    if commission_amount > 0:
+    if commission_amount > Decimal('0.00'):
         entry.commission_earned += commission_amount
         entry.save()
 

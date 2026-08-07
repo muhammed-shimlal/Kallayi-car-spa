@@ -83,8 +83,8 @@ export default function StaffTab() {
             header: 'Name',
             accessor: (staff: any) => (
                 <div>
-                    <p className="font-bold text-white text-sm">{staff.name}</p>
-                    <p className="text-[10px] font-mono text-[#8E939B]">{staff.phone}</p>
+                    <p className="font-bold text-white text-sm">{staff.first_name || staff.name || staff.username}</p>
+                    <p className="text-[10px] font-mono text-[#8E939B]">{staff.phone_number || staff.phone || staff.username}</p>
                 </div>
             ),
             mobilePrimary: true
@@ -109,15 +109,15 @@ export default function StaffTab() {
         },
         {
             header: 'Salary Type',
-            accessor: (staff: any) => <span className="text-xs font-mono uppercase text-neutral-300">{staff.salary_type}</span>
+            accessor: (staff: any) => <span className="text-xs font-mono uppercase text-neutral-300">{staff.salary_type || 'COMMISSION'}</span>
         },
         {
             header: 'Amount',
-            accessor: (staff: any) => <span className="text-xs font-mono font-bold text-white">₹{staff.salary_amount}</span>
+            accessor: (staff: any) => <span className="text-xs font-mono font-bold text-white">₹{staff.salary_amount ?? staff.base_salary ?? 0}</span>
         },
         {
             header: 'Comm %',
-            accessor: (staff: any) => <span className="text-xs font-mono text-[#01FFFF]">{staff.commission_rate}%</span>
+            accessor: (staff: any) => <span className="text-xs font-mono text-[#01FFFF]">{staff.commission_rate ?? 0}%</span>
         }
     ];
 

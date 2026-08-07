@@ -18,24 +18,24 @@ export function HistoryTab({ history }: HistoryTabProps) {
         >
             <div className="flex justify-between items-end mb-10">
                 <div>
-                    <span className="text-[#E52323] text-[10px] font-bold tracking-[0.3em] uppercase">Service Logs</span>
-                    <h1 className="text-4xl font-bold tracking-tighter mt-2 text-white">Operation History</h1>
+                    <span className="text-spa-sky text-[10px] font-bold tracking-[0.3em] uppercase">Service History</span>
+                    <h1 className="text-4xl font-bold tracking-tighter mt-2 text-white">Wash History</h1>
                 </div>
             </div>
 
             {(!history || history.length === 0) ? (
                 <div className="bg-white/5 border border-white/10 p-6 md:p-10 rounded-3xl flex flex-col items-center justify-center text-center shadow-inner">
                     <Car className="w-12 h-12 text-white/10 mb-4" />
-                    <h3 className="text-xl font-bold text-gray-500">No Past Operations</h3>
-                    <p className="text-[10px] text-gray-600 uppercase tracking-widest mt-2 font-bold">Your fleet service history will appear here.</p>
+                    <h3 className="text-xl font-bold text-gray-500">No Wash History</h3>
+                    <p className="text-[10px] text-gray-600 uppercase tracking-widest mt-2 font-bold">Your completed car washes will appear here.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 gap-4">
                     {(history || []).map((record, index) => (
                         <div key={record.id || index} className="bg-white/5 border border-white/10 p-6 rounded-2xl flex flex-col hover:border-white/20 transition-colors">
                             <div className="flex items-center gap-4">
-                                <div className="bg-[#E52323]/20 p-3 rounded-xl border border-[#E52323]/30 shrink-0">
-                                    <CheckCircle className="w-6 h-6 text-[#E52323]" />
+                                <div className="bg-spa-sky/20 p-3 rounded-xl border border-spa-sky/30 shrink-0">
+                                    <CheckCircle className="w-6 h-6 text-spa-sky" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-lg font-bold text-white truncate">
@@ -47,7 +47,7 @@ export function HistoryTab({ history }: HistoryTabProps) {
                                         {(record.vehicle_plate) ? ` • ${record.vehicle_plate}` : ''}
                                     </p>
                                 </div>
-                                <span className="text-[10px] text-[#E52323] uppercase tracking-widest font-bold shrink-0">Completed</span>
+                                <span className="text-[10px] text-spa-sky uppercase tracking-widest font-bold shrink-0">Completed</span>
                             </div>
                             
                             {(!record.status || record.status === 'COMPLETED') && (

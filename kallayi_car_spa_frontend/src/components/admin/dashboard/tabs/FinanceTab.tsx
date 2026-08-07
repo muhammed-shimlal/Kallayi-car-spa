@@ -146,16 +146,25 @@ export default function FinanceTab() {
         <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-x-auto hide-scrollbar mb-8">
             <table className="w-full text-left text-sm min-w-[540px]">
                 <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
-                    <tr><th className="p-4 pl-6">Customer Name</th><th className="p-4">Phone Number</th><th className="p-4">Outstanding Balance</th><th className="p-4 text-right pr-6">Action</th></tr>
+                    <tr>
+                        <th className="p-4 pl-6">Customer Name</th>
+                        <th className="p-4">Phone Number</th>
+                        <th className="p-4">Vehicles</th>
+                        <th className="p-4">Outstanding Balance</th>
+                        <th className="p-4 text-right pr-6">Action</th>
+                    </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
                     {khataCustomers.length === 0 ? (
-                        <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">All Khata accounts are settled! No outstanding credit.</td></tr>
+                        <tr><td colSpan={5} className="p-8 text-center text-[#8E939B]">All Khata accounts are settled! No outstanding credit.</td></tr>
                     ) : (
                         khataCustomers.map((khata: any) => (
                             <tr key={khata.id} className="hover:bg-white/5 transition-colors">
                                 <td className="p-4 pl-6 font-bold text-white">{khata.name}</td>
                                 <td className="p-4 text-[#8E939B]">{khata.phone_number || 'N/A'}</td>
+                                <td className="p-4 font-mono font-bold text-[#01FFFF]">
+                                    {khata.vehicle_count ?? khata.vehicles_count ?? 1}
+                                </td>
                                 <td className="p-4 font-syncopate font-bold text-yellow-400 flex items-center gap-2">
                                     ₹{khata.outstanding_balance}
                                     {khata.outstanding_balance >= khata.credit_limit && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
@@ -194,35 +203,6 @@ export default function FinanceTab() {
                                             <Check className="w-3 h-3" /> Settle
                                         </button>
                                     </div>
-                                </td>
-                            </tr>
-                        )))}
-                </tbody>
-            </table>
-        </div>
-
-        {/* TABLE 2: UNPAID BOOKING INVOICES */}
-        <h4 className="font-syncopate font-bold text-sm tracking-widest text-purple-400 mb-4 mt-8">UNPAID BOOKING INVOICES (CAR WASHES)</h4>
-        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-x-auto hide-scrollbar">
-            <table className="w-full text-left text-sm min-w-[500px]">
-                <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
-                    <tr><th className="p-4 pl-6">Customer</th><th className="p-4">Vehicle</th><th className="p-4">Amount Owed</th><th className="p-4 text-right pr-6">Action</th></tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                    {customerCredits.length === 0 ? (
-                        <tr><td colSpan={4} className="p-8 text-center text-[#8E939B]">All booking invoices are settled!</td></tr>
-                    ) : (
-                        customerCredits.map((credit: any) => (
-                            <tr key={credit.id} className="hover:bg-white/5">
-                                <td className="p-4 pl-6 font-bold text-white">{credit.customer}</td>
-                                <td className="p-4 text-[#8E939B]">{credit.vehicle}</td>
-                                <td className="p-4 font-syncopate font-bold text-purple-400 flex items-center gap-2">
-                                    ₹{credit.amount} {credit.status === 'Overdue' && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
-                                </td>
-                                <td className="p-4 text-right pr-6">
-                                    <button onClick={() => settleCredit(credit.id)} className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-3 py-1.5 rounded-sm uppercase tracking-widest font-bold flex gap-1 ml-auto items-center hover:bg-purple-500 hover:text-black transition">
-                                        <Check className="w-3 h-3" /> Mark Paid
-                                    </button>
                                 </td>
                             </tr>
                         )))}
@@ -455,7 +435,7 @@ export default function FinanceTab() {
                                 </table>
                             </div>
                         )}
-\n\n            {/* MANUAL KHATA CHARGE MODAL */}
+            {/* MANUAL KHATA CHARGE MODAL */}
             {isManualKhataOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
                     <div className="bg-[#141518] border border-white/10 p-8 rounded-[2.5rem] w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.5)]">
@@ -634,6 +614,7 @@ export default function FinanceTab() {
                                     <tr>
                                         <th className="p-4 pl-6">Date</th>
                                         <th className="p-4">Description</th>
+                                        <th className="p-4">Vehicle Plate</th>
                                         <th className="p-4">Type</th>
                                         <th className="p-4 text-right pr-6">Amount</th>
                                     </tr>
@@ -641,13 +622,16 @@ export default function FinanceTab() {
                                 <tbody className="divide-y divide-white/5">
                                     {khataLedger.length === 0 ? (
                                         <tr>
-                                            <td colSpan={4} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
+                                            <td colSpan={5} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
                                         </tr>
                                     ) : (
                                         khataLedger.map((entry: any) => (
                                             <tr key={entry.id} className="hover:bg-white/5 transition-colors">
                                                 <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
-                                                <td className="p-4 text-gray-300 max-w-[320px] truncate" title={entry.description}>{entry.description}</td>
+                                                <td className="p-4 text-gray-300 max-w-[260px] truncate" title={entry.description}>{entry.description}</td>
+                                                <td className="p-4 font-mono text-xs font-bold text-[#01FFFF]">
+                                                    {entry.plate_number || entry.vehicle_plate || 'N/A'}
+                                                </td>
                                                 <td className="p-4">
                                                     <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${entry.transaction_type === 'SETTLEMENT' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-[#FF2A6D]/10 text-[#FF2A6D]'}`}>
                                                         {entry.transaction_type === 'SETTLEMENT' ? 'Payment' : 'Credit'}
@@ -664,6 +648,6 @@ export default function FinanceTab() {
                 </div>
             )}
 
-            \n                    </div>
+                    </div>
     );
 }

@@ -17,7 +17,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class StaffCreateSerializer(serializers.ModelSerializer):
     # Serializer for creating a user and a staff profile together
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, required=False, default='Kallayi@123')
     role = serializers.ChoiceField(choices=StaffProfile.ROLE_CHOICES)
     phone_number = serializers.CharField(required=False)
 
@@ -28,6 +28,8 @@ class StaffCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         role = validated_data.pop('role')
         phone = validated_data.pop('phone_number', '')
-        user = User.objects.create_user(**validated_data)
+        password = validated_data.pop('password', 'Kallayi@123')
+        validated_data['is_staff'] = True
+        user = User.objects.create_user(password=password, **validated_data)
         StaffProfile.objects.create(user=user, role=role, phone_number=phone)
         return user

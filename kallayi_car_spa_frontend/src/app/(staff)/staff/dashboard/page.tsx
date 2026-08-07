@@ -7,6 +7,7 @@ import {
   UserCheck, Lock, LogOut, CheckCircle2, ChevronRight, Filter, AlertCircle, RefreshCw, Eye
 } from "lucide-react";
 import api from "@/lib/api";
+import { toast } from "sonner";
 
 export default function StaffDashboardPage() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export default function StaffDashboardPage() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordMsg, setPasswordMsg] = useState("");
   const [isChangingPass, setIsChangingPass] = useState(false);
 
@@ -68,18 +70,37 @@ export default function StaffDashboardPage() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordMsg("");
+
+    if (newPassword.length < 6) {
+      const msg = "New password must be at least 6 characters long.";
+      setPasswordMsg(msg);
+      toast.error(msg);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      const msg = "New passwords do not match.";
+      setPasswordMsg(msg);
+      toast.error(msg);
+      return;
+    }
+
     setIsChangingPass(true);
     try {
       const res = await api.post("/staff/dashboard/change_password/", {
-        current_password: currentPassword,
+        old_password: currentPassword,
         new_password: newPassword,
       });
-      setPasswordMsg("Password updated successfully!");
+      const successMsg = res.data?.message || "Password updated successfully!";
+      toast.success(successMsg);
       setCurrentPassword("");
       setNewPassword("");
-      setTimeout(() => setShowPasswordModal(false), 1500);
+      setConfirmPassword("");
+      setShowPasswordModal(false);
     } catch (err: any) {
-      setPasswordMsg(err.response?.data?.error || "Failed to change password");
+      const errMsg = err.response?.data?.error || err.response?.data?.message || "Failed to change password";
+      setPasswordMsg(errMsg);
+      toast.error(errMsg);
     } finally {
       setIsChangingPass(false);
     }
@@ -430,6 +451,18 @@ export default function StaffDashboardPage() {
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-mono text-sm focus:outline-none focus:border-cyan"
                   placeholder="Enter new password (min 6 chars)..."
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-grotesk text-xs text-tungsten uppercase tracking-wider">Confirm New Password</label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-mono text-sm focus:outline-none focus:border-cyan"
+                  placeholder="Re-enter new password..."
                 />
               </div>
 

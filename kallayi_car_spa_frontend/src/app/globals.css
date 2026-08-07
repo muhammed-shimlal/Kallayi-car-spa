@@ -7,6 +7,11 @@
   --color-cyan: #01FFFF;
   --color-tungsten: #8E939B;
 
+  --color-spa-ice: #cfe0e8;
+  --color-spa-powder: #b7d7e8;
+  --color-spa-sky: #87bdd8;
+  --color-spa-mint: #daebe8;
+
   --font-syncopate: var(--font-syncopate);
   --font-jakarta: var(--font-jakarta);
   --font-grotesk: var(--font-grotesk);

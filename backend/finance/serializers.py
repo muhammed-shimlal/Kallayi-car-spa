@@ -2,11 +2,34 @@ from rest_framework import serializers
 from .models import Invoice, GeneralExpense, ExpenseCategory
 
 class InvoiceSerializer(serializers.ModelSerializer):
-    customer_phone = serializers.CharField(source='booking.customer.phone_number', read_only=True)
-    
+    customer_phone = serializers.CharField(source='booking.customer.phone_number', read_only=True, default='')
+    customer_name = serializers.SerializerMethodField()
+    vehicle_plate = serializers.CharField(source='booking.vehicle.plate_number', read_only=True, default='')
+    vehicle_model = serializers.CharField(source='booking.vehicle.model', read_only=True, default='')
+    service_package_name = serializers.CharField(source='booking.service_package.name', read_only=True, default='')
+    service_package_price = serializers.DecimalField(source='booking.service_package.price', max_digits=10, decimal_places=2, read_only=True, default=0.00)
+    booking_id = serializers.IntegerField(source='booking.id', read_only=True)
+
+    def get_customer_name(self, obj):
+        if obj.booking and obj.booking.customer:
+            c = obj.booking.customer
+            if hasattr(c, 'user') and c.user:
+                full_name = c.user.get_full_name()
+                if full_name and full_name.strip():
+                    return full_name.strip()
+                if c.user.first_name:
+                    return c.user.first_name
+                return c.user.username
+            return str(c)
+        return "Walk-In Guest"
+
     class Meta:
         model = Invoice
-        fields = ['id', 'booking', 'amount', 'split_cash', 'split_online', 'split_khata', 'payment_method', 'is_paid', 'created_at', 'customer_phone']
+        fields = [
+            'id', 'booking', 'booking_id', 'amount', 'split_cash', 'split_online', 'split_khata',
+            'payment_method', 'is_paid', 'created_at', 'customer_name', 'customer_phone',
+            'vehicle_plate', 'vehicle_model', 'service_package_name', 'service_package_price'
+        ]
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):
     class Meta:

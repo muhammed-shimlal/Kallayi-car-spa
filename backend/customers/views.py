@@ -10,6 +10,86 @@ from .models import Customer, SubscriptionPlan, MemberSubscription
 from .serializers import CustomerSerializer, SubscriptionPlanSerializer
 from django.utils import timezone
 
+from django.db.models import Q
+
+def normalize_phone(phone_str):
+    if not phone_str:
+        return ''
+    digits = ''.join(c for c in phone_str if c.isdigit())
+    if len(digits) == 12 and digits.startswith('91'):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith('0'):
+        digits = digits[1:]
+    return digits
+
+def claim_or_link_customer(user, phone_number=None, name=None):
+    """
+    Links a newly registered or authenticated User to an existing guest Customer profile
+    if one exists with the same phone number. Otherwise, creates or updates the Customer profile.
+    """
+    raw_phone = (phone_number or user.username or '').strip()
+    clean_phone = normalize_phone(raw_phone)
+
+    if not clean_phone:
+        customer, _ = Customer.objects.get_or_create(user=user, defaults={'phone_number': raw_phone})
+        return customer
+
+    # Look for existing Customer records with matching phone number
+    existing_customers = Customer.objects.filter(
+        Q(phone_number__icontains=clean_phone) | Q(user__username__icontains=clean_phone)
+    )
+
+    unlinked_customer = None
+    for c in existing_customers:
+        if c.user == user:
+            unlinked_customer = c
+            break
+        # Claimable profile: linked to temporary admin/guest user
+        if c.user and (c.user.username.startswith('guest_') or c.user.username.startswith('walkin_') or not c.user.has_usable_password()):
+            unlinked_customer = c
+            break
+
+    if unlinked_customer:
+        old_user = unlinked_customer.user
+        
+        # Re-link customer profile
+        unlinked_customer.user = user
+        if raw_phone:
+            unlinked_customer.phone_number = raw_phone
+        unlinked_customer.save()
+
+        # Re-link vehicles from old dummy user to new user
+        if old_user and old_user != user:
+            from .models import CustomerVehicle
+            CustomerVehicle.objects.filter(customer=old_user).update(customer=user)
+            
+            # Clean up orphaned guest user
+            if old_user.username.startswith('guest_') or old_user.username.startswith('walkin_'):
+                try:
+                    old_user.delete()
+                except Exception:
+                    pass
+
+        if name and not user.first_name:
+            user.first_name = name
+            user.save()
+
+        return unlinked_customer
+    else:
+        customer, created = Customer.objects.get_or_create(
+            user=user,
+            defaults={'phone_number': raw_phone}
+        )
+        if not created and raw_phone and not customer.phone_number:
+            customer.phone_number = raw_phone
+            customer.save()
+
+        if name and not user.first_name:
+            user.first_name = name
+            user.save()
+
+        return customer
+
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
@@ -81,13 +161,36 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if not name or not phone or not password:
             return Response({'error': 'Name, phone, and password are required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Username is strictly the phone number
-        if User.objects.filter(username=phone).exists():
-            return Response({'error': 'Phone number already registered'}, status=status.HTTP_400_BAD_REQUEST)
+        clean_phone = normalize_phone(phone)
+        username_target = clean_phone if clean_phone else phone
+
+        # Check if an active registered User already exists across formats
+        q_filter = Q(username__iexact=phone) | Q(username__iexact=username_target)
+        if clean_phone:
+            q_filter |= Q(username__icontains=clean_phone)
+            q_filter |= Q(customer__phone_number__icontains=clean_phone)
+
+        existing_user = User.objects.filter(q_filter).first()
+        if existing_user and existing_user.has_usable_password() and not (existing_user.username.startswith('guest_') or existing_user.username.startswith('walkin_')):
+            return Response({'error': 'Phone number already registered. Please log in.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user = User.objects.create_user(username=phone, password=password, first_name=name)
-            customer = Customer.objects.create(user=user, phone_number=phone)
+            if existing_user and (existing_user.username.startswith('guest_') or existing_user.username.startswith('walkin_') or not existing_user.has_usable_password()):
+                user = existing_user
+                user.username = username_target
+                user.first_name = name
+                user.set_password(password)
+                user.is_active = True
+                user.save()
+            else:
+                user = User.objects.create_user(
+                    username=username_target,
+                    password=password,
+                    first_name=name,
+                    is_active=True
+                )
+
+            customer = claim_or_link_customer(user, phone_number=phone, name=name)
             
             # Create vehicle if optional vehicle data provided
             vehicle_data = request.data.get('vehicle')
@@ -97,11 +200,10 @@ class CustomerViewSet(viewsets.ModelViewSet):
                 plate = vehicle_data.get('plate_number', '').strip()
                 if make or model or plate:
                     from .models import CustomerVehicle
-                    CustomerVehicle.objects.create(
+                    CustomerVehicle.objects.get_or_create(
                         customer=user,
-                        make=make or 'Unknown',
-                        model=model or 'Unknown',
-                        plate_number=plate or f'KALLAYI-{user.id}'
+                        plate_number=plate or f'KALLAYI-{user.id}',
+                        defaults={'make': make or 'Unknown', 'model': model or 'Unknown'}
                     )
 
             token, _ = Token.objects.get_or_create(user=user)
@@ -274,6 +376,34 @@ class CustomerVehicleViewSet(viewsets.ModelViewSet):
         if user.is_staff or user.is_superuser:
             return CustomerVehicle.objects.all()
         return CustomerVehicle.objects.filter(customer=user)
+
+    @action(detail=False, methods=['get'])
+    def lookup(self, request):
+        """Lookup a customer vehicle by plate number to auto-fill details in POS intake."""
+        plate = request.query_params.get('plate', '').strip()
+        if not plate:
+            return Response({'error': 'No plate provided'}, status=400)
+        
+        vehicle = CustomerVehicle.objects.filter(plate_number__iexact=plate).select_related('customer').first()
+        if vehicle:
+            customer_name = "Walk-In Guest"
+            customer_phone = ""
+            if vehicle.customer:
+                customer_name = vehicle.customer.get_full_name() or vehicle.customer.first_name or vehicle.customer.username
+                customer_phone = vehicle.customer.username
+                if hasattr(vehicle.customer, 'customer') and vehicle.customer.customer.phone_number:
+                    customer_phone = vehicle.customer.customer.phone_number
+
+            return Response({
+                'plate_number': vehicle.plate_number,
+                'make': vehicle.make,
+                'model': vehicle.model,
+                'vehicle_type': vehicle.vehicle_type,
+                'color': vehicle.color,
+                'phone': customer_phone,
+                'customer_name': customer_name
+            })
+        return Response({'error': 'Not found'}, status=404)
 
     def perform_create(self, serializer):
         # Staff can pass an explicit customer ID; regular users are auto-assigned

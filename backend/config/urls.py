@@ -18,8 +18,8 @@ router.register(r'reviews', ReviewViewSet, basename='review')
 router.register(r'coupons', CouponViewSet, basename='coupon')
 router.register(r'vehicles', VehicleViewSet, basename='vehicle')
 router.register(r'locations', TechnicianLocationViewSet, basename='technician-location')
-router.register(r'fleet/vehicles', ServiceVehicleViewSet, basename='service-vehicle')
-router.register(r'fleet/logs', FleetLogViewSet, basename='fleet-log')
+# router.register(r'fleet/vehicles', ServiceVehicleViewSet, basename='service-vehicle')
+# router.register(r'fleet/logs', FleetLogViewSet, basename='fleet-log')
 router.register(r'bookings', BookingViewSet, basename='booking')
 router.register(r'calendar', CalendarViewSet, basename='calendar')
 router.register(r'driver-jobs', DriverBookingViewSet, basename='driver-jobs')
@@ -43,14 +43,14 @@ from payments.views import PaymentViewSet, WebhookViewSet
 router.register(r'payments', PaymentViewSet, basename='payments')
 router.register(r'webhooks', WebhookViewSet, basename='webhooks')
 
-from rest_framework.authtoken import views
+from core.views import CustomObtainAuthToken
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/bookings/', include('bookings.urls')),
     path('api/staff/', include('staff.urls')),
     path('api/core/', include('core.urls')),
-    path('api/api-token-auth/', views.obtain_auth_token),
+    path('api/api-token-auth/', CustomObtainAuthToken.as_view()),
     path('api/finance/close-register/', close_register, name='close-register'),
     path('api/finance/analytics/', analytics_dashboard, name='analytics-dashboard'),
     path('api/finance/invoice/<int:booking_id>/pdf/', generate_invoice_pdf, name='invoice-pdf'),

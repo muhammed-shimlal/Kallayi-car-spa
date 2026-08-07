@@ -17,6 +17,10 @@ class StaffProfile(models.Model):
         ('COMMISSION', 'Commission Based'),
         ('CUSTOM', 'Custom Pay'),
     ]
+    COMMISSION_TYPE_CHOICES = [
+        ('PERCENTAGE', 'Percentage Based'),
+        ('FIXED', 'Fixed Amount Per Service'),
+    ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='staff_profile')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='WASHER')
     phone_number = models.CharField(max_length=20, blank=True)
@@ -26,7 +30,9 @@ class StaffProfile(models.Model):
     salary_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     hourly_rate = models.DecimalField(max_digits=6, decimal_places=2, default=15.00)
     base_salary = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    commission_type = models.CharField(max_length=15, choices=COMMISSION_TYPE_CHOICES, default='PERCENTAGE')
     commission_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Percentage (0-100)")
+    commission_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Fixed commission amount per service")
     joining_date = models.DateField(default=timezone.localdate)
     
     # Status & Location

@@ -24,16 +24,16 @@ export function MobileNavigation({ activeTab, setActiveTab }: MobileNavigationPr
                     const isActive = activeTab === item.id;
                     const Icon = item.icon;
 
-                    // Primary Action Button (Floating in center)
+                    // Primary Action Button (Floating in center thumb zone)
                     if (item.isPrimary) {
                         return (
                             <button
                                 key={item.id}
                                 onClick={() => setActiveTab(item.id)}
-                                className="relative -top-6 flex flex-col items-center justify-center w-14 h-14 bg-[#E52323] text-white rounded-full shadow-[0_0_20px_rgba(229,35,35,0.4)] transition-transform hover:scale-110 active:scale-95"
+                                className="relative -top-6 flex flex-col items-center justify-center w-14 h-14 min-w-[56px] min-h-[56px] bg-spa-sky text-slate-950 rounded-full shadow-[0_0_20px_rgba(135,189,216,0.5)] transition-transform hover:scale-110 active:scale-95"
                                 aria-label={item.label}
                             >
-                                <Icon className="w-6 h-6" />
+                                <Icon className="w-6 h-6 text-slate-950" />
                             </button>
                         );
                     }
@@ -42,20 +42,20 @@ export function MobileNavigation({ activeTab, setActiveTab }: MobileNavigationPr
                         <button
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
-                            className="relative flex flex-col items-center justify-center p-2 group transition-colors"
+                            className="relative flex flex-col items-center justify-center p-2 min-h-[44px] min-w-[44px] group transition-colors"
                             aria-label={item.label}
                         >
                             <Icon 
                                 strokeWidth={isActive ? 2.5 : 2}
                                 className={`w-6 h-6 transition-colors duration-300 ${
-                                    isActive ? 'text-[#E52323]' : 'text-gray-500 group-hover:text-gray-300'
+                                    isActive ? 'text-spa-sky' : 'text-gray-500 group-hover:text-gray-300'
                                 }`} 
                             />
                             {/* Glowing dot for active indicator */}
                             {isActive && (
                                 <motion.div 
                                     layoutId="mobileNavDot"
-                                    className="absolute -bottom-2 w-1.5 h-1.5 bg-[#E52323] rounded-full shadow-[0_0_8px_rgba(229,35,35,0.8)]"
+                                    className="absolute -bottom-2 w-1.5 h-1.5 bg-spa-sky rounded-full shadow-[0_0_8px_rgba(135,189,216,0.8)]"
                                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                 />
                             )}
