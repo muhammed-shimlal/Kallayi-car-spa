@@ -39,3 +39,18 @@ class CustomerVehicleSerializer(serializers.ModelSerializer):
         model = CustomerVehicle
         fields = '__all__'
         read_only_fields = ['customer', 'created_at']
+
+
+class CustomerRegistrationSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150, required=True)
+    phone = serializers.CharField(max_length=20, required=True)
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(max_length=128, required=True, write_only=True)
+
+    def validate_email(self, value):
+        email_clean = value.strip().lower()
+        if not email_clean.endswith('@gmail.com'):
+            raise serializers.ValidationError("Please use a valid Gmail address (@gmail.com). Temp mails are not allowed.")
+        if User.objects.filter(email__iexact=email_clean).exclude(username__startswith='guest_').exclude(username__startswith='walkin_').exists():
+            raise serializers.ValidationError("An account with this Gmail address already exists. Please log in.")
+        return email_clean

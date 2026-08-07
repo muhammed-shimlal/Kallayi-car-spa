@@ -98,9 +98,59 @@ class CustomerViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         role = get_user_role(user)
-        if role in ['ADMIN', 'MANAGER']:
-            return Customer.objects.all()
-        return Customer.objects.filter(user=user)
+        qs = Customer.objects.all() if (role in ['ADMIN', 'MANAGER'] or user.is_staff) else Customer.objects.filter(user=user)
+
+        search = self.request.query_params.get('search', '').strip() or self.request.query_params.get('q', '').strip()
+        if search:
+            clean_phone = normalize_phone(search)
+            q_filter = (
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(user__username__icontains=search) |
+                Q(phone_number__icontains=search)
+            )
+            if clean_phone:
+                q_filter |= Q(phone_number__icontains=clean_phone) | Q(user__username__icontains=clean_phone)
+            qs = qs.filter(q_filter)[:15]
+
+        return qs
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def search(self, request):
+        """
+        Optimized, debounced search API for Khata/Credit customer lookup.
+        Only returns matching credit-eligible customers based on search query parameter (e.g. ?q=... or ?search=...).
+        Limits returned results to max 15 records for optimal performance.
+        """
+        search_query = request.query_params.get('search', '').strip() or request.query_params.get('q', '').strip()
+        if not search_query:
+            return Response([])
+
+        clean_phone = normalize_phone(search_query)
+
+        q_filter = (
+            Q(user__first_name__icontains=search_query) |
+            Q(user__last_name__icontains=search_query) |
+            Q(user__username__icontains=search_query) |
+            Q(phone_number__icontains=search_query)
+        )
+        if clean_phone:
+            q_filter |= Q(phone_number__icontains=clean_phone) | Q(user__username__icontains=clean_phone)
+
+        customers = Customer.objects.filter(q_filter).select_related('user').order_by('-id')[:15]
+
+        results = []
+        for c in customers:
+            full_name = c.user.get_full_name() or c.user.first_name or c.user.username
+            results.append({
+                'id': c.id,
+                'name': full_name,
+                'phone_number': c.phone_number or c.user.username,
+                'outstanding_balance': float(c.outstanding_balance or 0.0),
+                'credit_limit': float(c.credit_limit or 0.0)
+            })
+
+        return Response(results)
 
     def create(self, request, *args, **kwargs):
         name = request.data.get('name', '').strip()
@@ -154,12 +204,20 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[AllowAny], authentication_classes=[])
     @transaction.atomic
     def register(self, request):
-        name = request.data.get('name', '').strip()
-        phone = request.data.get('phone', '').strip()
-        password = request.data.get('password')
+        from .serializers import CustomerRegistrationSerializer
+        serializer = CustomerRegistrationSerializer(data=request.data)
+        if not serializer.is_valid():
+            # Format serializer errors cleanly
+            err_dict = serializer.errors
+            first_field = list(err_dict.keys())[0]
+            err_msg = err_dict[first_field][0] if isinstance(err_dict[first_field], list) else str(err_dict[first_field])
+            return Response({'error': err_msg}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not name or not phone or not password:
-            return Response({'error': 'Name, phone, and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        validated_data = serializer.validated_data
+        name = validated_data['name']
+        phone = validated_data['phone']
+        email = validated_data['email']
+        password = validated_data['password']
 
         clean_phone = normalize_phone(phone)
         username_target = clean_phone if clean_phone else phone
@@ -179,12 +237,14 @@ class CustomerViewSet(viewsets.ModelViewSet):
                 user = existing_user
                 user.username = username_target
                 user.first_name = name
+                user.email = email
                 user.set_password(password)
                 user.is_active = True
                 user.save()
             else:
                 user = User.objects.create_user(
                     username=username_target,
+                    email=email,
                     password=password,
                     first_name=name,
                     is_active=True

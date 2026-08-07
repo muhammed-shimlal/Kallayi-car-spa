@@ -170,9 +170,17 @@ export default function LoginPage() {
 
                 {/* Password Field */}
                 <div className="space-y-2">
-                  <label className="block text-xs uppercase tracking-widest text-neutral-300 font-medium">
-                    Password
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs uppercase tracking-widest text-neutral-300 font-medium">
+                      Password
+                    </label>
+                    <Link
+                      href="/forgot-password"
+                      className="text-[10px] text-[#01FFFF] hover:text-white transition-colors uppercase tracking-wider font-mono"
+                    >
+                      Forgot Password?
+                    </Link>
+                  </div>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-500">
                       <Lock className="w-4 h-4" />

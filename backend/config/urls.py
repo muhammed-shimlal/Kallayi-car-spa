@@ -43,7 +43,7 @@ from payments.views import PaymentViewSet, WebhookViewSet
 router.register(r'payments', PaymentViewSet, basename='payments')
 router.register(r'webhooks', WebhookViewSet, basename='webhooks')
 
-from core.views import CustomObtainAuthToken
+from core.views import CustomObtainAuthToken, password_reset_request, password_reset_confirm
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -51,6 +51,8 @@ urlpatterns = [
     path('api/staff/', include('staff.urls')),
     path('api/core/', include('core.urls')),
     path('api/api-token-auth/', CustomObtainAuthToken.as_view()),
+    path('api/password-reset/', password_reset_request, name='password-reset-request'),
+    path('api/password-reset-confirm/', password_reset_confirm, name='password-reset-confirm'),
     path('api/finance/close-register/', close_register, name='close-register'),
     path('api/finance/analytics/', analytics_dashboard, name='analytics-dashboard'),
     path('api/finance/invoice/<int:booking_id>/pdf/', generate_invoice_pdf, name='invoice-pdf'),

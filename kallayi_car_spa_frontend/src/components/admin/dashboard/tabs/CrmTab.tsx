@@ -99,14 +99,18 @@ export default function CrmTab() {
 
         setIsSearching(true);
         try {
-            const res = await fetch(`${getApiBase()}/vehicles/lookup/?plate=${encodeURIComponent(searchQuery.trim())}`, {
+            const res = await fetch(`${getApiBase()}/bookings/vehicle-history/?q=${encodeURIComponent(searchQuery.trim())}`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
-            if (!res.ok) throw new Error('Vehicle record not found');
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'No matching vehicle/customer records found');
+            }
             const data = await res.json();
             setDossierData(data);
-        } catch {
-            toast.error(`No dossier history found for plate "${searchQuery}".`);
+        } catch (err: any) {
+            toast.error(err.message || `No service records found for "${searchQuery}".`);
+            setDossierData(null);
         } finally {
             setIsSearching(false);
         }
@@ -139,7 +143,7 @@ export default function CrmTab() {
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search Plate Number (e.g. KL-07-CC-1001)..."
+                            placeholder="Search Plate or Phone Number..."
                             className="w-full bg-[#141518] border border-white/10 py-2.5 pl-10 pr-4 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-[#01FFFF] transition-all uppercase"
                         />
                     </div>
@@ -165,29 +169,72 @@ export default function CrmTab() {
 
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
                         <div>
-                            <span className="text-[10px] text-[#01FFFF] uppercase tracking-widest font-bold">Vehicle Dossier</span>
+                            <span className="text-[10px] text-[#01FFFF] uppercase tracking-widest font-bold">Vehicle &amp; Customer Dossier</span>
                             <h2 className="text-2xl sm:text-3xl font-syncopate font-black tracking-widest text-white mt-1">
-                                {dossierData.plate || searchQuery.toUpperCase()}
+                                {dossierData.plate || dossierData.vehicle_profile?.plate_number || searchQuery.toUpperCase()}
                             </h2>
                         </div>
                         <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-xl text-right">
                             <span className="text-[10px] text-[#8E939B] uppercase font-bold block">Registered Owner</span>
-                            <span className="text-sm font-bold text-white">{dossierData.customer_name || 'Walk-In Customer'}</span>
+                            <span className="text-sm font-bold text-white">{dossierData.customer_name || dossierData.vehicle_profile?.owner_name || 'Walk-In Customer'}</span>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                         <div className="bg-black/40 border border-white/5 p-4 rounded-2xl">
                             <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Vehicle Model</p>
-                            <p className="text-base font-bold text-white mt-1">{dossierData.model || dossierData.make_model || 'Standard Vehicle'}</p>
+                            <p className="text-base font-bold text-white mt-1">{dossierData.make_model || dossierData.vehicle_profile?.model || 'Standard Vehicle'}</p>
                         </div>
                         <div className="bg-black/40 border border-white/5 p-4 rounded-2xl">
                             <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Owner Phone</p>
-                            <p className="text-base font-mono font-bold text-emerald-400 mt-1">{dossierData.phone || 'N/A'}</p>
+                            <p className="text-base font-mono font-bold text-emerald-400 mt-1">{dossierData.phone || dossierData.vehicle_profile?.owner_phone || 'N/A'}</p>
                         </div>
                         <div className="bg-black/40 border border-white/5 p-4 rounded-2xl">
-                            <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Total Services</p>
-                            <p className="text-base font-mono font-bold text-[#01FFFF] mt-1">{dossierData.total_visits || 1} Visits</p>
+                            <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Total Visits</p>
+                            <p className="text-base font-mono font-bold text-[#01FFFF] mt-1">{dossierData.total_visits || dossierData.kpis?.total_visits || 0} Visits</p>
+                        </div>
+                        <div className="bg-black/40 border border-white/5 p-4 rounded-2xl">
+                            <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Lifetime Spend</p>
+                            <p className="text-base font-mono font-bold text-white mt-1">₹{(dossierData.total_lifetime_spend || dossierData.kpis?.total_lifetime_spend || 0).toLocaleString()}</p>
+                        </div>
+                    </div>
+
+                    {/* Timeline / History Table */}
+                    <div className="border border-white/10 rounded-2xl overflow-hidden bg-black/30">
+                        <div className="p-4 bg-[#0C0D0F] border-b border-white/5">
+                            <h4 className="font-syncopate font-bold text-xs tracking-widest text-white uppercase">
+                                PAST SERVICE HISTORY ({(dossierData.timeline || dossierData.history || []).length})
+                            </h4>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-black/50 text-[#8E939B] text-[10px] uppercase tracking-widest border-b border-white/5">
+                                    <tr>
+                                        <th className="p-3.5 pl-5">Date &amp; Time</th>
+                                        <th className="p-3.5">Vehicle</th>
+                                        <th className="p-3.5">Service Package</th>
+                                        <th className="p-3.5">Status</th>
+                                        <th className="p-3.5">Technician</th>
+                                        <th className="p-3.5 text-right pr-5">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 font-grotesk">
+                                    {(dossierData.timeline || dossierData.history || []).map((b: any, idx: number) => (
+                                        <tr key={b.id || b.booking_id || idx} className="hover:bg-white/5 transition-colors">
+                                            <td className="p-3.5 pl-5 font-mono text-white/90">{b.date || 'N/A'}</td>
+                                            <td className="p-3.5 font-mono font-bold text-[#01FFFF]">{b.plate_number || dossierData.plate}</td>
+                                            <td className="p-3.5 font-bold text-emerald-400">{b.service_package_name || 'Walk-In Wash'}</td>
+                                            <td className="p-3.5">
+                                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${b.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
+                                                    {b.status || 'COMPLETED'}
+                                                </span>
+                                            </td>
+                                            <td className="p-3.5 text-[#8E939B]">{b.technician_name || 'Unassigned'}</td>
+                                            <td className="p-3.5 text-right pr-5 font-syncopate font-bold text-white">₹{b.price || b.price_paid || 0}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>

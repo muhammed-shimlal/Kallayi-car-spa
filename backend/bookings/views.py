@@ -693,69 +693,135 @@ def live_queue(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def vehicle_crm_history(request):
-    """Vehicle CRM & Service History Tracker."""
-    from django.db.models import Count, Sum
-    q = request.GET.get('q', '').strip()
-    if not q:
-        return Response({'error': 'Missing query parameter q (License Plate)'}, status=400)
+    """
+    Vehicle & Customer CRM Search API.
+    Searches across CustomerVehicle, Customer, and Booking models using Q objects for:
+    - Vehicle License Plate Number (e.g. KL55A1234 or KL-55-A-1234)
+    - Customer Phone Number (e.g. 9876543210)
+    - Customer Name or Username
+    Returns vehicle/owner profile, summary metrics, and full timeline of past service records.
+    """
+    from django.db.models import Q, Count, Sum
+    from customers.models import CustomerVehicle, Customer
+    from bookings.models import Booking
 
-    # Search for either the License Plate OR the Owner's Phone Number
-    vehicles = Vehicle.objects.filter(
-        Q(plate_number__icontains=q) | 
-        Q(owner__phone_number__icontains=q)
-    ).select_related('owner__user')
-    if not vehicles.exists():
-        return Response({'error': 'No matching vehicle found in the system.'}, status=404)
-    
-    vehicle = vehicles.first()
+    query = request.GET.get('q', '').strip() or request.GET.get('query', '').strip() or request.GET.get('plate', '').strip()
+    if not query:
+        return Response({'error': 'Please provide a plate number or phone number to search.'}, status=400)
 
-    completed_bookings = Booking.objects.filter(vehicle=vehicle, status='COMPLETED').order_by('-created_at')
-    
-    total_visits = completed_bookings.count()
-    total_lifetime_spend = completed_bookings.aggregate(total=Sum('service_package__price'))['total'] or 0
-    
+    clean_query = query.replace(' ', '').replace('-', '')
+
+    # 1. Search CustomerVehicle matching plate, registration, or customer phone/name
+    vehicle_qs = CustomerVehicle.objects.filter(
+        Q(plate_number__icontains=query) |
+        Q(plate_number__icontains=clean_query) |
+        Q(registration_number__icontains=query) |
+        Q(customer__username__icontains=query) |
+        Q(customer__first_name__icontains=query) |
+        Q(customer__last_name__icontains=query) |
+        Q(customer__customer__phone_number__icontains=query)
+    ).select_related('customer', 'customer__customer')
+
+    # 2. Search Bookings matching plate, customer phone, or customer name
+    bookings_qs = Booking.objects.filter(
+        Q(vehicle__plate_number__icontains=query) |
+        Q(vehicle__plate_number__icontains=clean_query) |
+        Q(vehicle__registration_number__icontains=query) |
+        Q(customer__phone_number__icontains=query) |
+        Q(customer__user__username__icontains=query) |
+        Q(customer__user__first_name__icontains=query) |
+        Q(customer__user__last_name__icontains=query)
+    ).select_related('vehicle', 'customer', 'customer__user', 'service_package', 'technician').order_by('-created_at')
+
+    if not vehicle_qs.exists() and not bookings_qs.exists():
+        return Response({'error': f'No service history found matching "{query}".'}, status=404)
+
+    vehicle = vehicle_qs.first()
+    first_booking = bookings_qs.first()
+
+    plate_number = vehicle.plate_number if vehicle else (first_booking.vehicle.plate_number if first_booking and first_booking.vehicle else query.upper())
+    make_model = f"{vehicle.make} {vehicle.model}" if vehicle else (f"{first_booking.vehicle.make} {first_booking.vehicle.model}" if first_booking and first_booking.vehicle else "Standard Vehicle")
+
+    owner_name = "Walk-In Customer"
+    owner_phone = ""
+    outstanding_balance = 0.0
+
+    if vehicle and vehicle.customer:
+        u = vehicle.customer
+        owner_name = u.get_full_name() or u.first_name or u.username
+        owner_phone = u.username
+        if hasattr(u, 'customer') and u.customer:
+            owner_phone = u.customer.phone_number or u.username
+            outstanding_balance = float(u.customer.outstanding_balance or 0.0)
+    elif first_booking and first_booking.customer:
+        c = first_booking.customer
+        owner_name = c.user.get_full_name() or c.user.username if c.user else "Walk-In Customer"
+        owner_phone = c.phone_number or (c.user.username if c.user else "")
+        outstanding_balance = float(c.outstanding_balance or 0.0)
+
+    # Combine distinct bookings
+    bookings = bookings_qs.distinct()
+
+    total_visits = bookings.count()
+    total_lifetime_spend = sum(float(b.service_package.price) for b in bookings if b.service_package and b.service_package.price)
+
     favorite_service_data = (
-        completed_bookings
+        bookings
         .filter(service_package__isnull=False)
         .values('service_package__name')
         .annotate(count=Count('id'))
         .order_by('-count')
         .first()
     )
-    favorite_service = favorite_service_data['service_package__name'] if favorite_service_data else "None"
+    favorite_service = favorite_service_data['service_package__name'] if favorite_service_data else "Standard Wash"
 
     timeline = []
-    for b in completed_bookings:
+    for b in bookings:
+        raw_date = b.time_slot or b.created_at
+        date_str = raw_date.strftime('%Y-%m-%d %I:%M %p') if raw_date else 'N/A'
+        service_name = b.service_package.name if b.service_package else 'Walk-In Wash'
+        tech_name = b.technician.get_full_name() or b.technician.username if b.technician else 'Unassigned'
+        price = float(b.service_package.price) if b.service_package else 0.0
+
         timeline.append({
-            'date': b.created_at.strftime('%Y-%m-%d') if b.created_at else None,
-            'service_package_name': b.service_package.name if b.service_package else 'Walk-In Wash',
-            'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else 'Unassigned',
-            'price_paid': float(b.service_package.price) if b.service_package else 0.0,
+            'id': b.id,
+            'booking_id': b.id,
+            'date': date_str,
+            'created_at': b.created_at.isoformat() if b.created_at else None,
+            'plate_number': b.vehicle.plate_number if b.vehicle else plate_number,
+            'vehicle_model': f"{b.vehicle.make} {b.vehicle.model}" if b.vehicle else make_model,
+            'customer_name': b.customer.user.get_full_name() if (b.customer and b.customer.user) else owner_name,
+            'customer_phone': b.customer.phone_number if b.customer else owner_phone,
+            'service_package_name': service_name,
+            'status': b.status,
+            'technician_name': tech_name,
+            'price': price,
+            'price_paid': price,
+            'bay_assignment': b.bay_assignment or 'Main Bay'
         })
-    
-    owner = vehicle.owner
-    outstanding_balance = 0.0
-    owner_name = "Unknown Walk-In"
-    
-    if owner:
-        outstanding_balance = float(owner.outstanding_balance) if hasattr(owner, 'outstanding_balance') else 0.0
-        owner_name = owner.user.get_full_name() or owner.user.username if owner.user else "Unknown Walk-In"
-        
-    vehicle_profile = {
-        'plate_number': vehicle.plate_number,
-        'model': vehicle.model or "Unknown Model",
-        'owner_name': owner_name,
-        'outstanding_balance': outstanding_balance
-    }
 
     return Response({
-        'vehicle_profile': vehicle_profile,
+        'plate': plate_number,
+        'make_model': make_model,
+        'customer_name': owner_name,
+        'phone': owner_phone,
+        'total_visits': total_visits,
+        'total_lifetime_spend': round(total_lifetime_spend, 2),
+        'favorite_service': favorite_service,
+        'vehicle_profile': {
+            'plate_number': plate_number,
+            'model': make_model,
+            'owner_name': owner_name,
+            'owner_phone': owner_phone,
+            'outstanding_balance': round(outstanding_balance, 2)
+        },
         'kpis': {
             'total_visits': total_visits,
-            'total_lifetime_spend': float(total_lifetime_spend),
+            'total_lifetime_spend': round(total_lifetime_spend, 2),
             'favorite_service': favorite_service
         },
-        'timeline': timeline
+        'timeline': timeline,
+        'history': timeline
     })
 
 

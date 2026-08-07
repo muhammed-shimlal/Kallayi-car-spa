@@ -37,10 +37,10 @@ export default function Footer() {
             <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
             <div className="max-w-7xl mx-auto py-16 sm:py-20 px-6 sm:px-12 lg:px-16 flex flex-col justify-between">
-                
+
                 {/* 3. Grid Layout (Desktop lg:grid-cols-12 vs Mobile flex-col gap-y-10) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-10 lg:gap-12 mb-16 sm:mb-20">
-                    
+
                     {/* Brand Column (lg:col-span-4) */}
                     <div className="lg:col-span-4 space-y-6">
                         <div>
@@ -109,11 +109,11 @@ export default function Footer() {
                             <div>
                                 <span className="block text-[11px] font-mono text-neutral-500 uppercase tracking-widest">CONCIERGE</span>
                                 <a href="tel:+918089735500" className="hover:text-white transition-colors block">+91 80897 35500</a>
-                                <a href="mailto:concierge@kallayicarspa.com" className="hover:text-white transition-colors block">concierge@kallayicarspa.com</a>
+                                <a href="mailto:kallayicarspa@gmail.com" className="hover:text-white transition-colors block">kallayicarspa@gmail.com</a>
                             </div>
                             <div>
                                 <span className="block text-[11px] font-mono text-neutral-500 uppercase tracking-widest">HOURS</span>
-                                <span>Mon – Sun: 07:00 – 19:00 IST</span>
+                                <span>Mon – Sun: 07:00 AM - 06:30 PM     </span>
                             </div>
                         </div>
                     </div>

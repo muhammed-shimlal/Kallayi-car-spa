@@ -428,21 +428,20 @@ function AdminDashboardContent() {
         const token = localStorage.getItem('auth_token');
         
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/bookings/vehicle-history/?q=${encodeURIComponent(searchQuery)}`, {
+            const res = await fetch(`${API_BASE}/bookings/vehicle-history/?q=${encodeURIComponent(searchQuery.trim())}`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             
             if (res.ok) {
                 const data = await res.json();
                 setVehicleData(data);
-                setActiveTab('crm');
             } else {
-                const err = await res.json();
-                setCrmError(err.error || 'Vehicle not found');
+                const err = await res.json().catch(() => ({}));
+                setCrmError(err.error || `No service records found for "${searchQuery}"`);
                 setVehicleData(null);
             }
         } catch (error) {
-            setCrmError('Connection error while fetching timeline.');
+            setCrmError('Connection error while searching service history.');
             setVehicleData(null);
         } finally {
             setCrmLoading(false);
@@ -913,6 +912,90 @@ function AdminDashboardContent() {
                     {crmError && <p className="text-[#FF2A6D] text-xs mt-3 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {crmError}</p>}
                 </div>
 
+                {/* SEARCH RESULTS DOSSIER PANEL */}
+                {vehicleData && (
+                    <div className="bg-[#141518]/90 border border-[#01FFFF]/30 p-5 sm:p-7 rounded-3xl space-y-6 mb-8 shadow-[0_0_30px_rgba(1,255,255,0.08)] relative animate-[fadeIn_0.3s_ease-out]">
+                        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                            <div>
+                                <span className="text-[10px] text-[#01FFFF] uppercase tracking-widest font-bold flex items-center gap-1.5"><Car className="w-3.5 h-3.5" /> Vehicle &amp; Service Dossier</span>
+                                <h3 className="text-xl sm:text-2xl font-syncopate font-black tracking-widest text-white mt-1">
+                                    {vehicleData.plate || vehicleData.vehicle_profile?.plate_number || searchQuery.toUpperCase()}
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => { setVehicleData(null); setSearchQuery(''); }}
+                                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-[#8E939B] hover:text-white uppercase tracking-wider transition-all"
+                            >
+                                ✕ Close Search
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                            <div className="bg-black/40 border border-white/5 p-4 rounded-2xl">
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Owner Name</p>
+                                <p className="text-sm font-bold text-white mt-1">{vehicleData.customer_name || vehicleData.vehicle_profile?.owner_name || 'Walk-In Customer'}</p>
+                            </div>
+                            <div className="bg-black/40 border border-white/5 p-4 rounded-2xl">
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Owner Phone</p>
+                                <p className="text-sm font-mono font-bold text-emerald-400 mt-1">{vehicleData.phone || vehicleData.vehicle_profile?.owner_phone || 'N/A'}</p>
+                            </div>
+                            <div className="bg-black/40 border border-white/5 p-4 rounded-2xl">
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Total Service Visits</p>
+                                <p className="text-sm font-mono font-bold text-[#01FFFF] mt-1">{vehicleData.total_visits || vehicleData.kpis?.total_visits || 0} Visits</p>
+                            </div>
+                            <div className="bg-black/40 border border-white/5 p-4 rounded-2xl">
+                                <p className="text-[10px] text-[#8E939B] uppercase tracking-wider font-bold">Lifetime Spend</p>
+                                <p className="text-sm font-mono font-bold text-white mt-1">₹{(vehicleData.total_lifetime_spend || vehicleData.kpis?.total_lifetime_spend || 0).toLocaleString()}</p>
+                            </div>
+                        </div>
+
+                        {/* PAST SERVICE RECORDS TABLE */}
+                        <div className="border border-white/10 rounded-2xl overflow-hidden bg-black/30">
+                            <div className="p-4 bg-[#0C0D0F] border-b border-white/5 flex items-center justify-between">
+                                <h4 className="font-syncopate font-bold text-xs tracking-widest text-white uppercase">
+                                    PAST SERVICE RECORDS ({(vehicleData.timeline || vehicleData.history || []).length})
+                                </h4>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-black/50 text-[#8E939B] text-[10px] uppercase tracking-widest border-b border-white/5">
+                                        <tr>
+                                            <th className="p-3.5 pl-5">Date &amp; Time</th>
+                                            <th className="p-3.5">Vehicle</th>
+                                            <th className="p-3.5">Service Package</th>
+                                            <th className="p-3.5">Status</th>
+                                            <th className="p-3.5">Technician</th>
+                                            <th className="p-3.5 text-right pr-5">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 font-grotesk">
+                                        {(vehicleData.timeline || vehicleData.history || []).length === 0 ? (
+                                            <tr>
+                                                <td colSpan={6} className="p-6 text-center text-[#8E939B] text-xs">No service records found for this vehicle.</td>
+                                            </tr>
+                                        ) : (
+                                            (vehicleData.timeline || vehicleData.history || []).map((b: any, idx: number) => (
+                                                <tr key={b.id || b.booking_id || idx} className="hover:bg-white/5 transition-colors">
+                                                    <td className="p-3.5 pl-5 font-mono text-white/90">{b.date || 'N/A'}</td>
+                                                    <td className="p-3.5 font-mono font-bold text-[#01FFFF]">{b.plate_number || vehicleData.plate}</td>
+                                                    <td className="p-3.5 font-bold text-emerald-400">{b.service_package_name || 'Walk-In Wash'}</td>
+                                                    <td className="p-3.5">
+                                                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${b.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
+                                                            {b.status || 'COMPLETED'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3.5 text-[#8E939B]">{b.technician_name || 'Unassigned'}</td>
+                                                    <td className="p-3.5 text-right pr-5 font-syncopate font-bold text-white">₹{b.price || b.price_paid || 0}</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* REAL-TIME KPI DASHBOARD (Always Visible) */}
                 {isLoading ? (
                     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
@@ -1001,8 +1084,8 @@ function AdminDashboardContent() {
                                     <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF]">BUSIEST HOURS</h4>
                                 </div>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-6">Scheduling intelligence — peak demand windows</p>
-                                <div className="h-56">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                <div className="w-full h-56 min-h-[224px] relative">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                         <BarChart data={analyticsData.busiest_hours} barCategoryGap="30%">
                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                                             <XAxis dataKey="hour" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} />
@@ -1031,8 +1114,8 @@ function AdminDashboardContent() {
                                     <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#FF2A6D]">REVENUE BY PACKAGE</h4>
                                 </div>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-6">Marketing intelligence — highest-value services</p>
-                                <div className="h-56">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                <div className="w-full h-56 min-h-[224px] relative">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                         <BarChart data={analyticsData.packages} layout="vertical" barCategoryGap="25%">
                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
                                             <XAxis type="number" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}k`} />

@@ -92,8 +92,8 @@ export default function FinanceTab() {
                                             <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF]">REVENUE TREND</h4>
                                             <span className="ml-auto text-[10px] text-[#8E939B] uppercase tracking-widest">Last {chartData.length} days</span>
                                         </div>
-                                        <div className="h-72">
-                                            <ResponsiveContainer width="100%" height="100%">
+                                        <div className="w-full h-72 min-h-[288px] relative">
+                                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                                 <LineChart data={chartData}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                                     <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} dy={10} />

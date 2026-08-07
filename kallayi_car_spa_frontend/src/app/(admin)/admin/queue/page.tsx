@@ -328,6 +328,11 @@ export default function AdminQueueBoard() {
     });
     const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
     const [existingCustomers, setExistingCustomers] = useState<{ id: number; name: string; phone_number: string }[]>([]);
+    const [khataCustomerMode, setKhataCustomerMode] = useState<'EXISTING' | 'NEW'>('EXISTING');
+    const [khataSearchInput, setKhataSearchInput] = useState('');
+    const [khataSearchResults, setKhataSearchResults] = useState<{ id: number; name: string; phone_number: string; outstanding_balance?: number }[]>([]);
+    const [isSearchingKhata, setIsSearchingKhata] = useState(false);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isConnected, setIsConnected] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -365,17 +370,18 @@ export default function AdminQueueBoard() {
     // Smart Customer Lookup & Linking
     const matchedCustomer = useMemo(() => {
         if (!checkoutModal.isOpen) return null;
+        const pool = [...(khataSearchResults || []), ...(existingCustomers || [])];
 
         // 1. If explicit customerId set
         if (checkoutModal.customerId) {
-            const found = existingCustomers.find(c => c.id === checkoutModal.customerId);
+            const found = pool.find(c => c.id === checkoutModal.customerId);
             if (found) return found;
         }
 
         // 2. If phone number entered/auto-filled
         const cleanPhone = (checkoutModal.phoneNumber || '').replace(/\D/g, '');
         if (cleanPhone.length >= 7) {
-            const found = existingCustomers.find(c => {
+            const found = pool.find(c => {
                 const cClean = (c.phone_number || '').replace(/\D/g, '');
                 return cClean && (cClean.endsWith(cleanPhone) || cleanPhone.endsWith(cClean));
             });
@@ -383,7 +389,7 @@ export default function AdminQueueBoard() {
         }
 
         return null;
-    }, [checkoutModal.isOpen, checkoutModal.customerId, checkoutModal.phoneNumber, existingCustomers]);
+    }, [checkoutModal.isOpen, checkoutModal.customerId, checkoutModal.phoneNumber, khataSearchResults, existingCustomers]);
 
     // Auto-set customerId when matched
     useEffect(() => {
@@ -467,28 +473,35 @@ export default function AdminQueueBoard() {
         return () => clearInterval(interval);
     }, [fetchQueue]);
 
-    // Fetch existing customer profiles when checkout modal opens
+    // Debounced Async Khata Customer Search
     useEffect(() => {
-        if (checkoutModal.isOpen) {
-            const token = localStorage.getItem('auth_token');
-            if (token) {
-                fetch(`${getApiBase()}/customers/`, {
-                    headers: { 'Authorization': `Token ${token}` }
-                })
-                .then(res => res.ok ? res.json() : [])
-                .then(data => {
-                    const list = Array.isArray(data) ? data : (data.results || []);
-                    const mapped = list.map((c: any) => ({
-                        id: c.id,
-                        name: `${c.user?.first_name || c.user?.username || 'Customer'}`.trim(),
-                        phone_number: c.phone_number || ''
-                    }));
-                    setExistingCustomers(mapped);
-                })
-                .catch(() => {});
-            }
+        if (!khataSearchInput.trim()) {
+            setKhataSearchResults([]);
+            setIsDropdownOpen(false);
+            return;
         }
-    }, [checkoutModal.isOpen]);
+
+        const timer = setTimeout(async () => {
+            setIsSearchingKhata(true);
+            const token = localStorage.getItem('auth_token');
+            try {
+                const res = await fetch(`${getApiBase()}/customers/search/?search=${encodeURIComponent(khataSearchInput.trim())}`, {
+                    headers: { 'Authorization': `Token ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    setKhataSearchResults(Array.isArray(data) ? data : (data.results || []));
+                    setIsDropdownOpen(true);
+                }
+            } catch (e) {
+                console.error('[KhataSearch] API error:', e);
+            } finally {
+                setIsSearchingKhata(false);
+            }
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [khataSearchInput]);
 
     const handleMoveStage = async (bookingId: number, targetColId: string) => {
         let currentColId = '';
@@ -1141,96 +1154,163 @@ export default function AdminQueueBoard() {
                                 </div>
                             )}
 
-                            {/* ── KHATA DETAILS FORM (WITH SMART CUSTOMER LINKING & BADGE) ───────────────── */}
+                            {/* ── KHATA DETAILS FORM (WITH ASYNC SEARCHABLE DROPDOWN & DUAL OPTIONS) ───────────────── */}
                             {(checkoutModal.method === 'KHATA' || checkoutModal.khata > 0) && (
                                 <div className="bg-purple-950/30 border border-purple-500/30 p-4 sm:p-5 rounded-2xl space-y-4 animate-in fade-in slide-in-from-top-2 shadow-[0_0_20px_rgba(147,51,234,0.15)]">
                                     <div className="flex items-center justify-between border-b border-purple-500/20 pb-3">
                                         <div className="flex items-center gap-2 text-purple-300 font-bold text-xs uppercase tracking-wider">
                                             <BookOpen className="w-4 h-4 text-purple-400" />
-                                            Khata Customer Details
+                                            Khata Credit Management
                                         </div>
                                         <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-full font-mono font-bold">
                                             Credit: ₹{checkoutModal.khata || checkoutModal.totalAmount}
                                         </span>
                                     </div>
 
-                                    {/* Existing Customer Selector */}
-                                    {existingCustomers.length > 0 && (
-                                        <div>
-                                            <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
-                                                Link Existing Khata Account
-                                            </label>
-                                            <select
-                                                className="w-full bg-[#141518] border border-purple-500/30 py-2.5 px-3 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-purple-400"
-                                                onChange={(e) => {
-                                                    const custId = parseInt(e.target.value);
-                                                    if (!isNaN(custId)) {
-                                                        const found = existingCustomers.find(c => c.id === custId);
-                                                        if (found) {
-                                                            setCheckoutModal(prev => ({
-                                                                ...prev,
-                                                                customerId: found.id,
-                                                                customerName: found.name,
-                                                                phoneNumber: found.phone_number
-                                                            }));
-                                                        }
-                                                    } else {
-                                                        setCheckoutModal(prev => ({ ...prev, customerId: null }));
-                                                    }
-                                                }}
-                                                value={checkoutModal.customerId || (matchedCustomer ? matchedCustomer.id : '')}
-                                            >
-                                                <option value="">-- New Customer / Auto-Matched Customer --</option>
-                                                {existingCustomers.map(c => (
-                                                    <option key={c.id} value={c.id}>
-                                                        {c.name} ({c.phone_number || 'No Phone'})
-                                                    </option>
-                                                ))}
-                                            </select>
+                                    {/* DUAL MODE TOGGLE BUTTONS */}
+                                    <div className="grid grid-cols-2 gap-2 bg-black/40 p-1 rounded-xl border border-purple-500/20">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setKhataCustomerMode('EXISTING');
+                                                setKhataSearchInput('');
+                                                setKhataSearchResults([]);
+                                            }}
+                                            className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                                                khataCustomerMode === 'EXISTING'
+                                                    ? 'bg-purple-600 text-white shadow-md'
+                                                    : 'text-purple-300 hover:text-white hover:bg-white/5'
+                                            }`}
+                                        >
+                                            <Search className="w-3.5 h-3.5" /> Select Existing Customer
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setKhataCustomerMode('NEW');
+                                                setCheckoutModal(prev => ({ ...prev, customerId: null }));
+                                            }}
+                                            className={`py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                                                khataCustomerMode === 'NEW'
+                                                    ? 'bg-purple-600 text-white shadow-md'
+                                                    : 'text-purple-300 hover:text-white hover:bg-white/5'
+                                            }`}
+                                        >
+                                            <Sparkles className="w-3.5 h-3.5" /> Create New Credit Account
+                                        </button>
+                                    </div>
+
+                                    {/* MODE A: ASYNC SEARCHABLE DROPDOWN FOR EXISTING CUSTOMERS */}
+                                    {khataCustomerMode === 'EXISTING' && (
+                                        <div className="space-y-3">
+                                            <div className="relative">
+                                                <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
+                                                    Search Existing Khata Account (By Name or Phone)
+                                                </label>
+                                                <div className="relative flex items-center">
+                                                    <Search className="w-4 h-4 absolute left-3.5 text-purple-400 pointer-events-none" />
+                                                    <input
+                                                        type="text"
+                                                        value={khataSearchInput}
+                                                        onChange={(e) => setKhataSearchInput(e.target.value)}
+                                                        onFocus={() => { if (khataSearchResults.length > 0) setIsDropdownOpen(true); }}
+                                                        placeholder="Type name or phone number (e.g. 9876543210)..."
+                                                        className="w-full bg-[#141518] border border-purple-500/40 py-2.5 pl-10 pr-9 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+                                                    />
+                                                    {isSearchingKhata && (
+                                                        <RefreshCw className="w-4 h-4 absolute right-3 text-purple-400 animate-spin" />
+                                                    )}
+                                                </div>
+
+                                                {/* DEBOUNCED SEARCH RESULTS DROPDOWN */}
+                                                {isDropdownOpen && khataSearchResults.length > 0 && (
+                                                    <div className="absolute left-0 right-0 top-full mt-1 bg-[#141518] border border-purple-500/40 rounded-xl shadow-2xl max-h-56 overflow-y-auto z-50 divide-y divide-white/5">
+                                                        {khataSearchResults.map((c) => (
+                                                            <div
+                                                                key={c.id}
+                                                                onClick={() => {
+                                                                    setCheckoutModal(prev => ({
+                                                                        ...prev,
+                                                                        customerId: c.id,
+                                                                        customerName: c.name,
+                                                                        phoneNumber: c.phone_number
+                                                                    }));
+                                                                    setIsDropdownOpen(false);
+                                                                    setKhataSearchInput(c.name);
+                                                                }}
+                                                                className="p-3 hover:bg-purple-600/20 cursor-pointer transition-colors flex items-center justify-between"
+                                                            >
+                                                                <div>
+                                                                    <p className="font-bold text-white text-xs">{c.name}</p>
+                                                                    <p className="text-[10px] font-mono text-purple-300">{c.phone_number || 'No Phone'}</p>
+                                                                </div>
+                                                                {c.outstanding_balance !== undefined && c.outstanding_balance > 0 && (
+                                                                    <span className="text-[9px] font-mono font-bold bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded border border-purple-500/30">
+                                                                        Due: ₹{c.outstanding_balance}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* SELECTED CUSTOMER BADGE */}
+                                            {checkoutModal.customerId && (
+                                                <div className="bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-xl flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                                                        <div>
+                                                            <p className="text-xs font-bold text-white">{checkoutModal.customerName}</p>
+                                                            <p className="text-[10px] font-mono text-emerald-400">{checkoutModal.phoneNumber}</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setCheckoutModal(prev => ({ ...prev, customerId: null, customerName: '', phoneNumber: '' }));
+                                                            setKhataSearchInput('');
+                                                        }}
+                                                        className="text-[10px] font-bold text-red-400 hover:text-white uppercase tracking-wider px-2 py-1 bg-red-500/10 rounded border border-red-500/20"
+                                                    >
+                                                        Unlink
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* MODE B OR OVERRIDE INPUT FIELDS */}
+                                    {(khataCustomerMode === 'NEW' || !checkoutModal.customerId) && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
+                                                    Customer Name *
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={checkoutModal.customerName}
+                                                    onChange={(e) => setCheckoutModal(prev => ({ ...prev, customerName: e.target.value }))}
+                                                    placeholder="e.g. Rahul Sharma"
+                                                    className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-semibold text-xs focus:outline-none focus:border-purple-400"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
+                                                    Phone Number *
+                                                </label>
+                                                <input
+                                                    type="tel"
+                                                    value={checkoutModal.phoneNumber}
+                                                    onChange={(e) => setCheckoutModal(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                                                    placeholder="e.g. 9876543210"
+                                                    className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-semibold text-xs focus:outline-none focus:border-purple-400"
+                                                />
+                                            </div>
                                         </div>
                                     )}
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {/* Customer Name */}
-                                        <div>
-                                            <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
-                                                Customer Name *
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={checkoutModal.customerName}
-                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, customerName: e.target.value }))}
-                                                placeholder="e.g. Rahul Sharma"
-                                                className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-semibold text-xs focus:outline-none focus:border-purple-400"
-                                            />
-                                        </div>
-
-                                        {/* Phone Number with Account Status Badge */}
-                                        <div>
-                                            <div className="flex items-center justify-between mb-1">
-                                                <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider">
-                                                    Phone Number *
-                                                </label>
-                                                {matchedCustomer ? (
-                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                                                        <CheckCircle className="w-2.5 h-2.5 text-emerald-400" /> Existing Customer
-                                                    </span>
-                                                ) : (
-                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                                                        <Sparkles className="w-2.5 h-2.5 text-amber-400" /> New Customer
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <input
-                                                type="tel"
-                                                value={checkoutModal.phoneNumber}
-                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                                                placeholder="e.g. +91 98765 43210"
-                                                className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-semibold text-xs focus:outline-none focus:border-purple-400"
-                                            />
-                                        </div>
-
-                                        {/* Vehicle Model */}
                                         <div>
                                             <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
                                                 Vehicle Model
@@ -1243,8 +1323,6 @@ export default function AdminQueueBoard() {
                                                 className="w-full bg-black/40 border border-purple-500/30 py-2.5 px-3 rounded-xl text-white font-semibold text-xs focus:outline-none focus:border-purple-400"
                                             />
                                         </div>
-
-                                        {/* Plate Number */}
                                         <div>
                                             <label className="text-[10px] text-purple-300 uppercase font-bold tracking-wider block mb-1">
                                                 Plate Number

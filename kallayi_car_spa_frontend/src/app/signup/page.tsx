@@ -10,6 +10,7 @@ import {
     AlertCircle, Car, ChevronDown, Sparkles, ArrowRight, Loader2, KeyRound
 } from 'lucide-react';
 import api from '@/lib/api';
+import { GmailInput } from '@/components/ui/GmailInput';
 
 // Password Strength Calculation Helper
 function getPasswordStrength(password: string) {
@@ -41,6 +42,7 @@ export default function SignupPage() {
     // Form State
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -82,6 +84,7 @@ export default function SignupPage() {
         const cleaned = phone.replace(/\D/g, '');
         return cleaned.length >= 10 && cleaned.length <= 13;
     }, [phone]);
+    const isEmailValid = useMemo(() => email.trim().toLowerCase().endsWith('@gmail.com'), [email]);
     const isPasswordValid = useMemo(() => password.length >= 6, [password]);
     const isConfirmPasswordValid = useMemo(() => confirmPassword.length >= 6 && confirmPassword === password, [confirmPassword, password]);
     const isVehicleValid = useMemo(() => {
@@ -91,7 +94,7 @@ export default function SignupPage() {
 
     const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
 
-    const isFormValid = isNameValid && isPhoneValid && isPasswordValid && isConfirmPasswordValid && isVehicleValid;
+    const isFormValid = isNameValid && isPhoneValid && isEmailValid && isPasswordValid && isConfirmPasswordValid && isVehicleValid;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -101,13 +104,18 @@ export default function SignupPage() {
             setTouched({
                 name: true,
                 phone: true,
+                email: true,
                 password: true,
                 confirmPassword: true,
                 vehicleMake: true,
                 vehicleModel: true,
                 vehiclePlate: true
             });
-            setError('Please complete all required fields correctly.');
+            if (!isEmailValid) {
+                setError('Please provide a valid Gmail address (@gmail.com). Temp mails are not allowed.');
+            } else {
+                setError('Please complete all required fields correctly.');
+            }
             return;
         }
 
@@ -118,6 +126,7 @@ export default function SignupPage() {
             const payload: any = {
                 name: name.trim(),
                 phone: phone.trim(),
+                email: email.trim().toLowerCase(),
                 password: password
             };
 
@@ -264,7 +273,16 @@ export default function SignupPage() {
                             </div>
                         </div>
 
-                        {/* 3. Password Input */}
+                        {/* 3. Gmail Address Input */}
+                        <GmailInput
+                            value={email}
+                            onChange={setEmail}
+                            disabled={isLoading}
+                            label="Gmail Address *"
+                            placeholder="yourname@gmail.com"
+                        />
+
+                        {/* 4. Password Input */}
                         <div className="space-y-1.5 group">
                             <label className="text-xs uppercase tracking-wider text-neutral-300 font-medium flex items-center justify-between">
                                 <span>Create Password *</span>
