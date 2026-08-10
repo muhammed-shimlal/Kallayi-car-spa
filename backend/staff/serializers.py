@@ -33,12 +33,15 @@ class StaffDirectorySerializer(serializers.ModelSerializer):
     phone = serializers.CharField(source='phone_number', read_only=True)
     is_active = serializers.BooleanField(source='user.is_active', read_only=True)
     user_id = serializers.ReadOnlyField(source='user.id')
+    pending_balance = serializers.FloatField(read_only=True)
+    due_amount = serializers.FloatField(source='pending_balance', read_only=True)
 
     class Meta:
         model = StaffProfile
         fields = [
             'id', 'user_id', 'first_name', 'name', 'username', 'phone_number', 'phone',
             'role', 'salary_type', 'salary_amount', 'base_salary', 'commission_type', 'commission_rate', 'commission_amount', 'is_active', 'joining_date',
+            'pending_balance', 'due_amount'
         ]
 
     def create(self, validated_data):

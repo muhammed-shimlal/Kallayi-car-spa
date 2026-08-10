@@ -8,6 +8,8 @@ def get_staff_earnings(user):
     """
     Calculates staff earnings across timeframes: Today, Week, Month, Year, Lifetime.
     """
+    staff_profile = getattr(user, 'staff_profile', None)
+
     today_date = timezone.localdate()
     start_of_week = today_date - timedelta(days=today_date.weekday())
     start_of_month = today_date.replace(day=1)
@@ -20,7 +22,8 @@ def get_staff_earnings(user):
     def calc_booking_earnings(bookings_qs):
         total = 0.0
         for b in bookings_qs:
-            total += float(calculate_staff_booking_commission(staff_profile, b.service_package))
+            if b.service_package:
+                total += float(calculate_staff_booking_commission(staff_profile, b.service_package))
         return round(total, 2)
 
     today_earnings = calc_booking_earnings(completed_bookings.filter(time_slot__date=today_date))
@@ -30,7 +33,6 @@ def get_staff_earnings(user):
     lifetime_earnings = calc_booking_earnings(completed_bookings)
 
     # If staff has salary_type='DAILY' or 'MONTHLY', incorporate base salary setup if higher
-    staff_profile = getattr(user, 'staff_profile', None)
     if staff_profile:
         sal_type = staff_profile.salary_type
         sal_amt = float(staff_profile.salary_amount or 0.0)

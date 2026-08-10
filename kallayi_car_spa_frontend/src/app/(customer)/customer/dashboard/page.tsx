@@ -28,6 +28,9 @@ export default function CustomerDashboard() {
     const [washHistory, setWashHistory] = useState<any[]>([]);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [customerName, setCustomerName] = useState<string>('');
+    const [totalCredit, setTotalCredit] = useState<number>(0);
+    const [totalSettled, setTotalSettled] = useState<number>(0);
+    const [outstandingBalance, setOutstandingBalance] = useState<number>(0);
     const [isLoading, setIsLoading] = useState(true);
 
     // --- Auth Guard: redirect immediately if no token present ---
@@ -113,36 +116,44 @@ export default function CustomerDashboard() {
                 });
                 setWashHistory(completedBookings);
 
-                // 4. Fetch Invoices & Khata Ledger Dues
+                // 4. Fetch Detailed Khata Ledger & Dues
                 try {
-                    const invoiceRes = await api.get('/finance/invoices/');
-                    const formattedTxns = invoiceRes.data.map((inv: any) => {
-                        const isKhata = (inv.split_khata || 0) > 0 || inv.payment_method === 'KHATA' || inv.payment_method === 'CREDIT';
-                        const isUnpaid = isKhata || !inv.is_paid;
-                        return {
-                            id: `INV-${inv.id}`,
-                            date: new Date(inv.created_at).toISOString().split('T')[0],
-                            service: inv.service_package_name || (inv.subscription ? 'Subscription' : 'Service Wash'),
-                            amount: parseFloat(inv.amount),
-                            status: isUnpaid ? 'UNPAID' : 'PAID',
-                            payment_method: inv.payment_method || (isKhata ? 'KHATA' : 'CASH')
-                        };
-                    });
-
-                    // If user has outstanding Khata debt but no invoices match yet, inject the summary credit line
-                    if (userOutstandingBalance > 0 && !formattedTxns.some((t: any) => t.status === 'UNPAID')) {
-                        formattedTxns.unshift({
-                            id: `KHATA-DUE`,
-                            date: new Date().toISOString().split('T')[0],
-                            service: 'Outstanding Khata Credit Balance',
-                            amount: userOutstandingBalance,
-                            status: 'UNPAID',
-                            payment_method: 'KHATA'
-                        });
+                    let ledgerRes;
+                    try {
+                        ledgerRes = await api.get('/finance/khata/my-ledger/');
+                    } catch {
+                        ledgerRes = await api.get('/customers/me/ledger/');
                     }
 
-                    setTransactions(formattedTxns);
-                } catch (invoiceErr) {
+                    const ledgerData = ledgerRes.data;
+
+                    const credit = parseFloat(ledgerData.total_credit || 0);
+                    const settled = parseFloat(ledgerData.total_settled || 0);
+                    const outstanding = parseFloat(ledgerData.outstanding_balance || 0);
+
+                    setTotalCredit(credit);
+                    setTotalSettled(settled);
+                    setOutstandingBalance(outstanding);
+
+                    if (Array.isArray(ledgerData.transactions) && ledgerData.transactions.length > 0) {
+                        const formattedTxns = ledgerData.transactions.map((entry: any) => {
+                            const isSettlement = entry.transaction_type === 'SETTLEMENT' || entry.transaction_type === 'PAYMENT';
+                            return {
+                                id: entry.id || `KHATA-${entry.raw_id}`,
+                                date: entry.date,
+                                service: entry.description,
+                                amount: parseFloat(entry.amount),
+                                status: isSettlement ? 'PAID' : 'UNPAID',
+                                transaction_type: entry.transaction_type,
+                                number_plate_image: entry.number_plate_image || null,
+                                plate_number: entry.plate_number || 'N/A'
+                            };
+                        });
+                        setTransactions(formattedTxns);
+                    } else {
+                        setTransactions([]);
+                    }
+                } catch (khataErr) {
                     if (userOutstandingBalance > 0) {
                         setTransactions([{
                             id: `KHATA-DUE`,
@@ -150,8 +161,11 @@ export default function CustomerDashboard() {
                             service: 'Outstanding Khata Credit Balance',
                             amount: userOutstandingBalance,
                             status: 'UNPAID',
-                            payment_method: 'KHATA'
+                            transaction_type: 'CHARGE'
                         }]);
+                        setOutstandingBalance(userOutstandingBalance);
+                        setTotalCredit(userOutstandingBalance);
+                        setTotalSettled(0);
                     } else {
                         setTransactions([]);
                     }
@@ -211,7 +225,13 @@ export default function CustomerDashboard() {
                     )}
 
                     {activeTab === 'ledger' && (
-                        <LedgerTab key="ledger" transactions={transactions} />
+                        <LedgerTab 
+                            key="ledger" 
+                            transactions={transactions} 
+                            totalCredit={totalCredit}
+                            totalSettled={totalSettled}
+                            outstandingBalance={outstandingBalance}
+                        />
                     )}
 
                     {activeTab === 'history' && (

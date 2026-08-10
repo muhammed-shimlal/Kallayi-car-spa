@@ -66,12 +66,23 @@ export default function LoginPage() {
         },
       });
 
-      const role = meRes.data.role;
+      const userData = meRes.data;
+      const isAdmin = Boolean(
+        userData.is_superuser ||
+        userData.is_staff ||
+        userData.is_staff_user ||
+        userData.role === "ADMIN" ||
+        userData.role === "MANAGER"
+      );
+      const isStaff = Boolean(
+        !isAdmin &&
+        ["WASHER", "DRIVER", "TECHNICIAN"].includes(userData.role)
+      );
 
       // 3. Route user based on role
-      if (role === "ADMIN" || role === "MANAGER") {
+      if (isAdmin) {
         router.push("/admin/dashboard");
-      } else if (role === "WASHER" || role === "DRIVER" || role === "TECHNICIAN") {
+      } else if (isStaff) {
         router.push("/staff/dashboard");
       } else {
         router.push("/customer/dashboard");

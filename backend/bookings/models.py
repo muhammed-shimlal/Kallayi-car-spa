@@ -33,12 +33,12 @@ class Booking(models.Model):
     vehicle = models.ForeignKey(CustomerVehicle, on_delete=models.CASCADE, related_name='bookings')
     technician = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_bookings')
     service_package = models.ForeignKey(ServicePackage, on_delete=models.SET_NULL, null=True)
-    time_slot = models.DateTimeField()
+    time_slot = models.DateTimeField(db_index=True)
     end_time = models.DateTimeField(null=True, blank=True)
     start_time = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='WAITING')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='WAITING', db_index=True)
     bay_assignment = models.CharField(max_length=50, null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     points_redeemed = models.IntegerField(default=0)
 
     # Location details

@@ -101,7 +101,7 @@ export default function OverviewTab() {
                         {isLoading || !isMounted ? (
                             <Skeleton className="w-full h-full" />
                         ) : (
-                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                            <ResponsiveContainer width="100%" height={280}>
                                 <LineChart data={chartData}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                     <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} dy={10} />

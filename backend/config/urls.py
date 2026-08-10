@@ -1,25 +1,27 @@
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
+
 from customers.views import CustomerViewSet, SubscriptionPlanViewSet, ReviewViewSet, CouponViewSet, CustomerVehicleViewSet
 from fleet.views import VehicleViewSet, TechnicianLocationViewSet, ServiceVehicleViewSet, FleetLogViewSet
 from bookings.views import BookingViewSet, ServicePackageViewSet, CalendarViewSet, DriverBookingViewSet
-from finance.views import InvoiceViewSet, DashboardViewSet, GeneralExpenseViewSet, ExpenseCategoryViewSet, ReportingViewSet, KhataViewSet, SalaryPaymentViewSet, CollectionBankViewSet, close_register, analytics_dashboard, generate_invoice_pdf, manual_khata_charge
+from finance.views import InvoiceViewSet, DashboardViewSet, GeneralExpenseViewSet, ExpenseCategoryViewSet, ReportingViewSet, KhataViewSet, SalaryPaymentViewSet, CollectionBankViewSet, close_register, analytics_dashboard, generate_invoice_pdf, manual_khata_charge, customer_my_ledger
 from staff.views import TimeEntryViewSet, JobInspectionViewSet, SOPChecklistViewSet, StaffDashboardViewSet, StaffProfileViewSet
+from payments.views import PaymentViewSet, WebhookViewSet
+from core.views import CustomObtainAuthToken, password_reset_request, password_reset_confirm
 
 router = DefaultRouter()
 
 # NEW: Register this BEFORE the generic 'customers' route to avoid ID collisions
 router.register(r'customer-vehicles', CustomerVehicleViewSet, basename='customer-vehicle')
-
 router.register(r'customers', CustomerViewSet, basename='customer')
 router.register(r'subscription-plans', SubscriptionPlanViewSet, basename='subscription-plan')
 router.register(r'reviews', ReviewViewSet, basename='review')
 router.register(r'coupons', CouponViewSet, basename='coupon')
 router.register(r'vehicles', VehicleViewSet, basename='vehicle')
 router.register(r'locations', TechnicianLocationViewSet, basename='technician-location')
-# router.register(r'fleet/vehicles', ServiceVehicleViewSet, basename='service-vehicle')
-# router.register(r'fleet/logs', FleetLogViewSet, basename='fleet-log')
 router.register(r'bookings', BookingViewSet, basename='booking')
 router.register(r'calendar', CalendarViewSet, basename='calendar')
 router.register(r'driver-jobs', DriverBookingViewSet, basename='driver-jobs')
@@ -41,11 +43,8 @@ router.register(r'staff/sops', SOPChecklistViewSet, basename='sop-checklist')
 router.register(r'staff/dashboard', StaffDashboardViewSet, basename='staff-dashboard')
 router.register(r'staff/profiles', StaffProfileViewSet, basename='staff-profile')
 
-from payments.views import PaymentViewSet, WebhookViewSet
 router.register(r'payments', PaymentViewSet, basename='payments')
 router.register(r'webhooks', WebhookViewSet, basename='webhooks')
-
-from core.views import CustomObtainAuthToken, password_reset_request, password_reset_confirm
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -59,5 +58,8 @@ urlpatterns = [
     path('api/finance/analytics/', analytics_dashboard, name='analytics-dashboard'),
     path('api/finance/invoice/<int:booking_id>/pdf/', generate_invoice_pdf, name='invoice-pdf'),
     path('api/finance/khata/manual-charge/', manual_khata_charge, name='manual-khata-charge'),
+    path('api/finance/khata/my-ledger/', customer_my_ledger, name='customer-my-ledger'),
     path('api/', include(router.urls)),
 ]
+
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

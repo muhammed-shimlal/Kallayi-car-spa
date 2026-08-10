@@ -24,7 +24,7 @@ interface ResponsiveDataContainerProps<T> {
     actionButtons?: (item: T) => React.ReactNode;
 }
 
-export function ResponsiveDataContainer<T>({
+function ResponsiveDataContainerComponent<T>({
     data,
     columns,
     keyExtractor,
@@ -181,3 +181,5 @@ export function ResponsiveDataContainer<T>({
         </div>
     );
 }
+
+export const ResponsiveDataContainer = React.memo(ResponsiveDataContainerComponent) as typeof ResponsiveDataContainerComponent;

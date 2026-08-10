@@ -25,6 +25,11 @@ const grotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Kallayi Car Spa",
   description: "Premium cinematic car spa experience",
+  icons: {
+    icon: "/images/logo/carspa%20logo.png",
+    shortcut: "/images/logo/carspa%20logo.png",
+    apple: "/images/logo/carspa%20logo.png",
+  },
 };
 
 export default function RootLayout({

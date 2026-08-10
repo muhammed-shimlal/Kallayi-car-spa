@@ -25,25 +25,20 @@ class UserViewSet(viewsets.ModelViewSet):
             claim_or_link_customer(user)
 
         data = UserSerializer(user).data
-        # Attach Role Info
-        data['is_staff_user'] = user.is_staff
+        data['is_superuser'] = bool(user.is_superuser)
+        data['is_staff'] = bool(user.is_staff)
+        data['is_staff_user'] = bool(user.is_staff)
         
-        # Check Staff App Profile
+        # Attach Role Info from centralized get_user_role logic
+        data['role'] = get_user_role(user)
+
         if hasattr(user, 'staff_profile'):
-            data['role'] = user.staff_profile.role
             data['staff_profile_id'] = user.staff_profile.id
-        elif hasattr(user, 'customer'):
-            data['role'] = 'CUSTOMER'
+        if hasattr(user, 'customer'):
             data['customer_id'] = user.customer.id
             data['outstanding_balance'] = float(user.customer.outstanding_balance or 0.0)
             data['credit_limit'] = float(user.customer.credit_limit or 0.0)
             data['phone_number'] = user.customer.phone_number or ""
-        elif user.is_superuser:
-            data['role'] = 'ADMIN'
-        elif user.is_staff:
-            data['role'] = 'MANAGER'
-        else:
-            data['role'] = 'CUSTOMER'
             
         return Response(data)
 

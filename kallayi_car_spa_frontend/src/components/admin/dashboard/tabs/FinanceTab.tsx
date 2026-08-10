@@ -1,13 +1,19 @@
 'use client';
 
-import React, { useRef } from 'react';
-import { Download, TrendingUp, Clock, PlusCircle, UserPlus, AlertCircle, FileText, Pencil, Trash2, Check, Tag, Calendar, Image as ImageIcon, X, BadgeDollarSign } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Download, TrendingUp, Clock, PlusCircle, UserPlus, AlertCircle, FileText, Pencil, Trash2, Check, Tag, Calendar, Image as ImageIcon, X, BadgeDollarSign, Camera, Eye } from 'lucide-react';
 import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Line } from 'recharts';
+import dynamic from 'next/dynamic';
 import { useDashboard } from '../context/DashboardContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 
+const CameraCaptureModal = dynamic(() => import('@/components/ui/CameraCaptureModal').then(m => m.CameraCaptureModal), { ssr: false });
+
 export default function FinanceTab() {
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+    const [manualKhataProofFile, setManualKhataProofFile] = useState<File | null>(null);
+    const [manualKhataProofPreview, setManualKhataProofPreview] = useState<string | null>(null);
+    const [lightboxImage, setLightboxImage] = useState<string | null>(null);
     const { uiState, financeState } = useDashboard();
     const { 
         isLoading, financeSubTab, setFinanceSubTab, setIsManualKhataOpen,
@@ -19,7 +25,7 @@ export default function FinanceTab() {
         chartData, expenses, expenseCategories, isSubmittingExpense, expenseForm,
         receiptFile, receiptPreview, editingExpense, khataCustomers, khataLedger, selectedKhataCustomer,
         editingKhataCustomer, khataCustomerForm, khataPaymentAmount, eodData, manualKhataForm,
-        customerCredits, invoiceList, totalOutstandingCredit, setExpenseForm, setReceiptFile, setReceiptPreview, 
+        customerCredits, invoiceList, totalOutstandingCredit, fileInputRef, setExpenseForm, setReceiptFile, setReceiptPreview, 
         setKhataCustomerForm, setKhataPaymentAmount, setManualKhataForm, handleFileChange, clearFile, 
         handleExpenseSubmit, startEditingExpense, cancelEditingExpense, deleteExpense, downloadTaxReport, 
         downloadInvoice, settleCredit, openKhataCustomerModal, saveKhataCustomer, deleteKhataCustomer, 
@@ -93,7 +99,7 @@ export default function FinanceTab() {
                                             <span className="ml-auto text-[10px] text-[#8E939B] uppercase tracking-widest">Last {chartData.length} days</span>
                                         </div>
                                         <div className="w-full h-72 min-h-[288px] relative">
-                                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                            <ResponsiveContainer width="100%" height={280}>
                                                 <LineChart data={chartData}>
                                                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                                     <XAxis dataKey="name" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} dy={10} />
@@ -205,14 +211,27 @@ export default function FinanceTab() {
                                     </div>
                                 </td>
                             </tr>
-                        )))}
+                        ))
+                    )}
                 </tbody>
             </table>
         </div>
     </div>
 )}
 
-                        {financeSubTab === 'expenses' && (
+{financeSubTab === 'expenses' && (() => {
+                            const safeExpensesList = Array.isArray(expenses)
+                                ? expenses
+                                : ((expenses as any)?.results || (expenses as any)?.data || []);
+
+                            const sortedExpenses = [...safeExpensesList].sort((a: any, b: any) => {
+                                const timeA = new Date(a.date).getTime();
+                                const timeB = new Date(b.date).getTime();
+                                if (timeB !== timeA) return timeB - timeA;
+                                return Number(b.id || 0) - Number(a.id || 0);
+                            });
+
+                            return (
                             <div className="grid grid-cols-1 xl:grid-cols-5 gap-8 animate-[fadeIn_0.3s_ease-out]">
                                 {/* LEFT COLUMN: Record Expense */}
                                 <div className="xl:col-span-2 bg-[#141518]/60 backdrop-blur-xl border border-white/5 rounded-3xl p-6 shadow-2xl h-fit">
@@ -329,7 +348,7 @@ export default function FinanceTab() {
                                     <div className="p-6 border-b border-white/5 flex justify-between items-center">
                                         <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#8E939B]">RECENT EXPENSES</h4>
                                         <span className="text-[10px] bg-white/10 text-white px-3 py-1 rounded-full uppercase tracking-widest font-bold">
-                                            Total: ₹{expenses.reduce((sum: number, exp: any) => sum + Number(exp.amount), 0).toLocaleString()}
+                                            Total: ₹{sortedExpenses.reduce((sum: number, exp: any) => sum + Number(exp.amount || 0), 0).toLocaleString()}
                                         </span>
                                     </div>
                                     <div className="flex-1 overflow-auto">
@@ -345,22 +364,32 @@ export default function FinanceTab() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-white/5">
-                                                {expenses.length === 0 ? (
+                                                {sortedExpenses.length === 0 ? (
                                                     <tr><td colSpan={6} className="p-8 text-center text-[#8E939B]">No expenses recorded yet.</td></tr>
                                                 ) : (
-                                                    expenses.map((exp: any) => (
-                                                        <tr key={exp.id} className="hover:bg-white/5">
-                                                            <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{new Date(exp.date).toLocaleDateString()}</td>
+                                                    sortedExpenses.map((exp: any) => (
+                                                        <tr key={exp.id} className="hover:bg-white/5 transition-colors">
+                                                            <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">
+                                                                {new Date(exp.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                            </td>
                                                             <td className="p-4">
                                                                 <span className="bg-white/5 border border-white/10 px-2 py-1 rounded text-xs font-bold text-white">
-                                                                    {exp.category_name || exp.category || 'General'}
+                                                                    {exp.category_name || (typeof exp.category === 'object' && exp.category !== null ? exp.category.name : exp.category) || 'General'}
                                                                 </span>
                                                             </td>
-                                                            <td className="p-4 text-gray-300 max-w-[200px] truncate" title={exp.description}>{exp.description}</td>
-                                                            <td className="p-4 text-right font-bold text-[#FF2A6D]">₹{exp.amount}</td>
+                                                            <td className="p-4 text-gray-300 max-w-[200px] truncate" title={exp.description}>
+                                                                {exp.description || <span className="italic opacity-40">No description</span>}
+                                                            </td>
+                                                            <td className="p-4 text-right font-bold text-[#FF2A6D]">₹{parseFloat(exp.amount || '0').toLocaleString('en-IN')}</td>
                                                             <td className="p-4 text-center">
-                                                                {exp.receipt_image ? (
-                                                                    <a href={exp.receipt_image} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[10px] bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30 hover:bg-[#01FFFF] hover:text-black transition px-2 py-1 rounded-sm uppercase tracking-widest font-bold">
+                                                                {(exp.receipt_image || exp.receipt) ? (
+                                                                    <a 
+                                                                        href={exp.receipt_image || exp.receipt} 
+                                                                        target="_blank" 
+                                                                        rel="noopener noreferrer" 
+                                                                        className="inline-flex items-center gap-1.5 text-[10px] bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30 hover:bg-[#01FFFF] hover:text-black transition px-2.5 py-1 rounded-md uppercase tracking-widest font-bold shadow-sm"
+                                                                    >
+                                                                        <img src={exp.receipt_image || exp.receipt} alt="Receipt" className="w-4 h-4 object-cover rounded border border-[#01FFFF]/40" />
                                                                         <ImageIcon className="w-3 h-3" /> View
                                                                     </a>
                                                                 ) : (
@@ -371,17 +400,19 @@ export default function FinanceTab() {
                                                                 <div className="flex items-center justify-center gap-2">
                                                                     <button
                                                                         onClick={() => startEditingExpense(exp)}
-                                                                        className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-1"
+                                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-[#01FFFF]/20 text-[#8E939B] hover:text-[#01FFFF] transition-all flex items-center gap-1 text-xs font-bold"
                                                                         title="Edit expense"
                                                                     >
-                                                                        <Pencil className="w-4 h-4" />
+                                                                        <Pencil className="w-3.5 h-3.5" />
+                                                                        <span className="hidden sm:inline">Edit</span>
                                                                     </button>
                                                                     <button
                                                                         onClick={() => deleteExpense(exp.id)}
-                                                                        className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-1"
+                                                                        className="p-1.5 rounded-lg bg-white/5 hover:bg-[#FF2A6D]/20 text-[#8E939B] hover:text-[#FF2A6D] transition-all flex items-center gap-1 text-xs font-bold"
                                                                         title="Delete expense"
                                                                     >
-                                                                        <Trash2 className="w-4 h-4" />
+                                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                                        <span className="hidden sm:inline">Delete</span>
                                                                     </button>
                                                                 </div>
                                                             </td>
@@ -393,7 +424,8 @@ export default function FinanceTab() {
                                     </div>
                                 </div>
                             </div>
-                        )}
+                            );
+                        })()}
 
                         {financeSubTab === 'invoices' && (
                             <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
@@ -502,10 +534,36 @@ export default function FinanceTab() {
                                     />
                                 </div>
                             </div>
+
+                            {/* CAMERA PROOF TRIGGER */}
+                            <div className="pt-3 border-t border-purple-500/20">
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold block mb-2">
+                                    Number Plate Proof Photo
+                                </label>
+                                <div className="flex items-center gap-3">
+                                    {manualKhataProofPreview && (
+                                        <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-[#01FFFF] group flex-shrink-0">
+                                            <img src={manualKhataProofPreview} alt="Proof Preview" className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsCameraModalOpen(true)}
+                                        className="flex-1 py-3 px-4 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 hover:text-white hover:bg-purple-900/40 transition-all text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95"
+                                    >
+                                        <Camera className="w-4 h-4" />
+                                        {manualKhataProofPreview ? 'Update Photo' : 'Capture Photo'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <button
-                            onClick={submitManualKhataCharge}
+                            onClick={() => {
+                                submitManualKhataCharge(manualKhataProofFile);
+                                setManualKhataProofFile(null);
+                                setManualKhataProofPreview(null);
+                            }}
                             className="w-full bg-purple-500 text-white font-syncopate font-bold py-4 rounded-xl shadow-[0_0_20px_rgba(168,85,247,0.4)] hover:bg-purple-400 transition-all flex items-center justify-center gap-2"
                         >
                             <PlusCircle className="w-5 h-5" /> CONFIRM CHARGE
@@ -615,6 +673,7 @@ export default function FinanceTab() {
                                         <th className="p-4 pl-6">Date</th>
                                         <th className="p-4">Description</th>
                                         <th className="p-4">Vehicle Plate</th>
+                                        <th className="p-4">Proof</th>
                                         <th className="p-4">Type</th>
                                         <th className="p-4 text-right pr-6">Amount</th>
                                     </tr>
@@ -622,15 +681,45 @@ export default function FinanceTab() {
                                 <tbody className="divide-y divide-white/5">
                                     {khataLedger.length === 0 ? (
                                         <tr>
-                                            <td colSpan={5} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
+                                            <td colSpan={6} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
                                         </tr>
                                     ) : (
                                         khataLedger.map((entry: any) => (
                                             <tr key={entry.id} className="hover:bg-white/5 transition-colors">
                                                 <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
-                                                <td className="p-4 text-gray-300 max-w-[260px] truncate" title={entry.description}>{entry.description}</td>
+                                                <td className="p-4 text-gray-300 max-w-[220px] truncate" title={entry.description}>{entry.description}</td>
                                                 <td className="p-4 font-mono text-xs font-bold text-[#01FFFF]">
                                                     {entry.plate_number || entry.vehicle_plate || 'N/A'}
+                                                </td>
+                                                <td className="p-4">
+                                                     {(() => {
+                                                         const rawImg = entry.number_plate_image;
+                                                         const imgUrl = rawImg ? (rawImg.startsWith('http') ? rawImg : `http://127.0.0.1:8001${rawImg.startsWith('/') ? '' : '/'}${rawImg}`) : null;
+                                                         if (imgUrl) {
+                                                             console.log("Admin Ledger Image URL:", imgUrl);
+                                                         }
+
+                                                         return imgUrl ? (
+                                                             <button
+                                                                 type="button"
+                                                                 onClick={() => setLightboxImage(imgUrl)}
+                                                                 className="w-10 h-10 rounded-lg overflow-hidden border border-[#01FFFF]/40 hover:border-[#01FFFF] hover:scale-110 transition-all block relative shadow-md group"
+                                                                 title="View number plate photo proof"
+                                                             >
+                                                                 <img 
+                                                                     src={imgUrl} 
+                                                                     alt="Proof" 
+                                                                     className="w-full h-full object-cover" 
+                                                                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                                 />
+                                                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[#01FFFF]">
+                                                                     <Eye className="w-4 h-4" />
+                                                                 </div>
+                                                             </button>
+                                                         ) : (
+                                                             <span className="text-[10px] text-zinc-600 font-mono uppercase">None</span>
+                                                         );
+                                                     })()}
                                                 </td>
                                                 <td className="p-4">
                                                     <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${entry.transaction_type === 'SETTLEMENT' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-[#FF2A6D]/10 text-[#FF2A6D]'}`}>
@@ -648,6 +737,47 @@ export default function FinanceTab() {
                 </div>
             )}
 
+            {/* CAMERA POPUP MODAL FOR MANUAL KHATA */}
+            <CameraCaptureModal
+                isOpen={isCameraModalOpen}
+                onClose={() => setIsCameraModalOpen(false)}
+                onCapture={(file, previewUrl) => {
+                    setManualKhataProofFile(file);
+                    setManualKhataProofPreview(previewUrl);
+                }}
+                title="Capture Back Number Plate Proof"
+            />
+
+            {/* LIGHTBOX MODAL FOR FULL-RESOLUTION NUMBER PLATE PROOF */}
+            {lightboxImage && (
+                <div
+                    className="fixed inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-out]"
+                    onClick={() => setLightboxImage(null)}
+                >
+                    <div className="relative max-w-4xl w-full max-h-[90vh] bg-[#0d0e12] border border-white/10 rounded-3xl overflow-hidden p-4 shadow-[0_0_80px_rgba(1,255,255,0.2)] flex flex-col items-center">
+                        <div className="w-full flex justify-between items-center pb-3 mb-3 border-b border-white/10">
+                            <h4 className="font-syncopate font-bold text-xs text-[#01FFFF] tracking-widest uppercase">
+                                Number Plate Proof Photo
+                            </h4>
+                            <button
+                                onClick={() => setLightboxImage(null)}
+                                className="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="w-full flex-1 flex items-center justify-center overflow-hidden">
+                            <img
+                                src={lightboxImage}
+                                alt="Full Resolution Proof"
+                                className="max-w-full max-h-[75vh] object-contain rounded-xl border border-white/10 shadow-2xl"
+                            />
+                        </div>
                     </div>
+                </div>
+            )}
+
+        </div>
     );
 }

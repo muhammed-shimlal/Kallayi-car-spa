@@ -319,22 +319,26 @@ function AdminDashboardContent() {
     };
 
     // --- Manual Khata Charge ---
-    const submitManualKhataCharge = async () => {
+    const submitManualKhataCharge = async (proofFile?: File | null) => {
         if (!manualKhataForm.phone || !manualKhataForm.amount) {
             toast.error('Phone and Amount are required.');
             return;
         }
         const token = localStorage.getItem('auth_token');
         try {
+            const formData = new FormData();
+            formData.append('phone', manualKhataForm.phone);
+            formData.append('name', manualKhataForm.name || '');
+            formData.append('amount', String(manualKhataForm.amount));
+            formData.append('description', manualKhataForm.description || 'Manual Khata Entry');
+            if (proofFile) {
+                formData.append('number_plate_image', proofFile);
+            }
+
             const res = await fetch(`${API_BASE}/finance/khata/manual-charge/`, {
                 method: 'POST',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    phone: manualKhataForm.phone,
-                    name: manualKhataForm.name,
-                    amount: parseFloat(manualKhataForm.amount),
-                    description: manualKhataForm.description || 'Manual Khata Entry',
-                }),
+                headers: { 'Authorization': `Token ${token}` },
+                body: formData,
             });
             const data = await res.json();
             if (res.ok) {
@@ -838,10 +842,23 @@ function AdminDashboardContent() {
         }
     };
 
+    const safeCustomerCredits = Array.isArray(customerCredits) 
+        ? customerCredits 
+        : ((customerCredits as any)?.results || (customerCredits as any)?.debtors || []);
+
+    const safeKhataCustomers = Array.isArray(khataCustomers) 
+        ? khataCustomers 
+        : ((khataCustomers as any)?.results || (khataCustomers as any)?.debtors || []);
+
+    const safePayrollData = Array.isArray(payrollData) 
+        ? payrollData 
+        : ((payrollData as any)?.results || []);
+
     const totalOutstandingCredit = 
-    customerCredits.reduce((sum, item) => sum + Number(item.amount || 0), 0) + 
-    khataCustomers.reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0);
-    const totalDailyPayout = payrollData.reduce((sum, worker) => sum + worker.final_payout, 0);
+        safeCustomerCredits.reduce((sum: number, item: any) => sum + Number(item.amount || item.outstanding_balance || 0), 0) + 
+        safeKhataCustomers.reduce((sum: number, item: any) => sum + Number(item.outstanding_balance || item.amount || 0), 0);
+
+    const totalDailyPayout = safePayrollData.reduce((sum: number, worker: any) => sum + Number(worker.final_payout || worker.amount || 0), 0);
 
     // Removed full-page loader
     
@@ -1048,44 +1065,44 @@ function AdminDashboardContent() {
                     </div>
                 ) : (
                     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                        <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)]">
+                        <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)] min-w-0">
                             <div className="absolute top-0 right-0 w-24 h-24 bg-[#01FFFF]/10 rounded-full blur-[40px] group-hover:bg-[#01FFFF]/20 transition-all"></div>
-                            <p className="text-[#01FFFF] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><TrendingUp className="w-3.5 h-3.5" /> Net Profit Today</p>
-                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-white tracking-tighter truncate">₹{(kpiData.net_profit_today || 0).toLocaleString()}</h2>
+                            <p className="text-[#01FFFF] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><TrendingUp className="w-3.5 h-3.5 flex-shrink-0" /> Net Profit Today</p>
+                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">₹{(kpiData.net_profit_today || 0).toLocaleString()}</h2>
                         </div>
-                        <div className="bg-[#141518]/60 border border-emerald-500/30 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(16,185,129,0.05)]">
+                        <div className="bg-[#141518]/60 border border-emerald-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(16,185,129,0.05)] min-w-0">
                             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-[40px] group-hover:bg-emerald-500/20 transition-all"></div>
-                            <p className="text-emerald-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5" /> Washed Today</p>
-                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-white tracking-tighter truncate">{kpiData.today_washed_count || 0} <span className="text-[10px] sm:text-xs font-normal text-[#8E939B] tracking-normal">cars</span></h2>
+                            <p className="text-emerald-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><CheckCircle className="w-3.5 h-3.5 flex-shrink-0" /> Washed Today</p>
+                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">{kpiData.today_washed_count || 0} <span className="text-[10px] sm:text-xs font-normal text-[#8E939B] tracking-normal">cars</span></h2>
                         </div>
-                        <div className="bg-[#141518]/60 border border-emerald-400/20 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group">
+                        <div className="bg-[#141518]/60 border border-emerald-400/20 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group min-w-0">
                             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-400/5 rounded-full blur-[40px] group-hover:bg-emerald-400/10 transition-all"></div>
-                            <p className="text-emerald-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><IndianRupee className="w-3.5 h-3.5 text-emerald-400" /> Today's Revenue</p>
-                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-white truncate">₹{((kpiData as any).today_revenue ?? kpiData.revenue_today ?? 0).toLocaleString()}</h2>
+                            <p className="text-emerald-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><IndianRupee className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> Today's Revenue</p>
+                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">₹{((kpiData as any).today_revenue ?? kpiData.revenue_today ?? 0).toLocaleString()}</h2>
                         </div>
                         {/* Today's Credit (Asset) Card */}
-                        <div className="bg-[#141518]/60 border border-amber-500/30 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(245,158,11,0.05)]">
+                        <div className="bg-[#141518]/60 border border-amber-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(245,158,11,0.05)] min-w-0">
                             <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-[40px] group-hover:bg-amber-500/20 transition-all"></div>
-                            <p className="text-amber-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5 text-amber-400" /> Today's Credit (Asset)</p>
-                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-amber-300 truncate">₹{((kpiData as any).today_total_credit || 0).toLocaleString()}</h2>
+                            <p className="text-amber-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><CreditCard className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" /> Today's Credit (Asset)</p>
+                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-amber-300 tracking-tight whitespace-nowrap">₹{((kpiData as any).today_total_credit || 0).toLocaleString()}</h2>
                         </div>
                         {/* Pre-booking Advances Card: Conditionally rendered only if > 0 */}
                         {Number((kpiData as any).pre_booking_revenue || 0) > 0 && (
-                            <div className="bg-[#141518]/60 border border-cyan-500/30 p-4 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(6,182,212,0.05)]">
+                            <div className="bg-[#141518]/60 border border-cyan-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(6,182,212,0.05)] min-w-0">
                                 <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-[40px] group-hover:bg-cyan-500/20 transition-all"></div>
-                                <p className="text-cyan-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-cyan-400" /> Pre-booking Cash</p>
-                                <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-cyan-300 truncate">₹{((kpiData as any).pre_booking_revenue || 0).toLocaleString()}</h2>
+                                <p className="text-cyan-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><Calendar className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" /> Pre-booking Cash</p>
+                                <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-cyan-300 tracking-tight whitespace-nowrap">₹{((kpiData as any).pre_booking_revenue || 0).toLocaleString()}</h2>
                             </div>
                         )}
-                        <div className="bg-[#141518]/60 border border-white/5 p-4 sm:p-5 rounded-2xl sm:rounded-3xl">
-                            <p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5">Labor Cost</p>
-                            <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold truncate">₹{(kpiData.labor_cost_today || 0).toLocaleString()}</h2>
+                        <div className="bg-[#141518]/60 border border-white/5 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl min-w-0">
+                            <p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 whitespace-nowrap">Labor Cost</p>
+                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">₹{(kpiData.labor_cost_today || 0).toLocaleString()}</h2>
                         </div>
                         {/* General Expenses Card: Conditionally rendered only if > 0 */}
                         {Number(kpiData.general_expenses_today || 0) > 0 && (
-                            <div className="bg-[#141518]/60 border border-white/5 p-4 sm:p-5 rounded-2xl sm:rounded-3xl">
-                                <p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.2em] mb-1.5">General Expenses</p>
-                                <h2 className="text-xl sm:text-2xl xl:text-3xl font-syncopate font-bold text-[#FF2A6D] truncate">₹{(kpiData.general_expenses_today || 0).toLocaleString()}</h2>
+                            <div className="bg-[#141518]/60 border border-white/5 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl min-w-0">
+                                <p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 whitespace-nowrap">General Expenses</p>
+                                <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-[#FF2A6D] tracking-tight whitespace-nowrap">₹{(kpiData.general_expenses_today || 0).toLocaleString()}</h2>
                             </div>
                         )}
                     </div>
@@ -1136,7 +1153,7 @@ function AdminDashboardContent() {
                                 </div>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-6">Scheduling intelligence — peak demand windows</p>
                                 <div className="w-full h-56 min-h-[224px] relative">
-                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                    <ResponsiveContainer width="100%" height={220}>
                                         <BarChart data={analyticsData.busiest_hours} barCategoryGap="30%">
                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                                             <XAxis dataKey="hour" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} />
@@ -1166,7 +1183,7 @@ function AdminDashboardContent() {
                                 </div>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mb-6">Marketing intelligence — highest-value services</p>
                                 <div className="w-full h-56 min-h-[224px] relative">
-                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                    <ResponsiveContainer width="100%" height={220}>
                                         <BarChart data={analyticsData.packages} layout="vertical" barCategoryGap="25%">
                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
                                             <XAxis type="number" stroke="#8E939B" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}k`} />

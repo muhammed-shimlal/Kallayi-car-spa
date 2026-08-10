@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from core.permissions import IsAdmin, IsStaffUser, IsCustomerUser, IsOwnerOrAdmin, get_user_role
 from django.db.models import Sum, F
 from django.utils import timezone
@@ -22,8 +23,11 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         role = get_user_role(user)
+        base_qs = Invoice.objects.select_related(
+            'booking', 'booking__customer', 'booking__customer__user', 'booking__vehicle', 'booking__service_package'
+        )
         if role in ['ADMIN', 'MANAGER', 'WASHER', 'DRIVER', 'TECHNICIAN']:
-            return Invoice.objects.all()
+            return base_qs.all()
         if hasattr(user, 'customer'):
             from django.db.models import Q
             from customers.views import normalize_phone
@@ -32,8 +36,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             q = Q(booking__customer=user.customer) | Q(booking__customer__user=user)
             if clean_phone:
                 q |= Q(booking__customer__phone_number__icontains=clean_phone)
-            return Invoice.objects.filter(q).distinct()
-        return Invoice.objects.none()
+            return base_qs.filter(q).distinct()
+        return base_qs.none()
 
     @action(detail=True, methods=['get'])
     def download_pdf(self, request, pk=None):
@@ -101,9 +105,10 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response({'status': 'Invoice settled successfully'})
 
 class GeneralExpenseViewSet(viewsets.ModelViewSet):
-    queryset = GeneralExpense.objects.filter(is_active=True).select_related('category', 'recorded_by', 'staff')
+    queryset = GeneralExpense.objects.select_related('category', 'recorded_by', 'staff').order_by('-date', '-id')
     serializer_class = GeneralExpenseSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def perform_create(self, serializer):
         serializer.save(recorded_by=self.request.user)
@@ -119,10 +124,9 @@ class GeneralExpenseViewSet(viewsets.ModelViewSet):
         return Response({'status': 'Expense approved'})
 
     def destroy(self, request, *args, **kwargs):
-        """Soft delete expense record."""
+        """Delete expense record."""
         expense = self.get_object()
-        expense.is_active = False
-        expense.save()
+        expense.delete()
         return Response(status=204)
 
 from .models import SalaryPayment
@@ -265,6 +269,83 @@ class DashboardViewSet(viewsets.ViewSet):
                 'today_washed_count': 0,
                 'error': str(e)
             })
+
+    @action(detail=False, methods=['get'])
+    def revenue_chart(self, request):
+        """
+        GET /api/finance/dashboard/revenue_chart/
+        Returns last 7 days of daily revenue and wash count data for Recharts.
+        """
+        from bookings.models import Booking
+        import datetime
+        from django.db.models import Q, Sum
+
+        end_date = timezone.localdate()
+        start_date = end_date - datetime.timedelta(days=6)
+
+        data = []
+        current = start_date
+        while current <= end_date:
+            day_str = current.strftime("%b %d")
+            
+            day_invoices = Invoice.objects.filter(created_at__date=current)
+            inv_rev = float(day_invoices.aggregate(total=Sum('amount'))['total'] or 0.0)
+
+            day_bookings_no_inv = Booking.objects.filter(
+                created_at__date=current,
+                invoice__isnull=True
+            )
+            bk_rev = sum(float(b.service_package.price) for b in day_bookings_no_inv if b.service_package and b.service_package.price)
+
+            total_rev = inv_rev + bk_rev
+
+            wash_count = Booking.objects.filter(
+                status__in=['COMPLETED', 'Completed', 'completed']
+            ).filter(
+                Q(created_at__date=current) | Q(time_slot__date=current)
+            ).distinct().count()
+
+            data.append({
+                'name': day_str,
+                'date': day_str,
+                'full_date': current.strftime("%Y-%m-%d"),
+                'revenue': round(total_rev, 2),
+                'value': round(total_rev, 2),
+                'washes': wash_count
+            })
+
+            current += datetime.timedelta(days=1)
+
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def outstanding_credit(self, request):
+        """
+        GET /api/finance/dashboard/outstanding_credit/
+        Returns sum of outstanding Khata credit balances and top debtor list.
+        """
+        from customers.models import Customer
+        from django.db.models import Sum
+
+        total_outstanding = float(Customer.objects.aggregate(total=Sum('outstanding_balance'))['total'] or 0.0)
+        
+        customers = Customer.objects.filter(outstanding_balance__gt=0).order_by('-outstanding_balance')[:10]
+        debtors = []
+        for c in customers:
+            name = c.user.get_full_name() or c.user.first_name or c.user.username if c.user else 'Customer'
+            debtors.append({
+                'id': c.id,
+                'name': name,
+                'phone': c.phone_number,
+                'outstanding_balance': float(c.outstanding_balance),
+                'credit_limit': float(c.credit_limit)
+            })
+
+        return Response({
+            'total_outstanding_credit': round(total_outstanding, 2),
+            'total_debtors_count': Customer.objects.filter(outstanding_balance__gt=0).count(),
+            'debtors': debtors
+        })
 
 
 class CollectionBankViewSet(viewsets.ModelViewSet):
@@ -480,8 +561,109 @@ class ReportingViewSet(viewsets.ViewSet):
         response['Content-Disposition'] = f'attachment; filename="expenses_{start}_{end}.csv"'
         return response
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def customer_my_ledger(request):
+    """GET /api/finance/khata/my-ledger/"""
+    user = request.user
+    customer = getattr(user, 'customer', None)
+    if not customer:
+        from customers.views import claim_or_link_customer
+        customer = claim_or_link_customer(user)
+
+    from customers.views import normalize_phone
+    from django.db.models import Q, Sum
+
+    raw_phone = (customer.phone_number or user.username or '').strip()
+    clean_phone = normalize_phone(raw_phone)
+
+    # Gather all customer IDs that belong to this user or matching phone number
+    customer_ids = set()
+    if customer and customer.id:
+        customer_ids.add(customer.id)
+
+    matching_customers = Customer.objects.filter(
+        Q(user=user) | 
+        (Q(phone_number__icontains=clean_phone) if clean_phone else Q(pk=customer.id))
+    )
+    for c in matching_customers:
+        customer_ids.add(c.id)
+
+    customer_ids = list(customer_ids)
+
+    entries = KhataLedger.objects.filter(customer_id__in=customer_ids).order_by('-created_at')
+
+    total_credit = float(
+        KhataLedger.objects.filter(customer_id__in=customer_ids)
+        .filter(Q(transaction_type__iexact='CHARGE') | Q(transaction_type__iexact='CREDIT'))
+        .aggregate(total=Sum('amount'))['total'] or 0.0
+    )
+
+    total_settled = float(
+        KhataLedger.objects.filter(customer_id__in=customer_ids)
+        .filter(Q(transaction_type__iexact='SETTLEMENT') | Q(transaction_type__iexact='PAYMENT'))
+        .aggregate(total=Sum('amount'))['total'] or 0.0
+    )
+
+    # Aggregate outstanding balance across matching profiles
+    outstanding_balance = max(0.0, float(
+        Customer.objects.filter(id__in=customer_ids).aggregate(total=Sum('outstanding_balance'))['total'] or customer.outstanding_balance or 0.0
+    ))
+
+    credit_limit = float(customer.credit_limit or 5000.0)
+
+    data = []
+    for entry in entries:
+        desc = entry.description
+        if entry.related_booking:
+            desc += f" (Booking #{entry.related_booking.id})"
+
+        plate_number = 'N/A'
+        if entry.related_booking and entry.related_booking.vehicle:
+            plate_number = entry.related_booking.vehicle.plate_number
+        else:
+            import re
+            match = re.search(r'([A-Z]{2}-\d{2}-[A-Z0-9]+-\d{4})', desc)
+            if match:
+                plate_number = match.group(1)
+
+        img_url = None
+        if entry.number_plate_image:
+            try:
+                url_str = entry.number_plate_image.url
+                if url_str.startswith('http'):
+                    img_url = url_str
+                else:
+                    img_url = request.build_absolute_uri(url_str)
+            except Exception:
+                img_url = str(entry.number_plate_image)
+
+        data.append({
+            'id': f"KHATA-{entry.id}",
+            'raw_id': entry.id,
+            'amount': float(entry.amount),
+            'transaction_type': entry.transaction_type,
+            'description': desc,
+            'plate_number': plate_number,
+            'number_plate_image': img_url,
+            'date': entry.created_at.strftime("%Y-%m-%d %H:%M"),
+        })
+
+    return Response({
+        'total_credit': round(total_credit, 2),
+        'total_settled': round(total_settled, 2),
+        'outstanding_balance': round(outstanding_balance, 2),
+        'credit_limit': credit_limit,
+        'transactions': data
+    })
+
 class KhataViewSet(viewsets.ViewSet):
     permission_classes = [IsAdminUser]
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def my_ledger(self, request):
+        """GET /api/finance/khata/my-ledger/"""
+        return customer_my_ledger(request)
 
     def list(self, request):
         """GET /api/finance/khata/"""
@@ -523,12 +705,20 @@ class KhataViewSet(viewsets.ViewSet):
                 if match:
                     plate_number = match.group(1)
 
+            img_url = None
+            if entry.number_plate_image:
+                try:
+                    img_url = entry.number_plate_image.url
+                except Exception:
+                    img_url = str(entry.number_plate_image)
+
             data.append({
                 'id': entry.id,
                 'amount': float(entry.amount),
                 'transaction_type': entry.transaction_type,
                 'description': desc,
                 'plate_number': plate_number,
+                'number_plate_image': img_url,
                 'date': entry.created_at.strftime("%Y-%m-%d %H:%M"),
             })
         return Response(data)
@@ -540,6 +730,7 @@ class KhataViewSet(viewsets.ViewSet):
         amount = Decimal(str(request.data.get('amount', 0)))
         description = request.data.get('description', 'Khata Charge')
         booking_id = request.data.get('booking_id')
+        number_plate_image = request.FILES.get('number_plate_image')
 
         try:
             customer = Customer.objects.get(pk=customer_id)
@@ -557,12 +748,13 @@ class KhataViewSet(viewsets.ViewSet):
                 pass
 
         # Create Charge
-        KhataLedger.objects.create(
+        entry = KhataLedger.objects.create(
             customer=customer,
             amount=amount,
             transaction_type='CHARGE',
             description=description,
-            related_booking=booking
+            related_booking=booking,
+            number_plate_image=number_plate_image
         )
 
         # Update Balance
@@ -572,7 +764,11 @@ class KhataViewSet(viewsets.ViewSet):
         # Mock SMS
         print(f"[MOCK SMS] Your Kallayi Khata has been charged ₹{amount}. New Balance: ₹{customer.outstanding_balance}.")
 
-        return Response({'status': 'Charge successful', 'new_balance': float(customer.outstanding_balance)})
+        return Response({
+            'status': 'Charge successful',
+            'new_balance': float(customer.outstanding_balance),
+            'entry_id': entry.id
+        })
 
     @action(detail=False, methods=['post'])
     def settle(self, request):
@@ -934,11 +1130,14 @@ def manual_khata_charge(request):
     customer.outstanding_balance = new_balance
     customer.save()
 
+    number_plate_image = request.FILES.get('number_plate_image')
+
     KhataLedger.objects.create(
         customer=customer,
         amount=amount,
         transaction_type='CHARGE',
         description=description or 'Manual Khata Entry',
+        number_plate_image=number_plate_image,
     )
 
     return Response({

@@ -15,6 +15,9 @@ export default function StaffTab() {
         saveStaff, terminateStaff, toggleStaffStatus, settleWorkerPay, handleAddAdvance
     } = staffState;
 
+    const [selectedWorkerToPay, setSelectedWorkerToPay] = React.useState<any>(null);
+    const [payForm, setPayForm] = React.useState({ customAmount: '', paymentMethod: 'CASH', notes: '' });
+
     const roleColors: Record<string, string> = {
         MANAGER: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
         TECHNICIAN: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -46,15 +49,15 @@ export default function StaffTab() {
             header: 'Status',
             accessor: (worker: any) => (
                 worker.status === 'Paid' ? (
-                    <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded uppercase tracking-widest font-bold">
+                    <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded uppercase tracking-widest font-bold border border-emerald-500/30">
                         <CheckCircle className="w-3 h-3" /> Settled
                     </span>
                 ) : (
                     <button
-                        onClick={() => settleWorkerPay(worker.id)}
+                        onClick={() => setSelectedWorkerToPay(worker)}
                         className="inline-flex items-center gap-1 text-[10px] bg-[#01FFFF] text-black hover:bg-white transition-colors px-3 py-1.5 rounded uppercase tracking-widest font-bold shadow-[0_0_12px_rgba(1,255,255,0.3)] min-h-[36px] active:scale-95 touch-manipulation"
                     >
-                        <BadgeDollarSign className="w-3 h-3" /> Pay Cash
+                        <BadgeDollarSign className="w-3 h-3" /> Pay Salary
                     </button>
                 )
             ),
@@ -75,6 +78,21 @@ export default function StaffTab() {
         {
             header: 'Final Payout',
             accessor: (worker: any) => <span className="font-syncopate font-bold text-base text-emerald-400">₹{worker.final_payout}</span>
+        },
+        {
+            header: 'Pending Balance',
+            accessor: (worker: any) => {
+                const due = parseFloat(worker.pending_balance ?? worker.due_amount ?? 0);
+                return (
+                    <span className={`font-mono font-bold text-xs px-2.5 py-1 rounded-md border ${
+                        due > 0 
+                        ? 'bg-red-500/20 text-[#FF2A6D] border-red-500/30' 
+                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    }`}>
+                        ₹{due.toLocaleString()}
+                    </span>
+                );
+            }
         }
     ];
 
@@ -118,6 +136,21 @@ export default function StaffTab() {
         {
             header: 'Comm %',
             accessor: (staff: any) => <span className="text-xs font-mono text-[#01FFFF]">{staff.commission_rate ?? 0}%</span>
+        },
+        {
+            header: 'Pending Balance',
+            accessor: (staff: any) => {
+                const due = parseFloat(staff.pending_balance ?? staff.due_amount ?? 0);
+                return (
+                    <span className={`font-mono font-bold text-xs px-2.5 py-1 rounded-md border ${
+                        due > 0 
+                        ? 'bg-red-500/20 text-[#FF2A6D] border-red-500/30' 
+                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    }`}>
+                        ₹{due.toLocaleString()}
+                    </span>
+                );
+            }
         }
     ];
 
@@ -314,6 +347,123 @@ export default function StaffTab() {
                         >
                             <PlusCircle className="w-5 h-5" /> CONFIRM ADVANCE
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* SALARY PAYOUT / PARTIAL PAYMENT MODAL */}
+            {selectedWorkerToPay && (
+                <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] p-4">
+                    <div className="bg-[#141518] border border-white/10 p-6 sm:p-8 rounded-3xl w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.8)]">
+                        <div className="flex justify-between items-center mb-6 pb-3 border-b border-white/10">
+                            <div>
+                                <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF] text-base sm:text-lg">
+                                    RECORD SALARY PAYOUT
+                                </h3>
+                                <p className="text-xs text-neutral-400 font-mono mt-0.5">
+                                    Worker: <span className="text-white font-bold">{selectedWorkerToPay.name || selectedWorkerToPay.first_name || selectedWorkerToPay.username}</span>
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedWorkerToPay(null)} 
+                                className="text-[#8E939B] hover:text-white transition-colors p-2 rounded-full hover:bg-white/10"
+                            >
+                                <PlusCircle className="w-6 h-6 rotate-45" />
+                            </button>
+                        </div>
+
+                        {/* Calculations Card */}
+                        <div className="bg-black/50 border border-white/10 p-4 rounded-2xl space-y-2 mb-6">
+                            <div className="flex justify-between text-xs font-mono">
+                                <span className="text-neutral-400">Total Calculated Owed:</span>
+                                <span className="font-bold text-white">₹{(selectedWorkerToPay.final_payout ?? selectedWorkerToPay.pending_balance ?? selectedWorkerToPay.due_amount ?? 0).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-xs font-mono">
+                                <span className="text-neutral-400">Paying Amount Now:</span>
+                                <span className="font-bold text-[#01FFFF]">₹{(payForm.customAmount ? parseFloat(payForm.customAmount) : (selectedWorkerToPay.final_payout ?? selectedWorkerToPay.pending_balance ?? 0)).toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-xs font-mono pt-2 border-t border-white/10">
+                                <span className="text-neutral-400 font-bold uppercase">Pending Balance / Amount Due:</span>
+                                {(() => {
+                                    const total = parseFloat(selectedWorkerToPay.final_payout ?? selectedWorkerToPay.pending_balance ?? 0);
+                                    const paying = payForm.customAmount ? parseFloat(payForm.customAmount) : total;
+                                    const remaining = Math.max(total - paying, 0);
+                                    return (
+                                        <span className={`font-bold font-syncopate text-sm ${remaining > 0 ? 'text-[#FF2A6D]' : 'text-emerald-400'}`}>
+                                            ₹{remaining.toLocaleString()} {remaining > 0 ? '(PARTIAL DUE)' : '(SETTLED)'}
+                                        </span>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            const total = parseFloat(selectedWorkerToPay.final_payout ?? selectedWorkerToPay.pending_balance ?? 0);
+                            const payingAmount = payForm.customAmount !== '' ? parseFloat(payForm.customAmount) : total;
+                            settleWorkerPay(selectedWorkerToPay.id, payingAmount, payForm.paymentMethod, payForm.notes);
+                            setSelectedWorkerToPay(null);
+                            setPayForm({ customAmount: '', paymentMethod: 'CASH', notes: '' });
+                        }} className="space-y-4">
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold block mb-1">
+                                    Payout Amount (₹) — Leave blank for full amount
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={payForm.customAmount}
+                                    onChange={(e) => setPayForm({ ...payForm, customAmount: e.target.value })}
+                                    placeholder={`Full Amount (₹${(selectedWorkerToPay.final_payout ?? selectedWorkerToPay.pending_balance ?? 0)})`}
+                                    className="w-full bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-[#01FFFF] transition-all"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold block mb-1">
+                                    Payment Method
+                                </label>
+                                <select
+                                    value={payForm.paymentMethod}
+                                    onChange={(e) => setPayForm({ ...payForm, paymentMethod: e.target.value })}
+                                    className="w-full bg-[#141518] border border-white/10 py-3 px-4 rounded-xl text-white text-sm focus:outline-none focus:border-[#01FFFF] transition-all"
+                                >
+                                    <option value="CASH">Cash</option>
+                                    <option value="UPI">UPI Transfer</option>
+                                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                                    <option value="CHEQUE">Cheque</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold block mb-1">
+                                    Notes / Reference No.
+                                </label>
+                                <input
+                                    type="text"
+                                    value={payForm.notes}
+                                    onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
+                                    placeholder="e.g. Partial weekly payout via UPI"
+                                    className="w-full bg-white/5 border border-white/10 py-3 px-4 rounded-xl text-white text-sm focus:outline-none focus:border-[#01FFFF] transition-all"
+                                />
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedWorkerToPay(null)}
+                                    className="flex-1 py-3.5 border border-white/20 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-white/10 transition"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-950 font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl hover:opacity-90 transition shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                                >
+                                    CONFIRM PAYOUT
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

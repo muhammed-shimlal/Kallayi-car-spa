@@ -47,23 +47,24 @@ class GeneralExpense(models.Model):
     ]
     
     category = models.ForeignKey(ExpenseCategory, on_delete=models.SET_NULL, null=True, related_name='expenses')
-    expense_type = models.CharField(max_length=10, choices=EXPENSE_TYPE_CHOICES, default='BUSINESS')
-    transaction_type = models.CharField(max_length=15, choices=TRANSACTION_TYPE_CHOICES, null=True, blank=True)
+    expense_type = models.CharField(max_length=10, choices=EXPENSE_TYPE_CHOICES, default='BUSINESS', db_index=True)
+    transaction_type = models.CharField(max_length=15, choices=TRANSACTION_TYPE_CHOICES, null=True, blank=True, db_index=True)
     payment_method = models.CharField(max_length=15, choices=PAYMENT_METHOD_CHOICES, default='CASH')
     staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='staff_transactions')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField(blank=True)
     notes = models.TextField(blank=True)
-    date = models.DateField(default=timezone.localdate)
+    date = models.DateField(default=timezone.localdate, db_index=True)
     receipt_image = models.ImageField(upload_to='receipts/', null=True, blank=True)
     recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='expenses_recorded')
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='APPROVED')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='APPROVED', db_index=True)
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='expenses_approved')
     approved_at = models.DateTimeField(null=True, blank=True)
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='expenses_updated')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    is_active = models.BooleanField(default=True)
+    class Meta:
+        ordering = ['-date', '-id']
 
     def __str__(self):
         return f"{self.expense_type} - {self.amount} ({self.date}) [{self.status}]"
@@ -81,7 +82,7 @@ class SalaryPayment(models.Model):
     ]
 
     staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='salary_payments')
-    payment_date = models.DateField(default=timezone.localdate)
+    payment_date = models.DateField(default=timezone.localdate, db_index=True)
     period_start = models.DateField()
     period_end = models.DateField()
     calculated_payable = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -202,6 +203,7 @@ class KhataLedger(models.Model):
     transaction_type = models.CharField(max_length=15, choices=TRANSACTION_TYPES)
     description = models.CharField(max_length=255)
     related_booking = models.ForeignKey(Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name='khata_charges')
+    number_plate_image = models.ImageField(upload_to='khata_proofs/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

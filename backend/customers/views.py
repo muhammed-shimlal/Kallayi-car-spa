@@ -124,15 +124,34 @@ class CustomerViewSet(viewsets.ModelViewSet):
         else:
             customer = claim_or_link_customer(user)
 
+        from finance.models import KhataLedger
+        from django.db.models import Sum
+        total_credit = float(
+            KhataLedger.objects.filter(customer=customer, transaction_type='CHARGE')
+            .aggregate(total=Sum('amount'))['total'] or 0.0
+        )
+        total_settled = float(
+            KhataLedger.objects.filter(customer=customer, transaction_type='SETTLEMENT')
+            .aggregate(total=Sum('amount'))['total'] or 0.0
+        )
+
         v_count = customer.vehicles.count() if hasattr(customer, 'vehicles') else 0
         return Response({
             'id': customer.id,
             'name': customer.user.get_full_name() or customer.user.first_name or customer.user.username,
             'phone_number': customer.phone_number or customer.user.username,
             'outstanding_balance': float(customer.outstanding_balance or 0.0),
+            'total_credit': round(total_credit, 2),
+            'total_settled': round(total_settled, 2),
             'credit_limit': float(customer.credit_limit or 0.0),
             'vehicle_count': v_count
         })
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def ledger(self, request):
+        """GET /api/customers/me/ledger/"""
+        from finance.views import KhataViewSet
+        return KhataViewSet().my_ledger(request)
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def search(self, request):
@@ -452,9 +471,64 @@ class CustomerVehicleViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff or user.is_superuser:
-            return CustomerVehicle.objects.all()
-        return CustomerVehicle.objects.filter(customer=user)
+        qs = CustomerVehicle.objects.all() if (user.is_staff or user.is_superuser) else CustomerVehicle.objects.filter(customer=user)
+
+        phone_param = self.request.query_params.get('phone') or self.request.query_params.get('search')
+        if phone_param:
+            raw_phone = phone_param.strip()
+            clean_phone = raw_phone.replace(' ', '').replace('-', '').replace('+', '')
+            if clean_phone.startswith('91') and len(clean_phone) > 10:
+                clean_phone = clean_phone[2:]
+
+            if clean_phone and len(clean_phone) >= 4:
+                from .models import Customer
+                from django.db.models import Q
+
+                matching_customers = Customer.objects.filter(phone_number__icontains=clean_phone)
+                customer_user_ids = list(matching_customers.values_list('user_id', flat=True))
+
+                qs = qs.filter(
+                    Q(customer__username__icontains=clean_phone) |
+                    Q(customer__id__in=customer_user_ids) |
+                    Q(customer__customer__phone_number__icontains=clean_phone)
+                ).distinct()
+            else:
+                return CustomerVehicle.objects.none()
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def garage(self, request):
+        """
+        GET /api/customer-vehicles/garage/?phone=9876543210
+        Returns all registered vehicles strictly owned by the provided phone number.
+        Returns empty list [] if phone is missing or no customer matched.
+        """
+        phone = request.query_params.get('phone', '').strip()
+        if not phone:
+            return Response([])
+
+        clean_phone = phone.replace(' ', '').replace('-', '').replace('+', '')
+        if clean_phone.startswith('91') and len(clean_phone) > 10:
+            clean_phone = clean_phone[2:]
+
+        if len(clean_phone) < 4:
+            return Response([])
+
+        from .models import Customer
+        from django.db.models import Q
+
+        matching_customers = Customer.objects.filter(phone_number__icontains=clean_phone)
+        customer_user_ids = list(matching_customers.values_list('user_id', flat=True))
+
+        vehicles = CustomerVehicle.objects.filter(
+            Q(customer__username__icontains=clean_phone) |
+            Q(customer__id__in=customer_user_ids) |
+            Q(customer__customer__phone_number__icontains=clean_phone)
+        ).distinct()
+
+        serializer = self.get_serializer(vehicles, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def lookup(self, request):

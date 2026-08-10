@@ -174,12 +174,18 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const expensesQuery = useQuery<Expense[]>({
         queryKey: ['expenses'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/general-expenses/`, { headers: fetchHeaders });
+            const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+            const res = await fetch(`${API_BASE}/finance/general-expenses/`, { 
+                headers: { 'Authorization': `Token ${token}` } 
+            });
             if (!res.ok) throw new Error('Failed');
-            const e = await res.json();
-            return e.results || e;
+            const data = await res.json();
+            if (Array.isArray(data)) return data;
+            if (data && Array.isArray(data.results)) return data.results;
+            if (data && Array.isArray(data.data)) return data.data;
+            return [];
         },
-        enabled: !!token
+        enabled: true
     });
 
     const expenseCategoriesQuery = useQuery<ExpenseCategory[]>({
@@ -281,7 +287,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const todayWashedRaw = todayWashedQuery.data || { count: 0, today_washed_count: 0, results: [] };
     const todayWashedVehicles = Array.isArray(todayWashedRaw) ? todayWashedRaw : (todayWashedRaw.results || []);
     const todayWashedCount = todayWashedRaw.today_washed_count ?? todayWashedRaw.count ?? ((kpiData as any).today_washed_count || todayWashedVehicles.length);
-    const expenses = expensesQuery.data || [];
+    const rawExpenses = expensesQuery.data || [];
+    const expenses = Array.isArray(rawExpenses) ? rawExpenses : ((rawExpenses as any)?.results || (rawExpenses as any)?.data || []);
     const expenseCategories = expenseCategoriesQuery.data || [];
     const khataCustomers = khataQuery.data || [];
     const customerCredits = customerCreditsQuery.data || [];
@@ -501,22 +508,26 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     };
 
     // --- Manual Khata Charge ---
-    const submitManualKhataCharge = async () => {
+    const submitManualKhataCharge = async (proofFile?: File | null) => {
         if (!manualKhataForm.phone || !manualKhataForm.amount) {
             toast.error('Phone and Amount are required.');
             return;
         }
         const token = localStorage.getItem('auth_token');
         try {
+            const formData = new FormData();
+            formData.append('phone', manualKhataForm.phone);
+            formData.append('name', manualKhataForm.name || '');
+            formData.append('amount', String(manualKhataForm.amount));
+            formData.append('description', manualKhataForm.description || 'Manual Khata Entry');
+            if (proofFile) {
+                formData.append('number_plate_image', proofFile);
+            }
+
             const res = await fetch(`${API_BASE}/finance/khata/manual-charge/`, {
                 method: 'POST',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    phone: manualKhataForm.phone,
-                    name: manualKhataForm.name,
-                    amount: parseFloat(manualKhataForm.amount),
-                    description: manualKhataForm.description || 'Manual Khata Entry',
-                }),
+                headers: { 'Authorization': `Token ${token}` },
+                body: formData,
             });
             const data = await res.json();
             if (res.ok) {
@@ -657,16 +668,29 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             const method = editingExpense ? 'PATCH' : 'POST';
             const res = await fetch(url, { method, headers: { 'Authorization': `Token ${token}` }, body: formData });
             if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.error || 'Failed to record expense.');
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || err.error || (typeof err === 'object' ? JSON.stringify(err) : 'Failed to record expense.'));
             }
             return res.json();
         },
-        onSuccess: () => {
+        onSuccess: async (newOrUpdatedData: any) => {
             toast.success(editingExpense ? 'Expense updated successfully!' : 'Expense recorded successfully!');
             cancelEditingExpense();
-            queryClient.invalidateQueries({ queryKey: ['kpiData'] });
-            queryClient.invalidateQueries({ queryKey: ['expenses'] });
+
+            // Set Query cache immediately for instant UI responsiveness
+            queryClient.setQueryData(['expenses'], (oldData: any) => {
+                if (!oldData) return [newOrUpdatedData];
+                const list = Array.isArray(oldData) ? oldData : (oldData.results || []);
+                const exists = list.some((item: any) => item.id === newOrUpdatedData.id);
+                if (exists) {
+                    return list.map((item: any) => item.id === newOrUpdatedData.id ? newOrUpdatedData : item);
+                }
+                return [newOrUpdatedData, ...list];
+            });
+
+            await queryClient.invalidateQueries({ queryKey: ['expenses'] });
+            await queryClient.refetchQueries({ queryKey: ['expenses'] });
+            await queryClient.invalidateQueries({ queryKey: ['kpiData'] });
         },
         onError: (err: any) => {
             toast.error(err.message || 'Network error while recording expense.');
@@ -675,15 +699,15 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const handleExpenseSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!expenseForm.category || !expenseForm.amount || !expenseForm.date || !expenseForm.description) {
-            toast.error('All fields except Receipt are required.');
+        if (!expenseForm.category || !expenseForm.amount || !expenseForm.date) {
+            toast.error('Category, Amount, and Date are required.');
             return;
         }
         const formData = new FormData();
         formData.append('category', expenseForm.category);
         formData.append('amount', expenseForm.amount);
         formData.append('date', expenseForm.date);
-        formData.append('description', expenseForm.description);
+        formData.append('description', expenseForm.description || '');
         if (receiptFile) formData.append('receipt_image', receiptFile);
         
         expenseMutation.mutate(formData);
@@ -691,14 +715,18 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const startEditingExpense = (expense: Expense) => {
         setEditingExpense(expense);
+        const catId = (typeof expense.category === 'object' && expense.category !== null && 'id' in expense.category)
+            ? String((expense.category as any).id)
+            : String(expense.category ?? '');
+
         setExpenseForm({
-            category: (typeof expense.category === 'object' && expense.category !== null && 'id' in expense.category) ? String(expense.category.id) : String(expense.category),
+            category: catId,
             amount: String(expense.amount),
             date: expense.date,
-            description: expense.description
+            description: expense.description || ''
         });
         setReceiptFile(null);
-        setReceiptPreview(null);
+        setReceiptPreview((expense as any).receipt_image || (expense as any).receipt || null);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -716,9 +744,18 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
-            if (res.ok) {
+            if (res.ok || res.status === 204) {
                 toast.success('Expense deleted successfully!');
-                queryClient.invalidateQueries();
+
+                queryClient.setQueryData(['expenses'], (oldData: any) => {
+                    if (!oldData) return [];
+                    const list = Array.isArray(oldData) ? oldData : (oldData.results || []);
+                    return list.filter((item: any) => item.id !== id);
+                });
+
+                await queryClient.invalidateQueries({ queryKey: ['expenses'] });
+                await queryClient.refetchQueries({ queryKey: ['expenses'] });
+                await queryClient.invalidateQueries({ queryKey: ['kpiData'] });
             } else {
                 toast.error('Failed to delete expense.');
             }
@@ -958,18 +995,25 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const handleCloseRegister = () => closeRegisterMutation.mutate();
 
-    const settleWorkerPay = async (id: number) => {
+    const settleWorkerPay = async (id: number, amount?: number, paymentMethod?: string, notes?: string) => {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_BASE}/staff/payroll/${id}/settle/`, {
-                method: 'PATCH',
+            const bodyData: any = {};
+            if (amount !== undefined && amount !== null) bodyData.paid_amount = amount;
+            if (paymentMethod) bodyData.payment_method = paymentMethod;
+            if (notes) bodyData.notes = notes;
+
+            const res = await fetch(`${API_BASE}/staff/settle-pay/${id}/`, {
+                method: 'POST',
                 headers: {
                     'Authorization': `Token ${token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                body: JSON.stringify(bodyData)
             });
             if (res.ok) {
-                toast.success('Worker paid successfully.');
+                const data = await res.json();
+                toast.success(data.message || 'Worker payout recorded successfully.');
                 queryClient.invalidateQueries();
             } else {
                 toast.error("Failed to settle worker pay");
@@ -1011,10 +1055,23 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const safeCustomerCredits = Array.isArray(customerCredits) 
+        ? customerCredits 
+        : ((customerCredits as any)?.results || (customerCredits as any)?.debtors || []);
+
+    const safeKhataCustomers = Array.isArray(khataCustomers) 
+        ? khataCustomers 
+        : ((khataCustomers as any)?.results || (khataCustomers as any)?.debtors || []);
+
+    const safePayrollData = Array.isArray(payrollData) 
+        ? payrollData 
+        : ((payrollData as any)?.results || []);
+
     const totalOutstandingCredit = 
-    customerCredits.reduce((sum, item) => sum + Number(item.amount || 0), 0) + 
-    khataCustomers.reduce((sum, item) => sum + Number(item.outstanding_balance || 0), 0);
-    const totalDailyPayout = payrollData.reduce((sum, worker) => sum + worker.final_payout, 0);
+        safeCustomerCredits.reduce((sum: number, item: any) => sum + Number(item.amount || item.outstanding_balance || 0), 0) + 
+        safeKhataCustomers.reduce((sum: number, item: any) => sum + Number(item.outstanding_balance || item.amount || 0), 0);
+
+    const totalDailyPayout = safePayrollData.reduce((sum: number, worker: any) => sum + Number(worker.final_payout || worker.amount || 0), 0);
 
 
     const value = {
@@ -1030,7 +1087,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             kpiData, chartData, expenses, expenseCategories, isSubmittingExpense: expenseMutation.isPending, expenseForm,
             receiptFile, receiptPreview, editingExpense, khataCustomers, khataLedger, selectedKhataCustomer,
             editingKhataCustomer, khataCustomerForm, khataPaymentAmount, eodData, manualKhataForm,
-            customerCredits, invoiceList, analyticsData, totalOutstandingCredit, totalDailyPayout,
+            customerCredits, invoiceList, analyticsData, totalOutstandingCredit, totalDailyPayout, fileInputRef,
             setExpenseForm, setReceiptFile, setReceiptPreview, setKhataCustomerForm, setKhataPaymentAmount, setManualKhataForm,
             fetchExpenseCategories, handleFileChange, clearFile, handleExpenseSubmit, startEditingExpense,
             cancelEditingExpense, deleteExpense, downloadTaxReport, downloadInvoice, approveExpense, settleCredit,

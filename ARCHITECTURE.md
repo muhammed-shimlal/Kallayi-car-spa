@@ -1,425 +1,172 @@
-# ARCHITECTURE.md
+# 🏗️ Kallayi Car Spa — Technical Architecture & Specifications
 
-# 🏗️ Kallayi Car Spa - System Architecture
-
-## Overview
-
-Kallayi Car Spa is a backend application built using **Django** and **Django REST Framework (DRF)**. The project follows a modular architecture where each business domain is organized into its own Django application.
-
-This architecture improves maintainability, scalability, and code organization.
+This document outlines the high-level system architecture, software engineering design patterns, database schemas, request lifecycles, and security framework powering the **Kallayi Car Spa** application.
 
 ---
 
-# Architecture Overview
+## 📐 System Architecture Overview
+
+Kallayi Car Spa is built using a decoupled **Client-Server Architecture** separating the presentation layer (**Next.js 16 App Router**) from the backend application services layer (**Django REST Framework**).
 
 ```
-                    Client Applications
-        ┌────────────────────────────────────┐
-        │                                    │
-        │  Web App   Mobile App   Admin Panel│
-        │                                    │
-        └────────────────────────────────────┘
-                     │
-                     ▼
-            Django REST API (DRF)
-                     │
- ┌─────────────────────────────────────────────┐
- │                Django Project               │
- ├─────────────────────────────────────────────┤
- │                                             │
- │ Authentication (JWT)                        │
- │ URL Routing                                 │
- │ Views / ViewSets                            │
- │ Serializers                                 │
- │ Permissions                                 │
- │ Business Logic                              │
- │ Django ORM                                  │
- │                                             │
- └─────────────────────────────────────────────┘
-                     │
-                     ▼
-              SQLite / PostgreSQL
-```
-
----
-
-# High-Level Architecture
-
-```
-Client
-   │
-   ▼
-REST API
-   │
-   ▼
-Authentication
-   │
-   ▼
-Business Logic
-   │
-   ▼
-Database
+                                  +---------------------------------------+
+                                  |         Next.js 16 Web Client         |
+                                  |  (React 19 / TypeScript / Tailwind)   |
+                                  +-------------------+-------------------+
+                                                      |
+                                                      | HTTPS / REST API
+                                                      | (Bearer JWT Auth)
+                                                      v
+                                  +---------------------------------------+
+                                  |     Django REST Framework (DRF) API   |
+                                  +-------------------+-------------------+
+                                                      |
+             +--------------------+-------------------+--------------------+--------------------+
+             |                    |                   |                    |                    |
+             v                    v                   v                    v                    v
+      +--------------+    +---------------+   +---------------+    +---------------+    +---------------+
+      |  core (Auth) |    |   customers   |   |    bookings   |    |    finance    |    |     fleet     |
+      +--------------+    +---------------+   +---------------+    +---------------+    +---------------+
+             |                    |                   |                    |                    |
+             +--------------------+-------------------+--------------------+--------------------+
+                                                      |
+                                                      v
+                                  +---------------------------------------+
+                                  |          PostgreSQL Database          |
+                                  |     (ORM Managed Models & Relations)  |
+                                  +-------------------+-------------------+
+                                                      |
+                                    +-----------------+-----------------+
+                                    v                                   v
+                      +---------------------------+       +---------------------------+
+                      | Cloudinary Media Storage  |       |   SMTP Transactional Mail │
+                      | (Receipts & Photos)       |       | (Notifications & Resets)  |
+                      +---------------------------+       +---------------------------+
 ```
 
 ---
 
-# Project Structure
+## 🐍 Backend Architecture (Django REST Framework)
+
+The backend follows Django's modular app architecture, enforcing **Separation of Concerns (SoC)** by isolating domain logic into distinct apps within `backend/`:
+
+### App Domain Partitioning
+- **`core`**: Base User model (`CustomUser`), SimpleJWT token generation, role-based permission classes, and **Dual-Verification Password Reset** logic (`password_reset_request` & `password_reset_confirm`).
+- **`customers`**: Customer profiles (`Customer`), vehicle records (`CustomerVehicle`), subscription plans (`SubscriptionPlan`, `MemberSubscription`), corporate fleet accounts (`FleetAccount`), reviews, and promotional coupons.
+- **`bookings`**: Booking queue management (`Booking`), service packages (`ServicePackage`), chemical recipe linkages, wash bay assignments, technician scheduling, and loyalty points redemption.
+- **`finance`**: Multi-mode invoicing (`Invoice`), Digital Khata credit ledger (`KhataLedger`), End-of-Day cash till audits (`DailyRegisterAudit`), daily savings asset deposits (`CollectionBank`), chemical inventory logs (`ChemicalInventory`, `ChemicalUsageLog`), expense management (`GeneralExpense`), and technician payroll entries (`PayrollEntry`).
+- **`fleet`**: Mobile service vehicles (`ServiceVehicle`), technician GPS location tracking (`TechnicianLocation`), vehicle assignment history (`VehicleAssignment`), and fleet logs (`FleetLog`).
+- **`staff`**: Staff profiles (`StaffProfile`), work assignment tracking, commission rate rules (`CommissionRule`), and salary structures.
+- **`notifications`**: Email delivery services (`notifications.services`) and automated background tasks (`send_khata_reminders`).
+- **`payments`**: Payment processing endpoints and payment gateway integrations.
+
+---
+
+## ⚛️ Frontend Architecture (Next.js 16)
+
+The frontend application is constructed using **Next.js 16 App Router**, leveraging React 19 Server Components (RSC) for optimized initial page loads and Client Components for dynamic dashboard interactivity.
+
+### Key Architectural Layers
+- **Routing & Pages (`src/app/`)**: File-system based routing utilizing App Router layouts, loading states, and error boundaries.
+- **UI Components (`src/components/`)**: Modular, reusable UI components built with TailwindCSS v4, Lucide React icons, and animated using GSAP and Framer Motion.
+- **State Management & Data Fetching (`src/hooks/`, `src/services/`)**:
+  - **TanStack React Query v5**: Server state management, caching, background refetching, and optimistic UI updates.
+  - **Axios API Client**: Pre-configured HTTP client with automated request interceptors for attaching JWT Bearer tokens and handling 401 token refresh cycles.
+  - **React Hook Form + Zod**: Type-safe client-side form validation schemas.
+
+---
+
+## 🔄 Request & Response Lifecycle
 
 ```
-Kallayi-car-spa/
-│
-├── apps/
-│   ├── users/
-│   ├── customers/
-│   ├── staff/
-│   ├── services/
-│   ├── finances/
-│   └── ...
-│
-├── config/
-│
-├── manage.py
-├── requirements.txt
-└── README.md
-```
-
----
-
-# Layered Architecture
-
-## 1. Presentation Layer
-
-Responsible for receiving HTTP requests and returning JSON responses.
-
-Components:
-
-- URL Routing
-- API Views
-- ViewSets
-- Response Objects
-
----
-
-## 2. Authentication Layer
-
-Responsible for user authentication and authorization.
-
-Features:
-
-- JWT Authentication
-- Login
-- Logout
-- Token Refresh
-- Permissions
-- Protected Endpoints
-
----
-
-## 3. Business Logic Layer
-
-Contains the application's business rules.
-
-Examples:
-
-- Customer management
-- Vehicle management
-- Booking validation
-- Service pricing
-- Financial calculations
-
----
-
-## 4. Data Access Layer
-
-Implemented using Django ORM.
-
-Responsibilities:
-
-- CRUD operations
-- Model relationships
-- Database queries
-- Data validation
-
----
-
-## 5. Database Layer
-
-Stores application data.
-
-Supported databases:
-
-- SQLite (Development)
-- PostgreSQL (Production)
-
----
-
-# Django Application Modules
-
-## Users
-
-Responsibilities
-
-- Authentication
-- User profiles
-- User permissions
-
----
-
-## Customers
-
-Responsibilities
-
-- Customer records
-- Customer history
-- Customer information
-
----
-
-## Vehicles
-
-Responsibilities
-
-- Vehicle information
-- Customer ownership
-- Vehicle management
-
----
-
-## Services
-
-Responsibilities
-
-- Wash services
-- Pricing
-- Service categories
-
----
-
-## Staff
-
-Responsibilities
-
-- Staff management
-- Employee information
-- Role assignment
-
----
-
-## Bookings
-
-Responsibilities
-
-- Appointment scheduling
-- Booking management
-- Booking history
-
----
-
-## Finance
-
-Responsibilities
-
-- Income
-- Expenses
-- Financial reports
-
----
-
-# Request Flow
-
-```
-Client Request
+[ Client Request ]
        │
        ▼
-URL Routing
+[ Django URL Routing (urls.py) ]
        │
        ▼
-APIView / ViewSet
+[ SimpleJWT Authentication Middleware ] ──(Invalid Token)──► [ HTTP 401 Unauthorized ]
        │
        ▼
-Permission Check
+[ DRF Permission Enforcement (permissions.py) ] ──(Denied)──► [ HTTP 403 Forbidden ]
        │
        ▼
-Serializer Validation
+[ DRF Serializer Validation (serializers.py) ] ──(Invalid)──► [ HTTP 400 Bad Request ]
        │
        ▼
-Business Logic
+[ Business Logic & ORM Operations (logic.py / views.py) ]
        │
        ▼
-Django ORM
+[ Database Transaction Commit / Rollback ]
        │
        ▼
-Database
-       │
-       ▼
-JSON Response
+[ JSON Response Formatted & Returned ]
 ```
 
 ---
 
-# Authentication Flow
+## 🗄️ Database Architecture & Key Entities
+
+### Core ERD Entity Relationships
 
 ```
-User Login
-      │
-      ▼
-Verify Credentials
-      │
-      ▼
-Generate JWT Token
-      │
-      ▼
-Return Access Token
-      │
-      ▼
-Client Stores Token
-      │
-      ▼
-Authenticated API Requests
-```
-
----
-
-# Database Architecture
-
-```
-Users
-   │
-   ├── Customers
-   │       │
-   │       └── Vehicles
-   │               │
-   │               └── Bookings
-   │
-   ├── Staff
-   │
-   ├── Services
-   │
-   └── Finance
+                                  +-------------------+
+                                  |     CustomUser    |
+                                  +---------+---------+
+                                            |
+                       +--------------------+--------------------+
+                       | 1:1                                     | 1:1
+                       v                                         v
+             +-------------------+                     +-------------------+
+             |      Customer     |                     |    StaffProfile   |
+             +---------+---------+                     +---------+---------+
+                       |                                         |
+         +-------------+-------------+                           |
+         | 1:N                       | 1:N                       | 1:N
+         v                           v                           v
++------------------+       +------------------+        +------------------+
+| CustomerVehicle  |       |   KhataLedger    |        |   PayrollEntry   |
++--------+---------+       +------------------+        +------------------+
+         |                                                       ^
+         | 1:N                                                   |
+         v                                                       |
++----------------------------------------------------------------+--+
+|                            Booking                                |
++--------------------------------+----------------------------------+
+                                 | 1:1
+                                 v
+                        +------------------+
+                        |     Invoice      |
+                        +------------------+
 ```
 
 ---
 
-# Technology Stack
+## 🔐 Security Architecture
 
-## Backend
-
-- Python
-- Django
-- Django REST Framework
-
----
-
-## Authentication
-
-- JWT
-- SimpleJWT
+1. **Authentication Framework**:
+   - **SimpleJWT**: Stateless token-based auth. Short-lived access tokens + long-lived refresh tokens.
+   - **Password Hashing**: Uses Django's default PBKDF2 with SHA-256 password hashing.
+2. **Dual-Verification Password Reset Security**:
+   - Verifies **Email AND Phone Number** against database records prior to token generation.
+   - Generates cryptographically secure `uidb64` and `default_token_generator` single-use reset links.
+3. **Data Integrity & Financial Protection**:
+   - `DailyRegisterAudit` locks daily transaction records after cash till reconciliation.
+   - Atomic database transactions (`@transaction.atomic`) wrap all invoice processing and Khata ledger modifications to prevent partial state updates.
 
 ---
 
-## Database
-
-- SQLite
-- PostgreSQL
-
----
-
-## Development Tools
-
-- Git
-- GitHub
-- VS Code
-- Postman
-
----
-
-# Design Principles
-
-The project follows these software engineering principles:
-
-- Modular Design
-- Separation of Concerns
-- Reusable Components
-- RESTful API Design
-- Scalable Architecture
-- Clean Code Practices
-
----
-
-# Security Architecture
-
-Security features include:
-
-- JWT Authentication
-- Password Hashing
-- Protected Endpoints
-- Role-Based Access Control
-- Input Validation
-- Permission Classes
-
----
-
-# Scalability
-
-The architecture is designed to support future enhancements such as:
-
-- Mobile Applications
-- Cloud Deployment
-- Docker Containers
-- Microservices
-- Multiple Branch Management
-- Online Payments
-- Notification Services
-- Analytics Dashboard
-
----
-
-# Future Architecture
+## 🚀 Cloud Infrastructure & Deployment Architecture
 
 ```
-                Mobile App
-                     │
-                     │
-Web Application ─────┼────── Admin Panel
-                     │
-                     ▼
-             Django REST API
-                     │
- ┌───────────────────────────────────┐
- │ Authentication                    │
- │ Customer Module                   │
- │ Vehicle Module                    │
- │ Booking Module                    │
- │ Finance Module                    │
- │ Notification Module               │
- │ Analytics Module                  │
- └───────────────────────────────────┘
-                     │
-                     ▼
-              PostgreSQL Database
-                     │
-                     ▼
-              Cloud Infrastructure
+[ Frontend: Vercel Edge Network ] ──(REST/JSON)──► [ Backend: Render / Railway App Container ]
+                                                             │
+                                          ┌──────────────────┴──────────────────┐
+                                          ▼                                     ▼
+                               [ PostgreSQL Database ]              [ Cloudinary Asset Storage ]
 ```
 
----
-
-# Summary
-
-Kallayi Car Spa uses a modular Django architecture with a layered design that separates presentation, business logic, authentication, and data access. This structure makes the project easier to maintain, test, and extend as new features are added.
-
----
-
-# Maintainer
-
-**Muhammed Shimlal**
-
-GitHub:
-
-https://github.com/muhammed-shimlal/Kallayi-car-spa
-
----
-
-# License
-
-This project is licensed under the MIT License.
+- **Frontend Deployment**: **Vercel** with automated CI/CD pipeline linked to GitHub `main` branch.
+- **Backend Deployment**: Containerized Python WSGI/ASGI application deployed on **Render** or **Railway**.
+- **Media Storage**: **Cloudinary** for scalable image storage (vehicle damage scans, expense receipt uploads).
+- **Database**: Managed **PostgreSQL** instance with SSL connection enforcement.

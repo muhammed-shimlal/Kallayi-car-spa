@@ -1,5 +1,15 @@
+# AI & Agent Frameworks
+.agents/
+agent-skills/
+.agent/
+skills/
+.cline/
+.aider/
+.cursor/
+.gemini/
+.vscode/
 
-# Python
+# Python & Django
 __pycache__/
 *.py[cod]
 *$py.class
@@ -11,7 +21,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-
 parts/
 sdist/
 var/
@@ -20,16 +29,19 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
-# Django
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+*.sqlite3
+*.db
 media/
+staticfiles/
 
-# Environments
+# Virtual Environments & Secrets
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -37,17 +49,16 @@ ENV/
 env.bak/
 venv.bak/
 
-# Flutter
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
+# Node & Next.js
+node_modules/
+.next/
+out/
+coverage/
+.npm
+*.tsbuildinfo
 
-# VS Code
-.vscode/
-
-# OS
+# OS & System
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini

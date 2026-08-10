@@ -10,13 +10,26 @@ interface CinematicPhoneInputProps {
 }
 
 export function CinematicPhoneInput({ value, onChange, error, disabled }: CinematicPhoneInputProps) {
+  const normalizeValue = (val: string | undefined): string | undefined => {
+    if (!val) return '';
+    const trimmed = String(val).trim();
+    if (!trimmed) return '';
+    if (/^\d{10}$/.test(trimmed)) {
+      return `+91${trimmed}`;
+    }
+    if (/^\d+$/.test(trimmed) && !trimmed.startsWith('+')) {
+      return `+${trimmed}`;
+    }
+    return trimmed;
+  };
+
   return (
     <div className="w-full flex flex-col group">
       <div
         className={`flex items-center bg-[#141518]/60 backdrop-blur-xl border rounded-xl p-1 transition-all
-          [&_.PhoneInputCountry]:mr-3 [&_.PhoneInputCountry]:ml-2
+          [&_.PhoneInputCountry]:mr-3 [&_.PhoneInputCountry]:ml-2 [&_.PhoneInputCountry]:pointer-events-none
           [&_.PhoneInputInput]:bg-transparent [&_.PhoneInputInput]:text-white [&_.PhoneInputInput]:font-mono [&_.PhoneInputInput]:text-lg [&_.PhoneInputInput]:outline-none [&_.PhoneInputInput]:border-none [&_.PhoneInputInput]:focus:ring-0
-          [&_.PhoneInputCountrySelectArrow]:text-white [&_.PhoneInputCountrySelectArrow]:opacity-70
+          [&_.PhoneInputCountrySelectArrow]:hidden [&_.PhoneInputCountrySelect]:pointer-events-none
           ${
             error
               ? "border-[#E52323]"
@@ -28,7 +41,10 @@ export function CinematicPhoneInput({ value, onChange, error, disabled }: Cinema
         <PhoneInput
           international
           defaultCountry="IN"
-          value={value}
+          countries={["IN"]}
+          countrySelectProps={{ disabled: true }}
+          countryCallingCodeEditable={false}
+          value={normalizeValue(value)}
           onChange={onChange}
           disabled={disabled}
           className="w-full py-2"

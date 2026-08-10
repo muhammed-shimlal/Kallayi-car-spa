@@ -261,11 +261,13 @@ class StaffDashboardViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     def transactions(self, request):
         """GET /api/staff/dashboard/transactions/"""
+        if not request.user or not getattr(request.user, 'is_authenticated', False):
+            return Response([])
+
         from finance.models import GeneralExpense
         txs = GeneralExpense.objects.filter(
             staff=request.user,
-            expense_type='STAFF',
-            is_active=True
+            expense_type='STAFF'
         ).order_by('-date', '-id')
 
         res = []
@@ -273,10 +275,10 @@ class StaffDashboardViewSet(viewsets.ViewSet):
             res.append({
                 'id': t.id,
                 'transaction_type': t.transaction_type,
-                'amount': float(t.amount),
-                'date': t.date.strftime('%Y-%m-%d'),
-                'payment_method': t.payment_method,
-                'status': t.status,
+                'amount': float(t.amount or 0.0),
+                'date': t.date.strftime('%Y-%m-%d') if t.date else '',
+                'payment_method': t.payment_method or 'CASH',
+                'status': t.status or 'APPROVED',
                 'description': t.description or t.notes or '',
                 'category': t.category.name if t.category else 'Staff Transaction'
             })
@@ -436,8 +438,7 @@ def daily_settlement_ledger(request):
         advances_qs = GeneralExpense.objects.filter(
             Q(staff=staff.user) | Q(recorded_by=staff.user),
             Q(category__name__iexact='Advances') | Q(transaction_type='ADVANCE'),
-            date=today,
-            is_active=True
+            date=today
         )
         advances = float(advances_qs.aggregate(Sum('amount'))['amount__sum'] or 0.0)
         advances = round(advances, 2)
@@ -458,7 +459,7 @@ def daily_settlement_ledger(request):
         
     return Response(ledger)
 
-@api_view(['PATCH'])
+@api_view(['PATCH', 'POST'])
 @permission_classes([IsAuthenticated])
 def settle_daily_pay(request, staff_id):
     user = request.user
@@ -466,7 +467,7 @@ def settle_daily_pay(request, staff_id):
         return Response({'error': 'Forbidden'}, status=403)
         
     from django.contrib.auth.models import User
-    from finance.models import PayrollEntry
+    from finance.models import PayrollEntry, SalaryPayment, GeneralExpense
     
     try:
         staff_user = User.objects.get(id=staff_id)
@@ -490,7 +491,41 @@ def settle_daily_pay(request, staff_id):
             
     base_wage = float(staff_profile.base_salary or 0.0)
     
-    payroll, created = PayrollEntry.objects.get_or_create(
+    advances_qs = GeneralExpense.objects.filter(
+        Q(staff=staff_user) | Q(recorded_by=staff_user),
+        Q(category__name__iexact='Advances') | Q(transaction_type='ADVANCE'),
+        date=today
+    )
+    advances = float(advances_qs.aggregate(Sum('amount'))['amount__sum'] or 0.0)
+    
+    total_calculated = max(round(base_wage + commission - advances, 2), 0.0)
+    
+    raw_amount = request.data.get('paid_amount') or request.data.get('amount')
+    if raw_amount is not None:
+        try:
+            paid_amount = float(raw_amount)
+        except (ValueError, TypeError):
+            paid_amount = total_calculated
+    else:
+        paid_amount = total_calculated
+
+    remaining_balance = max(round(total_calculated - paid_amount, 2), 0.0)
+
+    # Record official SalaryPayment entry
+    SalaryPayment.objects.create(
+        staff=staff_user,
+        payment_date=today,
+        period_start=today,
+        period_end=today,
+        calculated_payable=total_calculated,
+        paid_amount=paid_amount,
+        remaining_balance=remaining_balance,
+        payment_method=request.data.get('payment_method', 'CASH'),
+        notes=request.data.get('notes', 'Salary payout'),
+        created_by=request.user
+    )
+
+    payroll, _ = PayrollEntry.objects.get_or_create(
         staff_user=staff_user,
         date=today,
         defaults={
@@ -499,13 +534,23 @@ def settle_daily_pay(request, staff_id):
             'tips_earned': 0.0
         }
     )
-    
-    if not created:
-        payroll.base_wage = base_wage
-        payroll.commission_earned = commission
-        payroll.save()
+    payroll.base_wage = base_wage
+    payroll.commission_earned = commission
+    payroll.is_settled = (remaining_balance == 0)
+    payroll.save()
+
+    # Get updated total pending balance
+    from staff.services.wallet_service import get_staff_balance_summary
+    summary = get_staff_balance_summary(staff_user)
+    total_pending = max(summary.get('current_payable', 0.0), 0.0)
         
-    return Response({'status': 'success', 'message': f'Settled pay for {staff_user.username}'})
+    return Response({
+        'status': 'success', 
+        'message': f'Recorded payout of ₹{paid_amount} for {staff_user.username}. Remaining balance: ₹{total_pending}',
+        'paid_amount': paid_amount,
+        'remaining_balance': remaining_balance,
+        'pending_balance': total_pending
+    })
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

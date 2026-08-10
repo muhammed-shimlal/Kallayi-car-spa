@@ -18,4 +18,7 @@ export interface Transaction {
     service: string;
     amount: number;
     status: 'PAID' | 'UNPAID';
+    number_plate_image?: string | null;
+    transaction_type?: 'CHARGE' | 'SETTLEMENT';
+    plate_number?: string;
 }

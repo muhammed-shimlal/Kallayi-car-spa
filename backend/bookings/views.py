@@ -124,14 +124,17 @@ class BookingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         role = get_user_role(user)
+        base_qs = Booking.objects.select_related(
+            'customer', 'customer__user', 'vehicle', 'service_package', 'technician'
+        )
         if role in ['ADMIN', 'MANAGER']:
-            queryset = Booking.objects.all().order_by('-created_at')
+            queryset = base_qs.order_by('-created_at')
         elif role in ['WASHER', 'DRIVER', 'TECHNICIAN']:
-            queryset = Booking.objects.filter(Q(technician=user) | ~Q(status__in=['COMPLETED', 'CANCELLED'])).order_by('-created_at')
+            queryset = base_qs.filter(Q(technician=user) | ~Q(status__in=['COMPLETED', 'CANCELLED'])).order_by('-created_at')
         elif hasattr(user, 'customer'):
-            queryset = Booking.objects.filter(customer=user.customer).order_by('-created_at')
+            queryset = base_qs.filter(customer=user.customer).order_by('-created_at')
         else:
-            queryset = Booking.objects.none()
+            queryset = base_qs.none()
 
         status_param = self.request.query_params.get('status')
         if status_param:
@@ -185,6 +188,54 @@ class BookingViewSet(viewsets.ModelViewSet):
             is_paid=False,
             payment_method=None
         )
+
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        from rest_framework import status
+        instance = self.get_object()
+
+        # 1. Finance cleanup
+        try:
+            from finance.models import Invoice, KhataLedger, ChemicalUsageLog
+            Invoice.objects.filter(booking=instance).delete()
+            KhataLedger.objects.filter(booking=instance).delete()
+            ChemicalUsageLog.objects.filter(booking=instance).delete()
+        except Exception as e:
+            print("Finance deletion notice:", e)
+
+        # 2. Staff & Inspections cleanup
+        try:
+            from staff.models import JobInspection, SOPChecklist, TimeEntry
+            JobInspection.objects.filter(booking=instance).delete()
+            SOPChecklist.objects.filter(booking=instance).delete()
+            TimeEntry.objects.filter(booking=instance).delete()
+        except Exception as e:
+            print("Staff deletion notice:", e)
+
+        # 3. Payments cleanup
+        try:
+            from payments.models import Payment
+            Payment.objects.filter(booking=instance).delete()
+        except Exception as e:
+            print("Payments deletion notice:", e)
+
+        # 4. Generic model relationships cleanup
+        for rel in instance._meta.get_fields():
+            if (rel.one_to_many or rel.one_to_one) and hasattr(rel, 'related_model'):
+                try:
+                    accessor_name = rel.get_accessor_name()
+                    if hasattr(instance, accessor_name):
+                        related_obj_or_qs = getattr(instance, accessor_name)
+                        if hasattr(related_obj_or_qs, 'all'):
+                            related_obj_or_qs.all().delete()
+                        elif related_obj_or_qs is not None:
+                            if hasattr(related_obj_or_qs, 'delete'):
+                                related_obj_or_qs.delete()
+                except Exception as ex:
+                    print(f"Generic relationship deletion notice for {rel}:", ex)
+
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
  
     @action(detail=False, methods=['get'])
     def completed(self, request):
@@ -273,7 +324,8 @@ class BookingViewSet(viewsets.ModelViewSet):
                 amount=Decimal(str(amount_khata)),
                 transaction_type='CHARGE',
                 description=f'Khata Wash Charge: {svc_info} ({plate_info})',
-                related_booking=booking
+                related_booking=booking,
+                number_plate_image=request.FILES.get('number_plate_image')
             )
 
         payment_method = 'SPLIT'
@@ -625,7 +677,8 @@ def update_booking_stage(request, booking_id):
                 amount=payment_khata,
                 transaction_type='CHARGE',
                 description=f'Service completed for {booking.vehicle.plate_number if booking.vehicle else "Walk-In"}',
-                related_booking=booking
+                related_booking=booking,
+                number_plate_image=request.FILES.get('number_plate_image')
             )
 
         # 1. Generate Invoice (if missing)

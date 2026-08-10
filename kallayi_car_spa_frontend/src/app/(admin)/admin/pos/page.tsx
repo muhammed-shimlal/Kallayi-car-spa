@@ -101,6 +101,9 @@ export default function AdminExpressPOSPage() {
   const [customType, setCustomType] = useState<string>("");
   const [customColor, setCustomColor] = useState<string>("");
 
+  const [customerGarage, setCustomerGarage] = useState<any[]>([]);
+  const [matchedVehicles, setMatchedVehicles] = useState<any[]>([]);
+
   const {
     control,
     register,
@@ -124,6 +127,7 @@ export default function AdminExpressPOSPage() {
 
   const selectedPackageId = watch("package_id");
   const plateNumber = watch("plate_number");
+  const phone = watch("phone");
   const selectedMake = watch("make");
   const selectedModel = watch("model");
   const selectedType = watch("vehicle_type");
@@ -164,83 +168,162 @@ export default function AdminExpressPOSPage() {
     }
   };
 
-  // AUTO-FILL WATCHER
+  const applyVehicleToForm = (data: any) => {
+    if (!data) return;
+
+    const phoneVal = data.owner_phone || data.phone;
+    if (phoneVal) {
+      const rawPhone = String(phoneVal).trim();
+      const isGuestOrInvalid = rawPhone.startsWith("guest_") || rawPhone.includes("guest") || (!rawPhone.startsWith("+") && !/^[0-9]{7,15}$/.test(rawPhone.replace(/[\s-]/g, '')));
+      if (isGuestOrInvalid) {
+        setValue("phone", "", { shouldValidate: true });
+      } else {
+        setValue("phone", rawPhone, { shouldValidate: true });
+      }
+    }
+    if (data.plate_number) {
+      setValue("plate_number", data.plate_number, { shouldValidate: true });
+    }
+
+    const fetchedType = (data.vehicle_type || "").toUpperCase();
+    let targetCategory: CategoryKey = "Car";
+    if (["BIKE", "SCOOTER", "COMMUTER", "CRUISER", "SPORTS BIKE", "SUPERBIKE", "ADVENTURE"].some(t => fetchedType.includes(t))) {
+      targetCategory = "Bike";
+    } else if (["AUTO", "RICKSHAW", "THREE", "PASSENGER AUTO", "GOODS CARRIER", "E-RICKSHAW"].some(t => fetchedType.includes(t))) {
+      targetCategory = "Auto Rickshaw";
+    } else if (["VAN", "HEAVY", "TRAVELLER", "PICKUP", "MINIVAN", "TRUCK", "BUS", "TEMPO", "ACE"].some(t => fetchedType.includes(t))) {
+      targetCategory = "Van / Heavy";
+    }
+    setCategory(targetCategory);
+
+    const makesObj = VEHICLE_DATA[targetCategory].makes;
+    if (data.make && makesObj[data.make]) {
+      setValue("make", data.make);
+      const modelsObj = makesObj[data.make] || {};
+      if (data.model && modelsObj[data.model]) {
+        setValue("model", data.model);
+        const autoType = modelsObj[data.model];
+        if (autoType && autoType !== "Other") {
+          setValue("vehicle_type", autoType);
+        }
+      } else if (data.model) {
+        setValue("model", "Other");
+        setCustomModel(data.model);
+      }
+    } else if (data.make) {
+      setValue("make", "Other");
+      setCustomMake(data.make);
+      if (data.model) {
+        setCustomModel(data.model);
+      }
+    }
+
+    if (data.vehicle_type) {
+      if (VEHICLE_DATA[targetCategory].types.includes(data.vehicle_type)) {
+        setValue("vehicle_type", data.vehicle_type);
+      } else {
+        setValue("vehicle_type", "Other");
+        setCustomType(data.vehicle_type);
+      }
+    }
+
+    if (data.color) {
+      if (VEHICLE_COLORS.includes(data.color as any)) {
+        setValue("color", data.color);
+      } else {
+        setValue("color", "Other");
+        setCustomColor(data.color);
+      }
+    }
+
+    toast.success(`Vehicle Autofilled: ${data.plate_number || ''} (${data.make || ''} ${data.model || ''})`);
+  };
+
+  // STEP 1: License Plate Entry & Phone Lookup (Debounced 1500ms, min 5 chars)
   useEffect(() => {
-    if (!plateNumber || plateNumber.length < 4) return;
+    const cleanPlate = (plateNumber || "").replace(/[\s-]/g, "").trim();
+    if (cleanPlate.length < 5) return;
 
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("auth_token");
-        const res = await fetch(`${API_BASE}/customer-vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`, {
+        const res = await fetch(`${API_BASE}/vehicles/lookup/?plate=${encodeURIComponent(plateNumber.trim())}`, {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
 
         if (res.ok) {
           const data = await res.json();
-          if (data.phone) {
-            setValue("phone", data.phone, { shouldValidate: true });
-          }
-
-          const fetchedType = (data.vehicle_type || "").toUpperCase();
-          let targetCategory: CategoryKey = "Car";
-          if (["BIKE", "SCOOTER", "COMMUTER", "CRUISER", "SPORTS BIKE", "SUPERBIKE"].some(t => fetchedType.includes(t))) {
-            targetCategory = "Bike";
-          } else if (["AUTO", "RICKSHAW", "THREE", "PASSENGER AUTO", "GOODS CARRIER", "E-RICKSHAW"].some(t => fetchedType.includes(t))) {
-            targetCategory = "Auto Rickshaw";
-          } else if (["VAN", "HEAVY", "TRAVELLER", "PICKUP", "MINIVAN", "TRUCK", "BUS", "TEMPO", "ACE"].some(t => fetchedType.includes(t))) {
-            targetCategory = "Van / Heavy";
-          }
-          setCategory(targetCategory);
-
-          const makesObj = VEHICLE_DATA[targetCategory].makes;
-          if (data.make && makesObj[data.make]) {
-            setValue("make", data.make);
-            const modelsObj = makesObj[data.make] || {};
-            if (data.model && modelsObj[data.model]) {
-              setValue("model", data.model);
-              const autoType = modelsObj[data.model];
-              if (autoType && autoType !== "Other") {
-                setValue("vehicle_type", autoType);
-              }
-            } else if (data.model) {
-              setValue("model", "Other");
-              setCustomModel(data.model);
-            }
-          } else if (data.make) {
-            setValue("make", "Other");
-            setCustomMake(data.make);
-            if (data.model) {
-              setCustomModel(data.model);
+          // Auto-fill associated owner phone number
+          const phoneVal = data.owner_phone || data.phone;
+          if (phoneVal) {
+            const rawPhone = String(phoneVal).trim();
+            const isGuestOrInvalid = rawPhone.startsWith("guest_") || rawPhone.includes("guest") || (!rawPhone.startsWith("+") && !/^[0-9]{7,15}$/.test(rawPhone.replace(/[\s-]/g, '')));
+            if (!isGuestOrInvalid) {
+              setValue("phone", rawPhone, { shouldValidate: true });
             }
           }
-
-          if (data.vehicle_type) {
-            if (VEHICLE_DATA[targetCategory].types.includes(data.vehicle_type)) {
-              setValue("vehicle_type", data.vehicle_type);
-            } else {
-              setValue("vehicle_type", "Other");
-              setCustomType(data.vehicle_type);
-            }
-          }
-
-          if (data.color) {
-            if (VEHICLE_COLORS.includes(data.color as any)) {
-              setValue("color", data.color);
-            } else {
-              setValue("color", "Other");
-              setCustomColor(data.color);
-            }
-          }
-
-          toast.success(`Found Vehicle: ${data.make || ''} ${data.model || ''}`);
+          applyVehicleToForm(data);
         }
       } catch (err) {
-        console.error(err);
+        console.error("Step 1 Plate search error:", err);
       }
-    }, 800);
+    }, 1500);
 
     return () => clearTimeout(timer);
-  }, [plateNumber, setValue]);
+  }, [plateNumber]);
+
+  // STEP 2: Phone Number Entry & Garage Lookup (Debounced 1500ms, min 10 digits)
+  useEffect(() => {
+    const cleanDigits = (phone || "").replace(/\D/g, "");
+    const pureNumber = cleanDigits.startsWith("91") && cleanDigits.length > 10 ? cleanDigits.slice(2) : cleanDigits;
+
+    // Reset customer garage state immediately on phone number change
+    setCustomerGarage([]);
+
+    if (pureNumber.length < 10) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem("auth_token");
+        const res = await fetch(`${API_BASE}/customer-vehicles/garage/?phone=${encodeURIComponent(phone.trim())}`, {
+          headers: token ? { Authorization: `Token ${token}` } : {},
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : (data.results || []);
+          setCustomerGarage(list);
+        } else {
+          setCustomerGarage([]);
+        }
+      } catch (err) {
+        console.error("Step 2 Phone garage search error:", err);
+        setCustomerGarage([]);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [phone]);
+
+  // STEP 3: Garage Matching & Final Auto-fill
+  useEffect(() => {
+    if (!customerGarage || customerGarage.length === 0) return;
+
+    const currentCleanPlate = (plateNumber || "").replace(/[\s-]/g, "").toUpperCase().trim();
+    if (!currentCleanPlate) return;
+
+    const exactMatchedVehicle = customerGarage.find((v: any) => {
+      if (!v.plate_number) return false;
+      const vCleanPlate = v.plate_number.replace(/[\s-]/g, "").toUpperCase().trim();
+      return vCleanPlate === currentCleanPlate;
+    });
+
+    if (exactMatchedVehicle) {
+      applyVehicleToForm(exactMatchedVehicle);
+    }
+  }, [customerGarage, plateNumber]);
 
   useEffect(() => {
     const fetchPackages = async () => {
@@ -413,6 +496,31 @@ export default function AdminExpressPOSPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Selectable Garage Chips for Customer's Registered Vehicles */}
+              {customerGarage.length > 0 && (
+                <div className="mb-5 bg-black/60 border border-[#01FFFF]/30 p-4 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-mono">
+                    <span className="text-[#01FFFF] font-bold">
+                      Customer's Garage ({customerGarage.length} Registered Vehicle{customerGarage.length > 1 ? 's' : ''}):
+                    </span>
+                    <span className="text-zinc-400">Click a vehicle chip to autofill for today's wash</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2.5 pt-1">
+                    {customerGarage.map((v: any, idx: number) => (
+                      <button
+                        key={v.id || v.plate_number || idx}
+                        type="button"
+                        onClick={() => applyVehicleToForm(v)}
+                        className="px-3.5 py-2 bg-[#141518] hover:bg-[#01FFFF]/20 border border-white/10 hover:border-[#01FFFF] rounded-xl text-xs font-mono flex items-center gap-2.5 transition active:scale-95 text-white"
+                      >
+                        <span className="font-bold text-[#01FFFF]">{v.plate_number || 'No Plate'}</span>
+                        <span className="text-zinc-300">({v.make || ''} {v.model || ''} - {v.color || 'White'})</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 {/* Make Dropdown / Custom Input */}

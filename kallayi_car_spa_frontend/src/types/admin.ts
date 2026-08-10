@@ -37,6 +37,8 @@ export interface KhataLedgerEntry {
     description: string;
     transaction_type: string;
     amount: number | string;
+    plate_number?: string;
+    number_plate_image?: string | null;
     created_at?: string;
 }
 

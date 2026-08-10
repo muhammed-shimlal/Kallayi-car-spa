@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Car, MapPin, Calendar, Clock, Award, CreditCard, ChevronRight, Plus } from 'lucide-react';
+import { X, Car, MapPin, Calendar, Clock, Award, CreditCard, ChevronRight, Plus, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Vehicle } from './types';
@@ -18,6 +18,7 @@ interface BookingWizardProps {
 export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) {
     const [bookingStep, setBookingStep] = useState(1);
     const [vehiclesList, setVehiclesList] = useState<Vehicle[]>(myVehicles);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const today = new Date().toISOString().split('T')[0];
 
@@ -177,6 +178,7 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                 toast.error("Some booking details are missing. Please re-select your vehicle and package.");
                 return;
             }
+            setIsSubmitting(true);
             try {
                 const [timeStr, period] = selectedSlot.split(' ');
                 let [hours, minutes] = timeStr.split(':');
@@ -199,6 +201,7 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                     window.location.reload(); 
                 }, 1200);
             } catch (err: any) {
+                setIsSubmitting(false);
                 console.error("Booking submission error:", err);
                 const errMsg = err.response?.data?.detail || err.response?.data?.error || (typeof err.response?.data === 'string' ? err.response.data : JSON.stringify(err.response?.data || err.message));
                 toast.error("Failed to confirm booking: " + errMsg);
@@ -424,21 +427,33 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                 <div className="sticky bottom-0 left-0 right-0 z-30 p-4 sm:p-6 bg-spa-ice/90 backdrop-blur-xl border-t border-white/10 flex gap-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
                     {bookingStep > 1 && (
                         <button 
+                            type="button"
                             onClick={prevStep} 
-                            className="min-h-[44px] min-w-[44px] px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-white/10 active:scale-95 transition border border-white/20 text-white flex items-center justify-center"
+                            disabled={isSubmitting}
+                            className="min-h-[44px] min-w-[44px] px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-white/10 active:scale-95 transition border border-white/20 text-white flex items-center justify-center disabled:opacity-50"
                         >
                             Back
                         </button>
                     )}
                     <button 
+                        type="button"
                         onClick={nextStep} 
-                        className={`flex-1 min-h-[44px] py-3 rounded-xl font-extrabold text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-[0.98] flex justify-center items-center gap-2 ${
+                        disabled={isSubmitting}
+                        className={`flex-1 min-h-[44px] py-3 rounded-xl font-extrabold text-xs sm:text-sm uppercase tracking-widest transition-all active:scale-[0.98] flex justify-center items-center gap-2 disabled:opacity-50 ${
                             bookingStep === 3 
                             ? 'bg-spa-mint hover:bg-[#C2E0DA] text-slate-950 shadow-[0_0_20px_rgba(218,235,232,0.4)]' 
                             : 'bg-spa-sky hover:bg-[#6FA8C8] text-slate-950 shadow-[0_0_20px_rgba(135,189,216,0.4)]'
                         }`}
                     >
-                        {bookingStep === 3 ? 'Confirm Booking (Pay on Arrival)' : 'Proceed'} <ChevronRight className="w-5 h-5 text-slate-950" />
+                        {isSubmitting ? (
+                            <span className="flex items-center gap-2">
+                                <Loader2 className="w-4 h-4 animate-spin" /> Confirming...
+                            </span>
+                        ) : (
+                            <>
+                                {bookingStep === 3 ? 'Book & Pay at Shop' : 'Proceed'} <ChevronRight className="w-5 h-5 text-slate-950" />
+                            </>
+                        )}
                     </button>
                 </div>
 

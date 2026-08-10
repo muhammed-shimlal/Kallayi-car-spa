@@ -1,309 +1,253 @@
-# INSTALLATION.md
+# 📘 Kallayi Car Spa — Installation & Setup Guide
 
-# 🚀 Installation Guide
-
-This guide explains how to set up and run the **Kallayi Car Spa** project on your local machine.
+This guide provides step-by-step instructions for setting up the **Kallayi Car Spa** full-stack system locally on your development machine. The system consists of a **Django REST Framework (DRF)** backend and a **Next.js 16** frontend.
 
 ---
 
-# 📋 Prerequisites
+## 📋 System Requirements & Prerequisites
 
-Before you begin, make sure the following software is installed:
+Before starting, ensure you have the following installed on your system:
 
-| Software | Recommended Version |
-|----------|----------------------|
-| Python | 3.11+ |
-| Git | Latest |
-| pip | Latest |
-| Virtual Environment (venv) | Built into Python |
-| PostgreSQL (Optional) | 15+ |
-| SQLite | Built into Python |
+| Software | Minimum Version | Recommended Version | Download Link |
+| :--- | :--- | :--- | :--- |
+| **Python** | 3.11+ | 3.11.x / 3.12.x | [python.org](https://www.python.org/downloads/) |
+| **Node.js** | 18.0+ | 20.x LTS | [nodejs.org](https://nodejs.org/) |
+| **npm** | 9.0+ | 10.x | Included with Node.js |
+| **Git** | 2.30+ | Latest | [git-scm.com](https://git-scm.com/) |
+| **PostgreSQL** (Optional for local dev) | 14.0+ | 15.x / 16.x | [postgresql.org](https://www.postgresql.org/) |
+
+> **Note:** By default, the local backend uses SQLite (`db.sqlite3`), so installing PostgreSQL is optional for local development.
 
 ---
 
-# 📥 Clone the Repository
+## 📥 Step 1: Clone the Repository
 
-Clone the project from GitHub.
+Clone the project repository to your local computer and navigate into the root directory:
 
 ```bash
 git clone https://github.com/muhammed-shimlal/Kallayi-car-spa.git
-```
-
-Move into the project directory.
-
-```bash
 cd Kallayi-car-spa
 ```
 
 ---
 
-# 🐍 Create a Virtual Environment
+## 🐍 Step 2: Backend Setup (Django REST Framework)
 
-## Windows (PowerShell)
-
-```powershell
-python -m venv venv
-```
-
-Activate it:
-
-```powershell
-venv\Scripts\Activate
-```
-
----
-
-## Windows (Command Prompt)
-
-```cmd
-python -m venv venv
-
-venv\Scripts\activate.bat
-```
-
----
-
-## Linux / macOS
-
+### 1. Navigate to Backend Directory
 ```bash
-python3 -m venv venv
-
-source venv/bin/activate
+cd backend
 ```
 
----
+### 2. Create Python Virtual Environment
+Creating a virtual environment ensures dependencies are isolated from your system Python.
 
-# 📦 Install Dependencies
+- **On Windows (PowerShell / Command Prompt):**
+  ```powershell
+  python -m venv venv
+  ```
+- **On Linux / macOS:**
+  ```bash
+  python3 -m venv venv
+  ```
 
-Upgrade pip.
+### 3. Activate Virtual Environment
+- **On Windows (PowerShell):**
+  ```powershell
+  .\venv\Scripts\Activate.ps1
+  ```
+  *(If execution is blocked, run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process`)*
+- **On Windows (Command Prompt):**
+  ```cmd
+  venv\Scripts\activate.bat
+  ```
+- **On Linux / macOS:**
+  ```bash
+  source venv/bin/activate
+  ```
 
+Once activated, your terminal prompt will show `(venv)`.
+
+### 4. Install Dependencies
+Upgrade `pip` and install all required Python packages:
 ```bash
-python -m pip install --upgrade pip
-```
-
-Install project dependencies.
-
-```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
----
+### 5. Configure Environment Variables (`.env`)
+Create a `.env` file in the `backend/` directory by copying `.env.example`:
 
-# ⚙ Configure Environment Variables
-
-Create a `.env` file in the project root if your project uses environment variables.
-
-Example:
-
-```env
-DEBUG=True
-
-SECRET_KEY=your-secret-key
-
-ALLOWED_HOSTS=127.0.0.1,localhost
-
-DATABASE_URL=sqlite:///db.sqlite3
+```bash
+cp .env.example .env
 ```
 
-> **Note:** Replace these values with your own configuration before deploying to production.
+Open `.env` in your text editor and fill in the configuration values:
 
----
+```env
+# Django Core Settings
+DEBUG=True
+SECRET_KEY=django-insecure-change-this-to-a-secure-random-key-in-production
+ALLOWED_HOSTS=127.0.0.1,localhost
 
-# 🗄 Database Setup
+# Database Configuration
+# Leave blank for default SQLite (db.sqlite3) or specify a PostgreSQL connection string:
+# DATABASE_URL=postgres://postgres:password@localhost:5432/kallayi_car_spa
+DATABASE_URL=sqlite:///db.sqlite3
 
-Apply database migrations.
+# Cloudinary Media Storage (Optional for local dev, Required for media uploads)
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# Email Configuration (Used for password reset & notification alerts)
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your_email@gmail.com
+EMAIL_HOST_PASSWORD=your_app_password
+DEFAULT_FROM_EMAIL=Kallayi Car Spa <kallayicarspa@gmail.com>
+
+# CORS Settings
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+```
+
+### 6. Apply Database Migrations
+Run the initial database migrations to create all database tables for users, customers, bookings, finance, fleet, and staff:
 
 ```bash
 python manage.py makemigrations
-
 python manage.py migrate
 ```
 
----
-
-# 👤 Create an Admin User
-
-Create a Django superuser.
+### 7. Create Superuser / Admin Account
+Execute the custom automated admin setup management command or create a superuser manually:
 
 ```bash
+# Automated setup (Creates default admin user):
+python manage.py setup_admin
+
+# OR create manually:
 python manage.py createsuperuser
 ```
 
-Follow the prompts:
+### 8. (Optional) Seed Test Data
+To populate your database with dummy customers, vehicles, service packages, and staff for testing:
 
-```
-Username:
-
-Email:
-
-Password:
+```bash
+python manage.py seed_full_db
 ```
 
----
-
-# ▶ Start the Development Server
-
-Run the server.
+### 9. Start Backend Server
+Start the Django development server:
 
 ```bash
 python manage.py runserver
 ```
 
-The application will be available at:
-
-```
-http://127.0.0.1:8000/
-```
+The REST API is now live at: **`http://127.0.0.1:8000/api/`**  
+The Django Admin Panel is accessible at: **`http://127.0.0.1:8000/admin/`**
 
 ---
 
-# 🔑 Admin Panel
+## ⚛️ Step 3: Frontend Setup (Next.js 16)
 
-Visit:
+Open a **new terminal window** (keep the backend server running in the first terminal).
 
-```
-http://127.0.0.1:8000/admin/
-```
-
-Login using the superuser credentials created earlier.
-
----
-
-# 📚 API Documentation
-
-If API documentation (Swagger/ReDoc) is enabled:
-
-```
-/swagger/
-
-/redoc/
+### 1. Navigate to Frontend Directory
+```bash
+cd kallayi_car_spa_frontend
 ```
 
----
-
-# 🧪 Run Tests
-
-Execute the test suite.
+### 2. Install Node Dependencies
+Install all required Node modules:
 
 ```bash
+npm install
+```
+
+### 3. Configure Frontend Environment Variables (`.env.local`)
+Create a `.env.local` file in `kallayi_car_spa_frontend/`:
+
+```bash
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000/api" > .env.local
+```
+
+File content of `.env.local`:
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000/api
+```
+
+### 4. Start Next.js Development Server
+Run the local development server:
+
+```bash
+npm run dev
+```
+
+The web interface is now accessible at: **`http://localhost:3000`**
+
+---
+
+## ✅ Step 4: Verification & Testing
+
+### 1. Verify API Health
+Open your browser and navigate to:
+```
+http://127.0.0.1:8000/api/
+```
+You should see the Django REST Framework root API interface listing available endpoints.
+
+### 2. Test Admin Authentication
+1. Go to `http://127.0.0.1:8000/admin/`.
+2. Log in using your superuser credentials.
+3. Verify access to models (`Users`, `Customers`, `Bookings`, `Invoices`, `KhataLedger`, `CollectionBank`).
+
+### 3. Run Automated Backend Tests
+To ensure all API endpoints, permission policies, and finance workflows pass test suites:
+
+```bash
+cd backend
 python manage.py test
 ```
 
 ---
 
-# 📂 Project Structure
+## 🛠️ Troubleshooting Common Setup Issues
 
+### ❌ Issue: Virtual Environment Fails to Activate on Windows PowerShell
+**Symptom:** `cannot be loaded because running scripts is disabled on this system.`  
+**Fix:** Run PowerShell as Administrator and execute:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 ```
-Kallayi-car-spa/
-│
-├── apps/
-│   ├── users/
-│   ├── customers/
-│   ├── staff/
-│   ├── services/
-│   ├── finances/
-│   └── ...
-│
-├── config/
-├── manage.py
-├── requirements.txt
-├── README.md
-└── ...
-```
+
+### ❌ Issue: CORS Errors on Frontend API Requests
+**Symptom:** Browser console displays `Access-Control-Allow-Origin` error when calling API.  
+**Fix:**
+1. Check `backend/.env` and ensure `CORS_ALLOWED_ORIGINS` includes `http://localhost:3000`.
+2. Restart the Django development server (`python manage.py runserver`).
+
+### ❌ Issue: Password Reset Email Fails to Send
+**Symptom:** Error notification during password reset test.  
+**Fix:**
+- Ensure `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD` in `backend/.env` are properly set. For Gmail, use an **App Password** (not your regular Gmail password).
+- In development, you can set `EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend` in `.env` to log emails directly to the console instead of sending them.
+
+### ❌ Issue: Port 8000 or 3000 Already in Use
+**Fix:**
+- **Backend on alternative port:** `python manage.py runserver 8001` (remember to update `NEXT_PUBLIC_API_URL` to `http://localhost:8001/api`).
+- **Frontend on alternative port:** `npm run dev -- -p 3001`.
 
 ---
 
-# 🔄 Updating the Project
+## 📌 Summary Checklist
 
-Pull the latest changes.
-
-```bash
-git pull origin main
-```
-
-Install any new dependencies.
-
-```bash
-pip install -r requirements.txt
-```
-
-Apply new migrations.
-
-```bash
-python manage.py migrate
-```
-
----
-
-# 🛑 Stopping the Development Server
-
-Press:
-
-```
-CTRL + C
-```
-
----
-
-# ❓ Troubleshooting
-
-## Virtual Environment Does Not Activate
-
-Recreate the virtual environment.
-
-```bash
-python -m venv venv
-```
-
----
-
-## Missing Dependencies
-
-Install all dependencies again.
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Database Errors
-
-Run migrations.
-
-```bash
-python manage.py makemigrations
-
-python manage.py migrate
-```
-
----
-
-## Port Already in Use
-
-Run Django on another port.
-
-```bash
-python manage.py runserver 8001
-```
-
----
-
-# 📌 Notes
-
-- Keep `requirements.txt` up to date.
-- Never commit `.env` files or secret keys.
-- Use PostgreSQL for production deployments.
-- Always activate the virtual environment before running the project.
-
----
-
-# 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-**Maintainer:** Muhammed Shimlal
-
-GitHub: https://github.com/muhammed-shimlal/Kallayi-car-spa
+- [x] Python 3.11+ & Node.js 18+ verified
+- [x] Backend virtual environment created & activated
+- [x] Backend `.env` configured
+- [x] Migrations executed & Admin user created
+- [x] Backend running on `http://127.0.0.1:8000`
+- [x] Frontend `npm install` completed
+- [x] Frontend `.env.local` configured
+- [x] Frontend running on `http://localhost:3000`

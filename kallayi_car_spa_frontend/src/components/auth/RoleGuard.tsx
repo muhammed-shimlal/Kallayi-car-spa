@@ -36,17 +36,35 @@ export default function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
                 // Verify user & role against the backend source of truth
                 const res = await api.get('/core/users/me/');
                 const user = res.data;
-                const userRole: UserRole = user.role || 'CUSTOMER';
+
+                const isAdmin = Boolean(
+                    user.is_superuser ||
+                    user.is_staff ||
+                    user.is_staff_user ||
+                    user.role === 'ADMIN' ||
+                    user.role === 'MANAGER'
+                );
+
+                const isStaff = Boolean(
+                    !isAdmin &&
+                    ['WASHER', 'DRIVER', 'TECHNICIAN'].includes(user.role)
+                );
+
+                const effectiveRole: UserRole = isAdmin
+                    ? 'ADMIN'
+                    : isStaff
+                    ? (user.role as UserRole)
+                    : (user.role || 'CUSTOMER');
 
                 if (!isMounted) return;
 
-                if (allowedRoles.includes(userRole)) {
+                if (allowedRoles.includes(effectiveRole) || (isAdmin && allowedRoles.includes('ADMIN'))) {
                     setIsAuthorized(true);
                 } else {
                     // Redirect unauthorized user to their role-specific dashboard
-                    if (['ADMIN', 'MANAGER'].includes(userRole)) {
+                    if (isAdmin) {
                         router.replace('/admin/dashboard');
-                    } else if (['WASHER', 'DRIVER', 'TECHNICIAN'].includes(userRole)) {
+                    } else if (isStaff) {
                         router.replace('/staff/dashboard');
                     } else {
                         router.replace('/customer/dashboard');

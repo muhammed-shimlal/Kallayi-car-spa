@@ -7,13 +7,17 @@ import {
     Activity, Car, Clock, RefreshCw, 
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
     AlertCircle, User, Wifi, WifiOff, LayoutDashboard,
-    Pencil, Trash2, X, LayoutGrid, Kanban, Filter, BookOpen, Phone, Search, Calendar
+    Pencil, Trash2, X, LayoutGrid, Kanban, Filter, BookOpen, Phone, Search, Calendar, Camera, Image as ImageIcon, QrCode
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
+import dynamic from 'next/dynamic';
 import { StaffMember, ServicePackage } from '@/types/admin';
 import { Skeleton } from '@/components/ui/Skeleton';
 import api, { getApiBaseUrl } from '@/lib/api';
+
+const UpiQrModal = dynamic(() => import('@/components/ui/UpiQrModal').then(m => m.UpiQrModal), { ssr: false });
+const CameraCaptureModal = dynamic(() => import('@/components/ui/CameraCaptureModal').then(m => m.CameraCaptureModal), { ssr: false });
 
 const getApiBase = () => getApiBaseUrl();
 
@@ -136,7 +140,7 @@ function QueueCard({
     onCheckout?: (id: number) => void;
     staffMembers?: StaffMember[];
     onAssignStaff?: (bookingId: number, staffId: number) => void;
-    onCancel?: (id: number) => void;
+    onCancel?: (card: BookingCardData) => void;
     onEditService?: (id: number) => void;
     onMoveStage?: (id: number, targetColId: string) => void;
     isDragging?: boolean;
@@ -165,10 +169,21 @@ function QueueCard({
                 </div>
 
                 <div className="flex flex-col items-end gap-1.5">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${col.borderColor} ${col.headerBg} ${col.accent} shadow-sm flex items-center gap-1.5`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${col.id === 'IN_BAY_1' || col.id === 'IN_BAY_2' ? 'bg-[#01FFFF] animate-ping' : col.accent.replace('text-', 'bg-')}`} />
-                        {col.title}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${col.borderColor} ${col.headerBg} ${col.accent} shadow-sm flex items-center gap-1.5`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${col.id === 'IN_BAY_1' || col.id === 'IN_BAY_2' ? 'bg-[#01FFFF] animate-ping' : col.accent.replace('text-', 'bg-')}`} />
+                            {col.title}
+                        </span>
+                        {onCancel && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onCancel(card); }}
+                                className="p-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 hover:bg-rose-500 hover:text-white transition-all active:scale-95 touch-manipulation min-h-[32px] min-w-[32px] flex items-center justify-center shadow-sm"
+                                title="Cancel & Delete Booking"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+                    </div>
                     {card.time_slot ? (
                         <span className="text-[10px] font-mono text-[#01FFFF] font-bold bg-[#01FFFF]/10 px-2 py-0.5 rounded border border-[#01FFFF]/20">
                             {new Date(card.time_slot).toLocaleDateString([], { month: 'short', day: 'numeric' })} @ {new Date(card.time_slot).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -302,7 +317,7 @@ function QueueCard({
 
                         {onCancel && (
                             <button
-                                onClick={(e) => { e.stopPropagation(); onCancel(card.id); }}
+                                onClick={(e) => { e.stopPropagation(); onCancel(card); }}
                                 className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-[#8E939B] hover:text-red-400 transition-colors active:scale-95 touch-manipulation min-h-[36px] min-w-[36px] flex items-center justify-center"
                                 title="Cancel Wash"
                             >
@@ -355,10 +370,17 @@ export default function AdminQueueBoard() {
         method: 'CASH' as 'CASH' | 'UPI' | 'KHATA'
     });
 
+    const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+    const [khataProofFile, setKhataProofFile] = useState<File | null>(null);
+    const [khataProofPreview, setKhataProofPreview] = useState<string | null>(null);
+    const [isUpiQrOpen, setIsUpiQrOpen] = useState(false);
+
     const [servicePackages, setServicePackages] = useState<ServicePackage[]>([]);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editBookingId, setEditBookingId] = useState<number | null>(null);
     const [newPackageId, setNewPackageId] = useState('');
+    const [deleteTargetBooking, setDeleteTargetBooking] = useState<BookingCardData | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Flat queueData array combining all columns
     const queueData = useMemo(() => {
@@ -551,20 +573,44 @@ export default function AdminQueueBoard() {
         }
     };
 
-    const handleCancelBooking = async (id: number) => {
-        if (!window.confirm("Are you sure you want to cancel this wash?")) return;
+    const handleCancelBooking = (booking: BookingCardData | number) => {
+        if (typeof booking === 'object' && booking !== null) {
+            setDeleteTargetBooking(booking);
+        } else {
+            const found = queueData.find(b => b.id === booking);
+            if (found) setDeleteTargetBooking(found);
+            else setDeleteTargetBooking({ id: booking } as any);
+        }
+    };
+
+    const confirmDeleteBooking = async () => {
+        if (!deleteTargetBooking) return;
+        const id = deleteTargetBooking.id;
+        setIsDeleting(true);
         const token = localStorage.getItem('auth_token');
         try {
             const res = await fetch(`${getApiBase()}/bookings/${id}/`, {
-                method: 'PATCH',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'CANCELLED' })
+                method: 'DELETE',
+                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' }
             });
             if (!res.ok) throw new Error('API failed');
-            toast.success("Booking cancelled successfully.");
+
+            // Dynamically remove deleted booking from frontend state
+            setColumns(prev => {
+                const newCols = { ...prev };
+                for (const colId in newCols) {
+                    newCols[colId] = newCols[colId].filter(item => item.id !== id);
+                }
+                return newCols;
+            });
+
+            toast.success("Booking cancelled & deleted successfully!");
+            setDeleteTargetBooking(null);
             fetchQueue(true);
         } catch {
-            toast.error("Failed to cancel booking.");
+            toast.error("Failed to delete booking.");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -659,11 +705,27 @@ export default function AdminQueueBoard() {
         });
     };
 
-    const submitPayment = async () => {
+    const submitPayment = async (bypassUpiCheck = false, bypassCameraCheck = false, overridePhotoFile?: File | null) => {
+        const isUpiSelected = checkoutModal.method === 'UPI' || (checkoutModal.isSplit && (checkoutModal.upi || 0) > 0);
+
+        // Intercept UPI payment if QR confirmation has not occurred yet
+        if (isUpiSelected && !bypassUpiCheck) {
+            setIsUpiQrOpen(true);
+            return;
+        }
+
         const totalKhata = checkoutModal.khata || (checkoutModal.method === 'KHATA' ? checkoutModal.totalAmount : 0);
 
         if (totalKhata > 0 && !checkoutModal.customerName.trim()) {
             toast.error("Please enter a Customer Name to log the Khata credit.");
+            return;
+        }
+
+        const activePhotoFile = overridePhotoFile || khataProofFile;
+
+        // Intercept Khata payment if camera proof photo has not been captured yet
+        if (totalKhata > 0 && !activePhotoFile && !bypassCameraCheck) {
+            setIsCameraModalOpen(true);
             return;
         }
 
@@ -676,19 +738,32 @@ export default function AdminQueueBoard() {
 
         const token = localStorage.getItem('auth_token');
         try {
+            const formData = new FormData();
+            const upiAmount = checkoutModal.method === 'UPI' && !checkoutModal.isSplit
+                ? checkoutModal.totalAmount
+                : (checkoutModal.upi || 0);
+
+            formData.append('amount_cash', String(finalCashAmount));
+            formData.append('amount_upi', String(upiAmount));
+            formData.append('amount_khata', String(totalKhata));
+            
+            const targetCustId = checkoutModal.customerId || (matchedCustomer ? matchedCustomer.id : null);
+            if (targetCustId) {
+                formData.append('customer_id', String(targetCustId));
+            }
+            formData.append('customer_name', checkoutModal.customerName || '');
+            formData.append('phone_number', checkoutModal.phoneNumber || '');
+            formData.append('vehicle_model', checkoutModal.vehicleModel || '');
+            formData.append('plate_number', checkoutModal.plateNumber || '');
+
+            if (activePhotoFile) {
+                formData.append('number_plate_image', activePhotoFile);
+            }
+
             const res = await fetch(`${getApiBase()}/bookings/${checkoutModal.bookingId}/checkout/`, {
                 method: 'POST',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    amount_cash: finalCashAmount,
-                    amount_upi: checkoutModal.upi,
-                    amount_khata: totalKhata,
-                    customer_id: checkoutModal.customerId || (matchedCustomer ? matchedCustomer.id : null),
-                    customer_name: checkoutModal.customerName,
-                    phone_number: checkoutModal.phoneNumber,
-                    vehicle_model: checkoutModal.vehicleModel,
-                    plate_number: checkoutModal.plateNumber
-                }),
+                headers: { 'Authorization': `Token ${token}` },
+                body: formData,
             });
             if (!res.ok) throw new Error('API failed');
 
@@ -706,6 +781,12 @@ export default function AdminQueueBoard() {
                     </button>
                 </div>
             ), { duration: 5000 });
+
+            setKhataProofFile(null);
+            if (khataProofPreview) {
+                URL.revokeObjectURL(khataProofPreview);
+                setKhataProofPreview(null);
+            }
             
             setCheckoutModal({ 
                 isOpen: false, 
@@ -1138,6 +1219,18 @@ export default function AdminQueueBoard() {
                                         </div>
                                     </div>
 
+                                    {/* DYNAMIC UPI QR GENERATOR TRIGGER */}
+                                    {(checkoutModal.method === 'UPI' || checkoutModal.upi > 0) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsUpiQrOpen(true)}
+                                            className="w-full py-3 px-4 rounded-xl bg-[#01FFFF]/10 border border-[#01FFFF]/40 text-[#01FFFF] hover:bg-[#01FFFF]/20 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-95 shadow-[0_0_20px_rgba(1,255,255,0.2)]"
+                                        >
+                                            <QrCode className="w-4 h-4 text-[#01FFFF]" />
+                                            Generate Dynamic UPI QR Code (₹{checkoutModal.upi || checkoutModal.totalAmount})
+                                        </button>
+                                    )}
+
                                     <div>
                                         <label className="text-[10px] text-purple-400 uppercase font-bold tracking-[0.2em] ml-2">Add to Khata (Credit)</label>
                                         <div className="relative mt-2">
@@ -1384,9 +1477,9 @@ export default function AdminQueueBoard() {
                                     Cancel
                                 </button>
                                 <button 
-                                    onClick={submitPayment}
+                                    onClick={() => submitPayment(false)}
                                     disabled={
-                                        ((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || (checkoutModal.method === 'KHATA' ? checkoutModal.totalAmount : 0))) < checkoutModal.totalAmount
+                                        ((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || (checkoutModal.method === 'KHATA' ? checkoutModal.totalAmount : (checkoutModal.method === 'UPI' ? checkoutModal.totalAmount : 0)))) < checkoutModal.totalAmount
                                     }
                                     className={`px-5 py-3 rounded-xl font-bold text-xs transition-all active:scale-95 touch-manipulation disabled:opacity-20 disabled:cursor-not-allowed flex items-center gap-2 uppercase tracking-wider ${
                                         checkoutModal.method === 'KHATA' || checkoutModal.khata > 0
@@ -1447,6 +1540,126 @@ export default function AdminQueueBoard() {
                                 className="flex-1 px-4 py-3.5 rounded-xl bg-[#01FFFF] text-black shadow-[0_0_15px_rgba(1,255,255,0.4)] hover:bg-white transition-all text-xs uppercase font-bold tracking-widest"
                             >
                                 Update Service
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* CAMERA POPUP FOR CREDIT PHOTO PROOF */}
+            <CameraCaptureModal
+                isOpen={isCameraModalOpen}
+                onClose={() => setIsCameraModalOpen(false)}
+                onCapture={(file, previewUrl) => {
+                    setKhataProofFile(file);
+                    setKhataProofPreview(previewUrl);
+                    setIsCameraModalOpen(false);
+                    submitPayment(false, true, file);
+                }}
+                title="Capture Back Number Plate Photo"
+            />
+
+            {/* DYNAMIC UPI QR CODE MODAL WITH CENTER LOGO */}
+            <UpiQrModal
+                isOpen={isUpiQrOpen}
+                onClose={() => setIsUpiQrOpen(false)}
+                amount={checkoutModal.upi || checkoutModal.totalAmount}
+                shopName="Kallayi Car Spa"
+                bookingId={checkoutModal.bookingId || undefined}
+                customerName={checkoutModal.customerName || undefined}
+                logoUrl="/images/logo/QRlogo.png"
+                onConfirm={() => {
+                    setIsUpiQrOpen(false);
+                    submitPayment(true);
+                }}
+            />
+
+            {/* ── BEAUTIFUL CUSTOM DELETE CONFIRMATION MODAL ───────────────────────── */}
+            {deleteTargetBooking && (
+                <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-4 sm:p-6 animate-[fadeIn_0.2s_ease-out]">
+                    <div className="bg-[#0c0d10] border border-[#FF2A6D]/30 rounded-[2.5rem] w-full max-w-md shadow-[0_0_90px_rgba(255,42,109,0.2)] flex flex-col overflow-hidden relative">
+                        
+                        {/* Ambient Red Glow Header Bar */}
+                        <div className="h-1.5 w-full bg-gradient-to-r from-[#FF2A6D] via-amber-500 to-[#FF2A6D]" />
+
+                        {/* Header */}
+                        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/40">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-2xl bg-[#FF2A6D]/10 border border-[#FF2A6D]/30 text-[#FF2A6D]">
+                                    <Trash2 className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="font-syncopate font-bold text-sm tracking-wider text-white uppercase">Cancel &amp; Delete Wash</h3>
+                                    <p className="text-[10px] text-[#8E939B] font-mono tracking-widest mt-0.5">Permanent Queue Removal</p>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => setDeleteTargetBooking(null)}
+                                disabled={isDeleting}
+                                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition disabled:opacity-30"
+                                aria-label="Close Modal"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-6 flex flex-col items-center justify-center text-center space-y-4 bg-gradient-to-b from-[#161218]/60 to-[#08090c]">
+                            
+                            {/* Vehicle Plate Card Preview */}
+                            <div className="bg-black/60 border border-[#FF2A6D]/30 rounded-2xl px-6 py-4 shadow-inner text-center w-full">
+                                <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-[0.2em] block mb-1">Target Vehicle</span>
+                                <div className="text-2xl sm:text-3xl font-syncopate font-black text-[#FF2A6D] tracking-wider uppercase">
+                                    {deleteTargetBooking.plate_number || `Booking #${deleteTargetBooking.id}`}
+                                </div>
+                                {deleteTargetBooking.vehicle_model && (
+                                    <p className="text-xs text-zinc-300 mt-1 font-semibold">
+                                        {deleteTargetBooking.vehicle_model} {deleteTargetBooking.service_name ? `• ${deleteTargetBooking.service_name}` : ''}
+                                    </p>
+                                )}
+                                {deleteTargetBooking.customer_name && (
+                                    <p className="text-[11px] text-zinc-400 mt-0.5 font-mono">
+                                        Customer: <span className="text-white font-bold">{deleteTargetBooking.customer_name}</span>
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Warning Text */}
+                            <div className="p-4 bg-[#FF2A6D]/10 border border-[#FF2A6D]/20 rounded-2xl flex items-start gap-3 text-left">
+                                <AlertCircle className="w-5 h-5 text-[#FF2A6D] flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-zinc-300 leading-relaxed">
+                                    Are you sure you want to cancel and delete this vehicle booking? All associated queue, bay, and financial records will be permanently removed.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="p-6 border-t border-white/10 bg-black/60 flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteTargetBooking(null)}
+                                disabled={isDeleting}
+                                className="w-1/3 py-3.5 bg-white/5 border border-white/10 text-zinc-300 hover:text-white font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl transition hover:bg-white/10 active:scale-95 disabled:opacity-40"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={confirmDeleteBooking}
+                                disabled={isDeleting}
+                                className="flex-1 py-3.5 bg-[#FF2A6D] text-white font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-red-600 transition shadow-[0_0_25px_rgba(255,42,109,0.5)] flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <RefreshCw className="w-4 h-4 animate-spin" /> Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4" /> Yes, Delete Booking
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>

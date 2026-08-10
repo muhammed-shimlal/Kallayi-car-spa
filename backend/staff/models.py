@@ -42,6 +42,19 @@ class StaffProfile(models.Model):
     current_longitude = models.FloatField(null=True, blank=True)
     last_location_update = models.DateTimeField(null=True, blank=True)
 
+    @property
+    def pending_balance(self):
+        try:
+            from staff.services.wallet_service import get_staff_balance_summary
+            summary = get_staff_balance_summary(self.user)
+            return max(float(summary.get('current_payable', 0.0)), 0.0)
+        except Exception:
+            return 0.0
+
+    @property
+    def due_amount(self):
+        return self.pending_balance
+
     def __str__(self):
         return f"{self.user.username} ({self.role})"
 
