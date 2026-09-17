@@ -1,10 +1,71 @@
 from rest_framework import serializers
-from .models import Booking, ServicePackage
+from .models import Booking, ServicePackage, ServicePackagePrice
+
+class ServicePackagePriceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServicePackagePrice
+        fields = ['id', 'vehicle_type', 'price']
 
 class ServicePackageSerializer(serializers.ModelSerializer):
+    tiered_prices = ServicePackagePriceSerializer(many=True, required=False)
+    base_price = serializers.SerializerMethodField()
+
     class Meta:
         model = ServicePackage
         fields = '__all__'
+
+    def get_base_price(self, obj):
+        request = self.context.get('request')
+        v_type = None
+        if request:
+            v_type = request.query_params.get('vehicle_type')
+        
+        if v_type:
+            v_upper = v_type.strip().upper()
+            prices = getattr(obj, '_prefetched_objects_cache', {}).get('tiered_prices')
+            if prices is not None:
+                match = next((p for p in prices if p.vehicle_type.upper() == v_upper), None)
+            else:
+                match = obj.tiered_prices.filter(vehicle_type__iexact=v_upper).first()
+            if match:
+                return str(match.price)
+
+        return str(obj.price)
+
+    def create(self, validated_data):
+        tiered_prices_data = validated_data.pop('tiered_prices', [])
+        if not validated_data.get('price') and tiered_prices_data:
+            validated_data['price'] = tiered_prices_data[0].get('price', 0.00)
+        
+        package = ServicePackage.objects.create(**validated_data)
+        
+        for price_data in tiered_prices_data:
+            ServicePackagePrice.objects.create(package=package, **price_data)
+            
+        return package
+
+    def update(self, instance, validated_data):
+        tiered_prices_data = validated_data.pop('tiered_prices', None)
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if tiered_prices_data is not None:
+            for price_data in tiered_prices_data:
+                v_type = price_data.get('vehicle_type')
+                price_val = price_data.get('price')
+                if v_type:
+                    ServicePackagePrice.objects.update_or_create(
+                        package=instance,
+                        vehicle_type=v_type,
+                        defaults={'price': price_val}
+                    )
+            first_price = instance.tiered_prices.first()
+            if first_price:
+                instance.price = first_price.price
+
+        instance.save()
+        return instance
 
 class BookingSerializer(serializers.ModelSerializer):
     service_package_details = serializers.SerializerMethodField()
@@ -77,14 +138,17 @@ class BookingSerializer(serializers.ModelSerializer):
         model = Booking
         fields = ['id', 'customer', 'customer_name', 'customer_phone', 'vehicle', 'vehicle_info', 'vehicle_plate', 'technician', 'technician_name', 
                   'service_package', 'service_package_name', 'service_package_details', 'time_slot', 'end_time', 'status',
+                  'base_price', 'final_price', 'discount_amount', 'discount_percentage',
                   'address', 'latitude', 'longitude', 'transaction_id', 'payment_method', 'split_cash', 'payment_status',
                   'created_at', 'invoice_status', 'invoice_amount']
-        read_only_fields = ['customer', 'end_time', 'status', 'created_at']
+        read_only_fields = ['customer', 'end_time', 'status', 'created_at', 'discount_amount', 'discount_percentage']
         extra_kwargs = {
             'address': {'required': False, 'allow_blank': True},
             'latitude': {'required': False},
             'longitude': {'required': False},
             'technician': {'required': False, 'allow_null': True},
+            'base_price': {'required': False},
+            'final_price': {'required': False},
         }
 
     def get_invoice_status(self, obj):
@@ -103,6 +167,8 @@ class BookingSerializer(serializers.ModelSerializer):
         try:
             return str(obj.invoice.amount)
         except Exception:
+            if obj.final_price and obj.final_price > 0:
+                return str(obj.final_price)
             if obj.service_package:
                 return str(obj.service_package.price)
             return "0.00"
@@ -116,6 +182,7 @@ class BookingSerializer(serializers.ModelSerializer):
                 'price': str(obj.service_package.price),
                 'duration_minutes': obj.service_package.duration_minutes,
                 'chemical_recipe': obj.service_package.chemical_recipe,
+                'vehicle_type': getattr(obj.service_package, 'vehicle_type', 'ALL'),
             }
         return None
 
@@ -129,8 +196,26 @@ class BookingSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
     def validate(self, data):
-        # Calculate end_time for validation
+        # Calculate pricing & discount validation
         service_package = data.get('service_package')
+        base_price = data.get('base_price')
+        if service_package and base_price is None:
+            vehicle = data.get('vehicle')
+            if vehicle and hasattr(vehicle, 'vehicle_type'):
+                tier = service_package.tiered_prices.filter(vehicle_type__iexact=vehicle.vehicle_type).first()
+                if tier:
+                    base_price = tier.price
+            if base_price is None:
+                base_price = service_package.price
+        final_price = data.get('final_price')
+
+        if final_price is not None:
+            if final_price < 0:
+                raise serializers.ValidationError({"final_price": "Final price cannot be negative."})
+            if base_price is not None and final_price > base_price:
+                raise serializers.ValidationError({"final_price": f"Final price (₹{final_price}) cannot exceed base catalog price (₹{base_price})."})
+
+        # Calculate end_time for validation
         time_slot = data.get('time_slot')
         
         if not service_package or not time_slot:
@@ -141,7 +226,6 @@ class BookingSerializer(serializers.ModelSerializer):
         end_time = time_slot + timedelta(minutes=duration)
 
         # Check for overlaps
-        # Overlap if: (StartA < EndB) and (EndA > StartB)
         overlaps = Booking.objects.filter(
             time_slot__lt=end_time,
             end_time__gt=time_slot

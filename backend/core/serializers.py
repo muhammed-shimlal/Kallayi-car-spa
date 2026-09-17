@@ -36,33 +36,59 @@ class StaffCreateSerializer(serializers.ModelSerializer):
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
-    email = serializers.CharField(required=True, help_text="Registered email address")
     phone_number = serializers.CharField(required=False, allow_blank=True, help_text="Registered phone number")
     phone = serializers.CharField(required=False, allow_blank=True, help_text="Alternative alias for phone_number")
+    email = serializers.CharField(required=False, allow_blank=True, help_text="Email or account username")
 
     def validate(self, data):
-        email = str(data.get('email') or '').strip()
-        phone = str(data.get('phone_number') or data.get('phone') or '').strip()
-
-        if not email:
-            raise serializers.ValidationError({'email': 'Registered email address is required.'})
+        phone = str(data.get('phone_number') or data.get('phone') or data.get('email') or '').strip()
         if not phone:
-            raise serializers.ValidationError({'phone_number': 'Registered phone number is required.'})
-
-        data['email'] = email
+            raise serializers.ValidationError({'phone_number': 'Registered phone number or account identifier is required.'})
         data['phone_number'] = phone
+        data['email'] = phone
         return data
 
 
-
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    uidb64 = serializers.CharField(required=True)
-    token = serializers.CharField(required=True)
+    uidb64 = serializers.CharField(required=False, allow_blank=True)
+    token = serializers.CharField(required=False, allow_blank=True)
+    otp_code = serializers.CharField(required=False, allow_blank=True)
+    phone_number = serializers.CharField(required=False, allow_blank=True)
     new_password = serializers.CharField(min_length=6, write_only=True, required=True)
 
-    def validate_new_password(self, value):
-        password_str = str(value).strip()
-        if len(password_str) < 6:
-            raise serializers.ValidationError("Password must be at least 6 characters long.")
-        return password_str
+
+class PasswordResetOTPRequestSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    phone = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, data):
+        phone_input = str(data.get('phone_number') or data.get('phone') or '').strip()
+        if not phone_input:
+            raise serializers.ValidationError({'phone_number': 'Registered phone number is required.'})
+        data['phone_number'] = phone_input
+        return data
+
+
+class PasswordResetOTPVerifySerializer(serializers.Serializer):
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    phone = serializers.CharField(required=False, allow_blank=True)
+    otp_code = serializers.CharField(required=True, min_length=6, max_length=6)
+    new_password = serializers.CharField(min_length=6, write_only=True, required=True)
+
+    def validate(self, data):
+        phone_input = str(data.get('phone_number') or data.get('phone') or '').strip()
+        otp = str(data.get('otp_code') or '').strip()
+        password = str(data.get('new_password') or '').strip()
+
+        if not phone_input:
+            raise serializers.ValidationError({'phone_number': 'Registered phone number is required.'})
+        if not otp or len(otp) != 6:
+            raise serializers.ValidationError({'otp_code': 'A valid 6-digit OTP code is required.'})
+        if len(password) < 6:
+            raise serializers.ValidationError({'new_password': 'Password must be at least 6 characters long.'})
+
+        data['phone_number'] = phone_input
+        data['otp_code'] = otp
+        data['new_password'] = password
+        return data
 

@@ -42,6 +42,7 @@ staticfiles/
 .env
 .env.*
 !.env.example
+!**/.env.example
 .venv
 env/
 venv/
@@ -56,9 +57,12 @@ out/
 coverage/
 .npm
 *.tsbuildinfo
+.wwebjs_auth/
+.wwebjs_cache/
 
 # OS & System
 .DS_Store
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+

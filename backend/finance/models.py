@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -177,6 +178,10 @@ class Invoice(models.Model):
     booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='invoice', null=True, blank=True)
     subscription = models.ForeignKey('customers.MemberSubscription', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    base_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    final_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
     revenue_category = models.ForeignKey(RevenueCategory, on_delete=models.SET_NULL, null=True, blank=True)
     is_deferred = models.BooleanField(default=False, help_text="If true, this income is amortized over time (e.g. Subs)")
     is_paid = models.BooleanField(default=False)
@@ -185,6 +190,48 @@ class Invoice(models.Model):
     split_online = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     split_khata = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        b_price = Decimal(str(self.base_price or 0))
+        f_price = Decimal(str(self.final_price or 0)) if self.final_price is not None else Decimal('0.00')
+        amt = Decimal(str(self.amount or 0))
+
+        if f_price > Decimal('0.00'):
+            amt = f_price
+        elif amt > Decimal('0.00') and f_price <= Decimal('0.00'):
+            f_price = amt
+
+        if self.booking:
+            if b_price <= Decimal('0.00'):
+                b_price = Decimal(str(self.booking.base_price or (self.booking.service_package.price if self.booking.service_package else amt)))
+            if self.booking.final_price and Decimal(str(self.booking.final_price)) > Decimal('0.00'):
+                f_price = Decimal(str(self.booking.final_price))
+                amt = f_price
+            if self.booking.discount_amount:
+                self.discount_amount = Decimal(str(self.booking.discount_amount))
+            if self.booking.discount_percentage:
+                self.discount_percentage = Decimal(str(self.booking.discount_percentage))
+
+        if b_price > Decimal('0.00'):
+            if f_price <= Decimal('0.00'):
+                f_price = amt if amt > Decimal('0.00') else b_price
+            diff = b_price - f_price
+            disc_amt = max(diff, Decimal('0.00'))
+            disc_pct = round((disc_amt / b_price) * Decimal('100.0'), 2)
+            
+            self.base_price = b_price
+            self.final_price = f_price
+            self.amount = f_price
+            self.discount_amount = disc_amt
+            self.discount_percentage = disc_pct
+        else:
+            self.base_price = b_price
+            self.final_price = f_price
+            self.amount = amt if amt > Decimal('0.00') else f_price
+            self.discount_amount = Decimal('0.00')
+            self.discount_percentage = Decimal('0.00')
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Invoice #{self.id} - {self.booking}"

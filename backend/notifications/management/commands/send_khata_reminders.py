@@ -1,8 +1,10 @@
 from django.core.management.base import BaseCommand
 from customers.models import Customer
+from notifications.services import WhatsAppNotificationService
+
 
 class Command(BaseCommand):
-    help = 'Sends gentle reminder mock SMS to all customers with an outstanding Khata balance'
+    help = 'Sends WhatsApp payment reminders to all customers with an outstanding Khata balance'
 
     def handle(self, *args, **options):
         customers_with_debt = Customer.objects.filter(outstanding_balance__gt=0)
@@ -13,14 +15,12 @@ class Command(BaseCommand):
 
         count = 0
         for customer in customers_with_debt:
-            name = customer.user.first_name or customer.user.username
             balance = customer.outstanding_balance
+            phone = customer.phone_number or (getattr(customer, 'user', None) and customer.user.username) or 'N/A'
             
-            # Mock SMS
-            mock_sms = f"Hi {name}, a gentle reminder that your Khata balance is ₹{balance}. Click here to pay: https://kallayi-spa.com/pay"
-            self.stdout.write(self.style.WARNING(f"---\n[SENDING SMS TO {customer.phone_number or 'UNKNOWN NUMBER'}]"))
-            self.stdout.write(mock_sms)
+            self.stdout.write(self.style.WARNING(f"[SENDING WHATSAPP KHATA REMINDER TO {phone} | Balance: Rs.{balance}]"))
+            success = WhatsAppNotificationService.send_khata_reminder(customer, balance)
+            if success:
+                count += 1
             
-            count += 1
-            
-        self.stdout.write(self.style.SUCCESS(f'\nSuccessfully sent {count} Khata reminders.'))
+        self.stdout.write(self.style.SUCCESS(f'\nSuccessfully dispatched {count} WhatsApp Khata reminders.'))

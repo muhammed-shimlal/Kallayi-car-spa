@@ -11,6 +11,9 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 
+import { SmartVehicleSelector } from "@/components/ui/smart-vehicle-selector";
+import { DjangoVehicleType } from "@/lib/vehicleCatalog";
+
 export type CategoryKey = "Car" | "Bike" | "Auto Rickshaw" | "Van / Heavy";
 
 export const VEHICLE_DATA: Record<CategoryKey, {
@@ -96,6 +99,7 @@ export default function ExpressPOSPage() {
   const [customModel, setCustomModel] = useState<string>("");
   const [customType, setCustomType] = useState<string>("");
   const [customColor, setCustomColor] = useState<string>("");
+  const [agreedPriceInput, setAgreedPriceInput] = useState<string>("");
 
   const {
     control,
@@ -120,10 +124,33 @@ export default function ExpressPOSPage() {
 
   const selectedPackageId = watch("package_id");
   const plateNumber = watch("plate_number");
-  const selectedMake = watch("make");
-  const selectedModel = watch("model");
   const selectedType = watch("vehicle_type");
   const selectedColor = watch("color");
+  const selectedMake = watch("make");
+  const selectedModel = watch("model");
+  const activeVehicleType = (selectedType === "Other" ? customType : selectedType || "HATCHBACK").toUpperCase();
+
+  const getPackageActivePrice = (pkg: any, targetVehicleType: string) => {
+    if (!pkg) return 0;
+    const vTypeUpper = (targetVehicleType || "").toUpperCase();
+    if (pkg.tiered_prices && Array.isArray(pkg.tiered_prices) && pkg.tiered_prices.length > 0) {
+      const match = pkg.tiered_prices.find(
+        (tp: any) => tp.vehicle_type && tp.vehicle_type.toUpperCase() === vTypeUpper
+      );
+      if (match) return parseFloat(match.price);
+    }
+    if (pkg.base_price !== undefined && pkg.base_price !== null) {
+      return parseFloat(pkg.base_price);
+    }
+    return parseFloat(pkg.price || "0");
+  };
+
+  // Selected Package Object & Calculated Discount
+  const selectedPackage = packages.find((p) => p.id === selectedPackageId);
+  const baseCatalogPrice = getPackageActivePrice(selectedPackage, activeVehicleType);
+  const finalAgreedPrice = agreedPriceInput !== "" ? parseFloat(agreedPriceInput) : baseCatalogPrice;
+  const calculatedDiscountAmt = Math.max(0, baseCatalogPrice - (isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice));
+  const calculatedDiscountPct = baseCatalogPrice > 0 ? ((calculatedDiscountAmt / baseCatalogPrice) * 100).toFixed(1) : "0.0";
 
   const handleCategoryChange = (newCat: CategoryKey) => {
     setCategory(newCat);
@@ -151,7 +178,6 @@ export default function ExpressPOSPage() {
       setCustomModel("");
     }
 
-    // Auto-detect and set corresponding vehicle type
     if (selectedMake && VEHICLE_DATA[category]?.makes[selectedMake]) {
       const autoType = VEHICLE_DATA[category].makes[selectedMake][val];
       if (autoType && autoType !== "Other") {
@@ -159,6 +185,12 @@ export default function ExpressPOSPage() {
       }
     }
   };
+
+  useEffect(() => {
+    if (selectedPackage) {
+      setAgreedPriceInput(baseCatalogPrice > 0 ? baseCatalogPrice.toString() : "");
+    }
+  }, [selectedPackageId, activeVehicleType]);
 
   // --- AUTO-FILL WATCHER ---
   useEffect(() => {
@@ -231,10 +263,14 @@ export default function ExpressPOSPage() {
     return () => clearTimeout(timer);
   }, [plateNumber, setValue]);
 
+  // Reactive Package Fetching driven by active vehicle body type
   useEffect(() => {
     const fetchPackages = async () => {
+      setIsLoadingPackages(true);
       try {
-        const res = await api.get("/service-packages/");
+        const res = await api.get("/service-packages/", {
+          params: activeVehicleType ? { vehicle_type: activeVehicleType } : {}
+        });
         setPackages(res.data.results || res.data || []);
       } catch (err) {
         console.error(err);
@@ -244,7 +280,13 @@ export default function ExpressPOSPage() {
       }
     };
     fetchPackages();
-  }, []);
+  }, [activeVehicleType]);
+
+  // Filter packages based on active vehicle body type selection
+  const filteredPackages = packages.filter((pkg) => {
+    if (!pkg.vehicle_type || pkg.vehicle_type === "ALL") return true;
+    return pkg.vehicle_type.toUpperCase() === activeVehicleType || activeVehicleType.includes(pkg.vehicle_type.toUpperCase());
+  });
 
   const onSubmit = async (data: POSFormValues) => {
     try {
@@ -259,16 +301,18 @@ export default function ExpressPOSPage() {
         make: realMake,
         model: realModel,
         vehicle_type: realType,
-        color: realColor
+        color: realColor,
+        final_price: isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice,
       };
 
       await api.post("/bookings/express-walkin/", payload);
-      toast.success("Vehicle Added to Queue!");
+      toast.success("Vehicle Added to Queue with Negotiated Final Price!");
       reset();
       setCustomMake("");
       setCustomModel("");
       setCustomType("");
       setCustomColor("");
+      setAgreedPriceInput("");
     } catch (error: any) {
       toast.error(error.response?.data?.error || "Error processing walk-in.");
       console.error(error);
@@ -346,173 +390,110 @@ export default function ExpressPOSPage() {
               </div>
             </div>
 
-            {/* Vehicle Details Card */}
+            {/* Vehicle Details Card with Smart Vehicle Master Catalog */}
             <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-6 sm:p-8 shadow-2xl">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-                <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] block">
-                  Smart Vehicle Intake
+              <SmartVehicleSelector
+                initialMake={selectedMake}
+                initialModel={selectedModel}
+                initialBodyType={(selectedType as DjangoVehicleType) || "HATCHBACK"}
+                onVehicleChange={(vData) => {
+                  setValue("make", vData.make, { shouldValidate: true });
+                  setValue("model", vData.model, { shouldValidate: true });
+
+                  // Check for Body-Type change and invalidate cart/selected package
+                  const currentType = watch("vehicle_type");
+                  if (currentType && currentType !== vData.vehicle_type) {
+                    if (selectedPackageId) {
+                      setValue("package_id", undefined as any, { shouldValidate: true });
+                      setAgreedPriceInput("");
+                      toast.error(`Vehicle body type changed to ${vData.vehicle_type}. Selected service package cleared!`);
+                    }
+                  }
+                  setValue("vehicle_type", vData.vehicle_type, { shouldValidate: true });
+                }}
+              />
+
+              {/* Color Dropdown */}
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
+                  Vehicle Exterior Color
                 </label>
-                
-                {/* Vehicle Category Selector Toggle */}
-                <div className="flex flex-wrap bg-black/60 p-1 rounded-xl border border-white/10 gap-1">
-                  {(["Car", "Bike", "Auto Rickshaw", "Van / Heavy"] as CategoryKey[]).map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => handleCategoryChange(cat)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
-                        category === cat ? "bg-[#01FFFF] text-black shadow-lg" : "text-zinc-400 hover:text-white"
-                      }`}
-                    >
-                      {cat === "Car" && "🚗 "}
-                      {cat === "Bike" && "🏍️ "}
-                      {cat === "Auto Rickshaw" && "🛺 "}
-                      {cat === "Van / Heavy" && "🚐 "}
-                      {cat}
-                    </button>
+                <select
+                  {...register("color")}
+                  className="w-full sm:w-1/2 bg-[#141518] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#01FFFF] transition-all cursor-pointer [color-scheme:dark]"
+                >
+                  {VEHICLE_COLORS.map((c) => (
+                    <option key={c} value={c} className="bg-[#141518] text-white">
+                      {c}
+                    </option>
                   ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Make Dropdown / Custom Input */}
-                <div>
-                  <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
-                    {category} Make
-                  </label>
-                  <select
-                    value={selectedMake || ""}
-                    onChange={handleMakeChange}
-                    className="w-full bg-[#141518] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#01FFFF] transition-all cursor-pointer [color-scheme:dark]"
-                  >
-                    <option value="" disabled className="text-zinc-500">Select Brand...</option>
-                    {Object.keys(VEHICLE_DATA[category].makes).map((makeKey) => (
-                      <option key={makeKey} value={makeKey} className="bg-[#141518] text-white">
-                        {makeKey}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedMake === "Other" && (
-                    <input
-                      type="text"
-                      value={customMake}
-                      onChange={(e) => setCustomMake(e.target.value)}
-                      placeholder="Enter Custom Make"
-                      className="mt-2 w-full bg-black/40 border border-[#01FFFF]/40 rounded-xl px-3.5 py-2 text-xs text-[#01FFFF] outline-none focus:border-[#01FFFF] transition-all placeholder:text-zinc-600"
-                    />
-                  )}
-                </div>
-
-                {/* Model Dropdown / Custom Input */}
-                <div>
-                  <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
-                    {category} Model
-                  </label>
-                  {selectedMake === "Other" ? (
-                    <input
-                      type="text"
-                      value={customModel}
-                      onChange={(e) => setCustomModel(e.target.value)}
-                      placeholder="Enter Custom Model"
-                      className="w-full bg-black/40 border border-[#01FFFF]/40 rounded-xl px-3.5 py-2.5 text-xs text-[#01FFFF] outline-none focus:border-[#01FFFF] transition-all placeholder:text-zinc-600"
-                    />
-                  ) : (
-                    <>
-                      <select
-                        value={selectedModel || ""}
-                        onChange={handleModelChange}
-                        disabled={!selectedMake}
-                        className="w-full bg-[#141518] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#01FFFF] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed [color-scheme:dark]"
-                      >
-                        <option value="" disabled className="text-zinc-500">
-                          {selectedMake ? "Select Model..." : "Select Brand First"}
-                        </option>
-                        {selectedMake && Object.keys(VEHICLE_DATA[category].makes[selectedMake] || {}).map((m) => (
-                          <option key={m} value={m} className="bg-[#141518] text-white">
-                            {m}
-                          </option>
-                        ))}
-                      </select>
-                      {selectedModel === "Other" && (
-                        <input
-                          type="text"
-                          value={customModel}
-                          onChange={(e) => setCustomModel(e.target.value)}
-                          placeholder="Enter Custom Model"
-                          className="mt-2 w-full bg-black/40 border border-[#01FFFF]/40 rounded-xl px-3.5 py-2 text-xs text-[#01FFFF] outline-none focus:border-[#01FFFF] transition-all placeholder:text-zinc-600"
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Type Dropdown */}
-                <div>
-                  <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
-                    Body / Type
-                  </label>
-                  <select
-                    {...register("vehicle_type")}
-                    className="w-full bg-[#141518] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#01FFFF] transition-all cursor-pointer [color-scheme:dark]"
-                  >
-                    {VEHICLE_DATA[category].types.map((vType) => (
-                      <option key={vType} value={vType} className="bg-[#141518] text-white">
-                        {vType}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedType === "Other" && (
-                    <input
-                      type="text"
-                      value={customType}
-                      onChange={(e) => setCustomType(e.target.value)}
-                      placeholder="Enter Custom Type"
-                      className="mt-2 w-full bg-black/40 border border-[#01FFFF]/40 rounded-xl px-3.5 py-2 text-xs text-[#01FFFF] outline-none focus:border-[#01FFFF] transition-all placeholder:text-zinc-600"
-                    />
-                  )}
-                </div>
-
-                {/* Color Dropdown */}
-                <div>
-                  <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
-                    Color
-                  </label>
-                  <select
-                    {...register("color")}
-                    className="w-full bg-[#141518] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#01FFFF] transition-all cursor-pointer [color-scheme:dark]"
-                  >
-                    {VEHICLE_COLORS.map((c) => (
-                      <option key={c} value={c} className="bg-[#141518] text-white">
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  {selectedColor === "Other" && (
-                    <input
-                      type="text"
-                      value={customColor}
-                      onChange={(e) => setCustomColor(e.target.value)}
-                      placeholder="Enter Custom Color"
-                      className="mt-2 w-full bg-black/40 border border-[#01FFFF]/40 rounded-xl px-3.5 py-2 text-xs text-[#01FFFF] outline-none focus:border-[#01FFFF] transition-all placeholder:text-zinc-600"
-                    />
-                  )}
-                </div>
+                </select>
+                {selectedColor === "Other" && (
+                  <input
+                    type="text"
+                    value={customColor}
+                    onChange={(e) => setCustomColor(e.target.value)}
+                    placeholder="Enter Custom Color"
+                    className="mt-2 w-full sm:w-1/2 bg-black/40 border border-[#01FFFF]/40 rounded-xl px-3.5 py-2 text-xs text-[#01FFFF] outline-none focus:border-[#01FFFF] transition-all placeholder:text-zinc-600"
+                  />
+                )}
               </div>
             </div>
 
             {/* Service Selection */}
             <div>
-              <label className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 mb-6 block">
-                Select Service Package
-              </label>
+              <div className="flex items-center justify-between mb-6">
+                <label className="text-xs uppercase tracking-[0.2em] font-bold text-zinc-500 block">
+                  Select Service Package ({selectedType || category})
+                </label>
+                <span className="text-[10px] font-mono text-[#01FFFF] font-bold uppercase tracking-widest bg-[#01FFFF]/10 px-3 py-1 rounded-full border border-[#01FFFF]/20">
+                  Body-Type Filter Active
+                </span>
+              </div>
+
               {isLoadingPackages ? (
                 <div className="flex justify-center h-48 items-center bg-[#141518]/40 border border-white/5 rounded-3xl">
                   <Loader2 className="w-8 h-8 animate-spin text-[#01FFFF]" />
                 </div>
+              ) : filteredPackages.length === 0 ? (
+                <div className="p-8 text-center bg-[#141518]/40 border border-white/5 rounded-3xl text-zinc-400 text-xs">
+                  No packages explicitly linked to {selectedType || category}. Showing all available catalog packages.
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 text-left">
+                    {packages.map((pkg) => {
+                      const isSelected = selectedPackageId === pkg.id;
+                      const activePrice = getPackageActivePrice(pkg, activeVehicleType);
+                      return (
+                        <button
+                          type="button"
+                          key={pkg.id}
+                          onClick={() => setValue("package_id", pkg.id, { shouldValidate: true })}
+                          className={`p-6 rounded-3xl text-left transition-all duration-300 ${
+                            isSelected
+                              ? "bg-[#01FFFF]/10 border-2 border-[#01FFFF] shadow-[0_0_30px_rgba(1,255,255,0.15)] scale-105"
+                              : "bg-[#141518]/60 border border-white/5 hover:border-white/20 hover:bg-[#141518]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className={`font-syncopate font-bold text-sm tracking-wide ${isSelected ? "text-white" : "text-zinc-300"}`}>
+                              {pkg.name}
+                            </h3>
+                            <span className="text-[9px] font-mono text-[#01FFFF] bg-[#01FFFF]/10 px-2 py-0.5 rounded border border-[#01FFFF]/20 font-bold uppercase">
+                              {activeVehicleType}
+                            </span>
+                          </div>
+                          <p className={`font-mono font-bold text-lg ${isSelected ? "text-[#01FFFF]" : "text-zinc-500"}`}>
+                            ₹{activePrice}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {packages.map((pkg) => {
+                  {filteredPackages.map((pkg) => {
                     const isSelected = selectedPackageId === pkg.id;
+                    const activePrice = getPackageActivePrice(pkg, activeVehicleType);
                     return (
                       <button
                         type="button"
@@ -524,11 +505,16 @@ export default function ExpressPOSPage() {
                             : "bg-[#141518]/60 border border-white/5 hover:border-white/20 hover:bg-[#141518]"
                         }`}
                       >
-                        <h3 className={`font-syncopate font-bold text-sm tracking-wide mb-2 ${isSelected ? "text-white" : "text-zinc-300"}`}>
-                          {pkg.name}
-                        </h3>
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className={`font-syncopate font-bold text-sm tracking-wide ${isSelected ? "text-white" : "text-zinc-300"}`}>
+                            {pkg.name}
+                          </h3>
+                          <span className="text-[9px] font-mono text-[#01FFFF] bg-[#01FFFF]/10 px-2 py-0.5 rounded border border-[#01FFFF]/20 font-bold uppercase">
+                            {activeVehicleType}
+                          </span>
+                        </div>
                         <p className={`font-mono font-bold text-lg ${isSelected ? "text-[#01FFFF]" : "text-zinc-500"}`}>
-                          ₹{pkg.price}
+                          ₹{activePrice}
                         </p>
                       </button>
                     );
@@ -541,6 +527,66 @@ export default function ExpressPOSPage() {
                 </p>
               )}
             </div>
+
+            {/* Single-Field Negotiated Price & Discount Derivation */}
+            {selectedPackage && (
+              <div className="bg-[#141518]/80 backdrop-blur-2xl border border-[#01FFFF]/30 rounded-[2rem] p-6 sm:p-8 shadow-2xl space-y-6">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] block">
+                    Single-Field Negotiated Price Entry
+                  </label>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                    Manual Dirtiness / Condition Concession
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                  <div>
+                    <label className="text-[11px] text-zinc-300 font-bold uppercase tracking-wider block mb-2">
+                      Agreed Final Price (₹)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-syncopate font-bold text-xl text-[#01FFFF]">₹</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max={baseCatalogPrice}
+                        value={agreedPriceInput}
+                        onChange={(e) => setAgreedPriceInput(e.target.value)}
+                        placeholder={baseCatalogPrice.toString()}
+                        className="w-full bg-black/60 border-2 border-[#01FFFF]/40 focus:border-[#01FFFF] rounded-2xl pl-10 pr-4 py-4 text-2xl font-syncopate font-bold text-white outline-none transition-all"
+                      />
+                    </div>
+                    <p className="text-[10px] text-zinc-400 mt-2">
+                      Catalog Price: <span className="font-mono font-bold text-white">₹{baseCatalogPrice}</span>
+                    </p>
+                  </div>
+
+                  {/* Real-time Derived Discount Preview Card */}
+                  <div className="bg-black/50 border border-white/10 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-400 font-bold uppercase tracking-wider">Catalog Subtotal:</span>
+                      <span className="font-mono font-bold text-white">₹{baseCatalogPrice.toFixed(2)}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-400 font-bold uppercase tracking-wider">Computed Discount:</span>
+                      <span className={`font-mono font-bold ${calculatedDiscountAmt > 0 ? "text-[#22c55e]" : "text-zinc-500"}`}>
+                        {calculatedDiscountAmt > 0 ? `-₹${calculatedDiscountAmt.toFixed(2)} (${calculatedDiscountPct}% OFF)` : "No Discount"}
+                      </span>
+                    </div>
+
+                    <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#01FFFF] uppercase tracking-widest">Amount Collected:</span>
+                      <span className="font-syncopate font-bold text-2xl text-white">
+                        ₹{(isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Massive Submit Button */}

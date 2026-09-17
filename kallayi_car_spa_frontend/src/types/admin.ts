@@ -1,9 +1,18 @@
+export interface ServicePackagePrice {
+    id?: number;
+    vehicle_type: string;
+    price: number | string;
+}
+
 export interface ServicePackage {
     id: number;
     name: string;
     description?: string;
     price: number | string;
+    base_price?: number | string;
     duration_minutes?: number | string;
+    vehicle_type?: string;
+    tiered_prices?: ServicePackagePrice[];
 }
 
 export interface StaffMember {

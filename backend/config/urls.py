@@ -10,7 +10,7 @@ from bookings.views import BookingViewSet, ServicePackageViewSet, CalendarViewSe
 from finance.views import InvoiceViewSet, DashboardViewSet, GeneralExpenseViewSet, ExpenseCategoryViewSet, ReportingViewSet, KhataViewSet, SalaryPaymentViewSet, CollectionBankViewSet, close_register, analytics_dashboard, generate_invoice_pdf, manual_khata_charge, customer_my_ledger
 from staff.views import TimeEntryViewSet, JobInspectionViewSet, SOPChecklistViewSet, StaffDashboardViewSet, StaffProfileViewSet
 from payments.views import PaymentViewSet, WebhookViewSet
-from core.views import CustomObtainAuthToken, password_reset_request, password_reset_confirm
+from core.views import CustomObtainAuthToken, password_reset_request, password_reset_confirm, request_password_reset_otp, verify_password_reset_otp
 
 router = DefaultRouter()
 
@@ -53,6 +53,8 @@ urlpatterns = [
     path('api/core/', include('core.urls')),
     path('api/api-token-auth/', CustomObtainAuthToken.as_view()),
     path('api/password-reset/', password_reset_request, name='password-reset-request'),
+    path('api/password-reset/request-otp/', request_password_reset_otp, name='password-reset-request-otp'),
+    path('api/password-reset/verify-otp/', verify_password_reset_otp, name='password-reset-verify-otp'),
     path('api/password-reset-confirm/', password_reset_confirm, name='password-reset-confirm'),
     path('api/finance/close-register/', close_register, name='close-register'),
     path('api/finance/analytics/', analytics_dashboard, name='analytics-dashboard'),

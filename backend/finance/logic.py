@@ -36,28 +36,39 @@ def calculate_wash_cost(booking):
         except ChemicalInventory.DoesNotExist:
             print(f"Warning: Chemical {chemical_name} not found in inventory.")
 
-def calculate_staff_booking_commission(staff_profile, service_package):
+def calculate_staff_booking_commission(staff_profile, booking_or_package):
     """
-    Calculates dynamic commission for a completed booking based on individual staff settings:
-    - PERCENTAGE: (gross_service_price * staff.commission_rate) / 100
-    - FIXED: staff.commission_amount (or staff.salary_amount if fixed amount per service)
-    Gross service price is used directly (ignoring shop operational expenses).
-    Does NOT deduct advances (advances are deducted only at final payroll settlement).
+    Calculates dynamic per-staff commission for a completed booking based on individual staff settings:
+    Staff Commission = final_price * (technician.commission_rate / 100)
+    Uses actual collected final_price (or package price as fallback).
     """
-    if not service_package:
+    if not booking_or_package:
         return Decimal('0.00')
 
+    # Resolve collected final price or base package price
+    collected_price = Decimal('0.00')
+    package = None
+
+    if hasattr(booking_or_package, 'final_price') and booking_or_package.final_price and booking_or_package.final_price > Decimal('0.00'):
+        collected_price = Decimal(str(booking_or_package.final_price))
+        package = getattr(booking_or_package, 'service_package', None)
+    elif hasattr(booking_or_package, 'price') and booking_or_package.price:
+        collected_price = Decimal(str(booking_or_package.price))
+        package = booking_or_package
+    elif hasattr(booking_or_package, 'service_package') and booking_or_package.service_package:
+        package = booking_or_package.service_package
+        collected_price = Decimal(str(package.price or 0))
+
     # 1. Check if the package has a specific override rule
-    rule = getattr(service_package, 'commission_rule', None)
+    rule = getattr(package, 'commission_rule', None) if package else None
     if rule and (getattr(rule, 'flat_amount', 0) > 0 or getattr(rule, 'percentage', 0) > 0):
         flat = Decimal(str(getattr(rule, 'flat_amount', 0) or 0))
-        pct = Decimal(str(service_package.price or 0)) * (Decimal(str(getattr(rule, 'percentage', 0) or 0)) / Decimal('100.0'))
+        pct = collected_price * (Decimal(str(getattr(rule, 'percentage', 0) or 0)) / Decimal('100.0'))
         return flat + pct
 
     if not staff_profile:
         return Decimal('0.00')
 
-    gross_price = Decimal(str(service_package.price or 0))
     comm_type = getattr(staff_profile, 'commission_type', 'PERCENTAGE')
     
     if comm_type == 'FIXED':
@@ -65,24 +76,19 @@ def calculate_staff_booking_commission(staff_profile, service_package):
         return fixed_val
     else:
         comm_rate = Decimal(str(getattr(staff_profile, 'commission_rate', 0) or 0))
-        return gross_price * (comm_rate / Decimal('100.0'))
+        return collected_price * (comm_rate / Decimal('100.0'))
 
 def process_payroll_event(booking):
     """
-    Calculates dynamic commission for the technician upon job completion.
-    Uses the worker's individual commission structure (PERCENTAGE or FIXED).
-    Store operational expenses are NOT subtracted from total revenue.
+    Calculates dynamic commission for the technician upon job completion based on final collected price.
+    Uses the worker's individual commission rate (technician.commission_rate / 100).
     """
     technician = booking.technician
     if not technician:
         return
 
-    package = booking.service_package
-    if not package:
-        return
-
     staff_profile = getattr(technician, 'staff_profile', None)
-    commission_amount = calculate_staff_booking_commission(staff_profile, package)
+    commission_amount = calculate_staff_booking_commission(staff_profile, booking)
 
     today = timezone.localdate()
     

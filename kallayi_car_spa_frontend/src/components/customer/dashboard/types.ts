@@ -3,6 +3,7 @@ export interface Vehicle {
     make: string;
     model: string;
     plate: string;
+    vehicle_type?: string;
 }
 
 export interface ActiveWash {

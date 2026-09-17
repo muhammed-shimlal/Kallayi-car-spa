@@ -1,0 +1,15 @@
+{
+  "name": "whatsapp-bridge",
+  "version": "1.0.0",
+  "description": "Local WhatsApp Web HTTP Gateway for Kallayi Car Spa",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "whatsapp-web.js": "^1.26.0",
+    "qrcode-terminal": "^0.12.0",
+    "axios": "^1.7.2"
+  }
+}

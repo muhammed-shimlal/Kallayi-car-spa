@@ -5,7 +5,7 @@ from django.utils import timezone
 from .models import Booking
 # Need to securely import DailyRegisterAudit for the lock check
 from finance.models import DailyRegisterAudit
-from notifications.services import send_customer_notification
+from notifications.services import WhatsAppNotificationService
 
 def check_register_lock(target_date):
     if DailyRegisterAudit.objects.filter(date=target_date, is_locked=True).exists():
@@ -44,19 +44,7 @@ def notify_customer_on_ready(sender, instance, created, **kwargs):
     # Only trigger when the status *actually changed* to READY
     if instance.status == 'READY' and old_status != 'READY':
         try:
-            plate = instance.vehicle.plate_number if instance.vehicle else 'your car'
-            phone = instance.customer.phone_number if instance.customer else None
-
-            message = (
-                f"Hi! Your vehicle ({plate}) is shining and ready for pickup "
-                f"at Kallayi Car Spa. View your receipt here: "
-                f"https://kallayi.com/receipt/{instance.id}"
-            )
-
-            if phone:
-                send_customer_notification(phone, message)
-            else:
-                print(f"[Signal] No phone number for customer on Booking #{instance.id}, skipping SMS.")
+            WhatsAppNotificationService.send_status_update(instance, 'READY')
         except Exception as e:
             print(f"[Signal Error] Could not send ready notification: {e}")
 
@@ -69,7 +57,7 @@ def notify_customer_on_ready(sender, instance, created, **kwargs):
             "plate_number": instance.vehicle.plate_number if instance.vehicle else "",
             "vehicle_model": instance.vehicle.model if instance.vehicle else "",
             "service_name": instance.service_package.name if instance.service_package else "",
-            "customer_name": f"{instance.customer.first_name} {instance.customer.last_name}" if instance.customer else "",
+            "customer_name": f"{instance.customer.user.first_name} {instance.customer.user.last_name}".strip() if (instance.customer and getattr(instance.customer, 'user', None)) else "",
             "technician_name": f"{instance.technician.first_name} {instance.technician.last_name}" if instance.technician else None,
             "created_at": instance.created_at.isoformat() if getattr(instance, 'created_at', None) else None,
             "time_slot": instance.time_slot.isoformat() if getattr(instance, 'time_slot', None) else None,

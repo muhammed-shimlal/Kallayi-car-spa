@@ -153,11 +153,11 @@ export default function ServicesSection() {
                                                     className="overflow-hidden"
                                                 >
                                                     <div className="pt-4 pb-6 space-y-4">
-                                                        <div className="relative w-full h-64 rounded-2xl overflow-hidden border border-white/10 bg-black shadow-xl">
+                                                        <div className="relative w-full h-[50vh] max-h-[300px] sm:h-64 rounded-2xl overflow-hidden border border-white/10 bg-black shadow-xl">
                                                             <img
                                                                 src={service.image}
                                                                 alt={service.title}
-                                                                className="w-full h-full object-cover filter grayscale brightness-75 contrast-125"
+                                                                className="w-full h-full object-cover object-center filter grayscale brightness-85 contrast-125"
                                                             />
                                                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                                                             <div className="absolute top-3 left-3 font-mono text-[10px] tracking-[0.25em] uppercase text-neutral-300 bg-black/70 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">

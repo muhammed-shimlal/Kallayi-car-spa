@@ -105,9 +105,21 @@ class IsAdminUserOrReadOnly(BasePermission):
         return request.user and request.user.is_staff
 
 class ServicePackageViewSet(viewsets.ModelViewSet):
-    queryset = ServicePackage.objects.all().order_by('price')
     serializer_class = ServicePackageSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ServicePackage.objects.prefetch_related('tiered_prices').all().order_by('id')
+        vehicle_type = self.request.query_params.get('vehicle_type')
+        if vehicle_type:
+            v_upper = vehicle_type.strip().upper()
+            # Include packages that match vehicle_type in tiered_prices OR on master model
+            qs = qs.filter(
+                Q(tiered_prices__vehicle_type__iexact=v_upper) | 
+                Q(vehicle_type__iexact=v_upper) | 
+                Q(vehicle_type__iexact='ALL')
+            ).distinct()
+        return qs
 
     def check_permissions(self, request):
         super().check_permissions(request)
@@ -306,6 +318,16 @@ class BookingViewSet(viewsets.ModelViewSet):
                 booking.vehicle.customer = target_customer.user
                 booking.vehicle.save()
 
+        raw_final_price = request.data.get('final_price') or request.data.get('collected_price') or request.data.get('agreed_price')
+        if raw_final_price is not None and str(raw_final_price).strip() != '':
+            try:
+                from decimal import Decimal
+                parsed_final = Decimal(str(raw_final_price))
+                if parsed_final >= Decimal('0.00'):
+                    booking.final_price = parsed_final
+            except Exception:
+                pass
+
         booking.status = 'COMPLETED'
         booking.end_time = timezone.now()
         booking.save()
@@ -334,13 +356,17 @@ class BookingViewSet(viewsets.ModelViewSet):
         elif amount_upi > 0 and amount_cash == 0 and amount_khata == 0:
             payment_method = 'ONLINE'
 
-        total_amount = booking.service_package.price if booking.service_package else 0.0
+        total_amount = booking.final_price if (booking.final_price and booking.final_price > 0) else (booking.service_package.price if booking.service_package else 0.0)
 
         if not hasattr(booking, 'invoice'):
             from finance.models import Invoice
             Invoice.objects.create(
                 booking=booking,
                 amount=total_amount,
+                base_price=booking.base_price,
+                final_price=booking.final_price,
+                discount_amount=booking.discount_amount,
+                discount_percentage=booking.discount_percentage,
                 split_cash=amount_cash,
                 split_online=amount_upi,
                 split_khata=amount_khata,
@@ -349,6 +375,11 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
         else:
             inv = booking.invoice
+            inv.base_price = booking.base_price
+            inv.final_price = booking.final_price
+            inv.amount = total_amount
+            inv.discount_amount = booking.discount_amount
+            inv.discount_percentage = booking.discount_percentage
             inv.split_cash = amount_cash
             inv.split_online = amount_upi
             inv.split_khata = amount_khata
@@ -520,10 +551,22 @@ def express_walkin(request):
     vehicle_type = (request.data.get('vehicle_type') or 'CAR').strip().upper()
     color = (request.data.get('color') or '').strip()
 
-    if vehicle_type in ['HATCHBACK', 'SEDAN', 'SUV', 'LUXURY']:
-        vehicle_type = 'CAR'
-    elif vehicle_type not in ['CAR', 'BIKE', 'AUTO', 'VAN', 'TRUCK']:
-        vehicle_type = 'CAR'
+    valid_vtypes = ['HATCHBACK', 'SEDAN', 'SUV', 'BIKE', 'VAN', 'LUXURY', 'CAR', 'AUTO', 'TRUCK']
+    if vehicle_type not in valid_vtypes:
+        if 'BIKE' in vehicle_type:
+            vehicle_type = 'BIKE'
+        elif 'VAN' in vehicle_type or 'HEAVY' in vehicle_type:
+            vehicle_type = 'VAN'
+        elif 'AUTO' in vehicle_type:
+            vehicle_type = 'AUTO'
+        elif 'SUV' in vehicle_type:
+            vehicle_type = 'SUV'
+        elif 'SEDAN' in vehicle_type:
+            vehicle_type = 'SEDAN'
+        elif 'HATCHBACK' in vehicle_type:
+            vehicle_type = 'HATCHBACK'
+        else:
+            vehicle_type = 'CAR'
 
     # Customer Resolution using normalized phone matching
     customer_name_in = request.data.get('name') or request.data.get('customer_name')
@@ -570,6 +613,22 @@ def express_walkin(request):
 
         if updated:
             vehicle.save()
+
+    # Price Derivation & Concession (Single-field final price entry)
+    from decimal import Decimal
+    base_price = Decimal(str(package.price))
+    raw_final_price = request.data.get('final_price') or request.data.get('collected_price') or request.data.get('agreed_price')
+    if raw_final_price is not None and str(raw_final_price).strip() != '':
+        try:
+            final_price = Decimal(str(raw_final_price))
+            if final_price > base_price:
+                final_price = base_price
+            elif final_price < Decimal('0.00'):
+                final_price = Decimal('0.00')
+        except Exception:
+            final_price = base_price
+    else:
+        final_price = base_price
     
     # Booking Creation (Bypass Slot Validations & Overlaps)
     current_time = timezone.now()
@@ -577,6 +636,8 @@ def express_walkin(request):
         customer=customer,
         vehicle=vehicle,
         service_package=package,
+        base_price=base_price,
+        final_price=final_price,
         status='WAITING',
         time_slot=current_time,
         start_time=current_time,
@@ -587,7 +648,11 @@ def express_walkin(request):
     from finance.models import Invoice
     Invoice.objects.create(
         booking=booking,
-        amount=package.price
+        amount=booking.final_price,
+        base_price=booking.base_price,
+        final_price=booking.final_price,
+        discount_amount=booking.discount_amount,
+        discount_percentage=booking.discount_percentage
     )
     
     print(f"📱 MOCK SMS: Welcome to Kallayi! Track your car ({plate_number}) live: https://kallayi.com/track/{booking.id}")

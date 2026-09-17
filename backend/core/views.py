@@ -122,141 +122,147 @@ class CustomObtainAuthToken(ObtainAuthToken):
 
 
 from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.encoding import force_bytes, force_str
-from django.core.mail import EmailMultiAlternatives
-from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-
-import smtplib
-import traceback
+from django.conf import settings
+from notifications.services import WhatsAppNotificationService
 import logging
 
-logger = logging.getLogger(__name__)
+import secrets
+from .models import PasswordResetOTP
+from .serializers import (
+    UserSerializer, StaffProfileSerializer, StaffCreateSerializer,
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer,
+    PasswordResetOTPRequestSerializer, PasswordResetOTPVerifySerializer
+)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
-def password_reset_request(request):
+def request_password_reset_otp(request):
     """
-    Endpoint: POST /api/password-reset/
-    Requires BOTH registered email address AND phone number for dual verification security.
-    Generates a secure password reset token (using default_token_generator and uidb64),
-    constructs the Next.js frontend reset URL, and emails the user.
-    Handles SMTP exceptions gracefully with a 400 Bad Request JSON response instead of 500 Internal Server Error.
+    Endpoint: POST /api/password-reset/request-otp/
+    Generates a cryptographically secure 6-digit numeric OTP, invalidates previous unverified OTPs
+    for the phone number, saves a new PasswordResetOTP (5-min validity), and dispatches it via WhatsApp.
     """
-    serializer = PasswordResetRequestSerializer(data=request.data)
+    serializer = PasswordResetOTPRequestSerializer(data=request.data)
     if not serializer.is_valid():
         first_err = list(serializer.errors.values())[0]
         if isinstance(first_err, list):
             first_err = first_err[0]
         return Response({'error': first_err, 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-    email_input = serializer.validated_data['email']
     phone_input = serializer.validated_data['phone_number']
+    clean_phone = WhatsAppNotificationService.sanitize_phone_number(phone_input)
+    raw_digits = normalize_phone(phone_input)
 
-    # Domain Validation: Restrict to @gmail.com to prevent temp/disposable emails
-    if '@' in email_input:
-        domain = email_input.split('@')[-1].lower().strip()
-        if domain != 'gmail.com':
-            return Response({
-                'error': 'Please use a valid Gmail address (@gmail.com). Temp mails are not allowed.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-    clean_phone = normalize_phone(phone_input)
     if not clean_phone or len(clean_phone) < 7:
-        return Response({
-            'error': 'Please enter a valid phone number (at least 7 digits).'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'Please enter a valid phone number (at least 7 digits).'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Dual Verification Query: Match user account having BOTH exact email AND phone number
-    q_email = Q(email__iexact=email_input) | Q(username__iexact=email_input)
     q_phone = (
-        Q(username__icontains=clean_phone) |
-        Q(customer__phone_number__icontains=clean_phone) |
-        Q(staff_profile__phone_number__icontains=clean_phone) |
+        Q(username__icontains=raw_digits) |
+        Q(customer__phone_number__icontains=raw_digits) |
+        Q(staff_profile__phone_number__icontains=raw_digits) |
+        Q(username=raw_digits) |
         Q(username=clean_phone) |
-        Q(username=f"+91{clean_phone}")
+        Q(username=f"+{clean_phone}")
     )
-
-    users = UserModel.objects.filter(q_email).filter(q_phone).distinct()
-    logger.info(f"[PASSWORD RESET DUAL VERIFICATION] Email: {email_input} | Phone: {phone_input} (Clean: {clean_phone}) | Matches: {users.count()}")
+    users = UserModel.objects.filter(q_phone).distinct()
 
     if not users.exists():
-        return Response({
-            'error': 'No account found with this combination of email address and phone number.'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'No account found matching this phone number.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    email_sent_count = 0
-    smtp_errors = []
+    # Invalidate any previous unverified OTPs for this phone number
+    PasswordResetOTP.objects.filter(Q(phone_number=clean_phone) | Q(phone_number=raw_digits), is_used=False).update(is_used=True)
 
-    for user in users:
-        target_email = user.email
-        if not target_email and '@' in email_input:
-            user.email = email_input
-            user.save()
-            target_email = email_input
+    # Generate cryptographically secure 6-digit OTP
+    otp_code = f"{secrets.SystemRandom().randint(100000, 999999)}"
 
-        if target_email:
-            uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000').rstrip('/')
-            reset_url = f"{frontend_url}/reset-password/{uidb64}/{token}"
+    # Save new OTP record
+    PasswordResetOTP.objects.create(
+        phone_number=clean_phone,
+        otp_code=otp_code
+    )
 
-            subject = "Password Reset Request - Kallayi Car Spa"
-            message = (
-                f"Hello {user.get_full_name() or user.username},\n\n"
-                f"You requested a password reset for your Kallayi Car Spa account.\n\n"
-                f"Please click the link below to reset your password:\n{reset_url}\n\n"
-                f"If you did not request this, please ignore this email."
-            )
-            html_content = f"""
-            <div style="font-family: Arial, sans-serif; background-color: #070709; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 500px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.1);">
-                <h2 style="color: #01FFFF; margin-top: 0; font-size: 20px;">Kallayi Car Spa — Password Reset</h2>
-                <p style="color: #ccc; font-size: 14px;">Hello <strong>{user.get_full_name() or user.username}</strong>,</p>
-                <p style="color: #aaa; font-size: 13px; line-height: 1.5;">We received a request to reset your account password. Click the button below to establish a new password:</p>
-                <p style="margin: 25px 0; text-align: center;">
-                    <a href="{reset_url}" style="background-color: #E52323; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; display: inline-block;">Reset Password</a>
-                </p>
-                <p style="font-size: 11px; color: #8E939B;">Or copy and paste this URL into your browser:<br/><a href="{reset_url}" style="color: #01FFFF;">{reset_url}</a></p>
-                <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;"/>
-                <p style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px;">KALLAYI CAR SPA // MANJERI</p>
-            </div>
-            """
-            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'Kallayi Car Spa <kallayicarspa@gmail.com>')
-
-            try:
-                msg = EmailMultiAlternatives(subject, message, from_email, [target_email])
-                msg.attach_alternative(html_content, "text/html")
-                msg.send(fail_silently=False)
-                email_sent_count += 1
-                logger.info(f"Password reset email successfully sent to {target_email}")
-            except smtplib.SMTPAuthenticationError as e:
-                err_msg = f"Gmail SMTP Authentication Failed: Check EMAIL_HOST_USER and EMAIL_HOST_PASSWORD App Password. ({e})"
-                logger.error(err_msg)
-                smtp_errors.append(err_msg)
-            except smtplib.SMTPException as e:
-                err_msg = f"SMTP Transmission Error: {e}"
-                logger.error(err_msg)
-                smtp_errors.append(err_msg)
-            except Exception as e:
-                err_msg = f"Email delivery failed: {str(e)}"
-                logger.error(err_msg)
-                smtp_errors.append(err_msg)
-
-    if smtp_errors and email_sent_count == 0:
-        return Response({
-            'error': f"Failed to send reset email due to mail configuration issue: {smtp_errors[0]}"
-        }, status=status.HTTP_400_BAD_REQUEST)
+    # Dispatch WhatsApp OTP message
+    success = WhatsAppNotificationService.send_password_reset_otp(clean_phone, otp_code)
 
     return Response({
-        'message': 'Verification successful! A password reset link has been dispatched to your email inbox.',
+        'message': 'A 6-digit password reset OTP code has been dispatched to your WhatsApp number.',
         'details': {
-            'email_sent': email_sent_count > 0,
-            'match_found': True
+            'phone_number': clean_phone,
+            'otp_dispatched': bool(success),
+            'valid_minutes': 5
         }
     }, status=status.HTTP_200_OK)
 
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_password_reset_otp(request):
+    """
+    Endpoint: POST /api/password-reset/verify-otp/
+    Verifies phone number and 6-digit OTP code within 5-minute validity window,
+    resets user password, and marks OTP as used.
+    """
+    serializer = PasswordResetOTPVerifySerializer(data=request.data)
+    if not serializer.is_valid():
+        first_err = list(serializer.errors.values())[0]
+        if isinstance(first_err, list):
+            first_err = first_err[0]
+        return Response({'error': first_err, 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    phone_input = serializer.validated_data['phone_number']
+    otp_code = serializer.validated_data['otp_code']
+    new_password = serializer.validated_data['new_password']
+
+    clean_phone = WhatsAppNotificationService.sanitize_phone_number(phone_input)
+    raw_digits = normalize_phone(phone_input)
+
+    # Query recent unused OTP for this phone number
+    otp_entry = PasswordResetOTP.objects.filter(
+        Q(phone_number=clean_phone) | Q(phone_number=raw_digits),
+        otp_code=otp_code,
+        is_used=False
+    ).first()
+
+    if not otp_entry or not otp_entry.is_valid(window_minutes=5):
+        return Response({'error': 'Invalid or expired OTP code. Please request a new OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Find matching user account(s)
+    q_phone = (
+        Q(username__icontains=raw_digits) |
+        Q(customer__phone_number__icontains=raw_digits) |
+        Q(staff_profile__phone_number__icontains=raw_digits) |
+        Q(username=raw_digits) |
+        Q(username=clean_phone) |
+        Q(username=f"+{clean_phone}")
+    )
+    users = UserModel.objects.filter(q_phone).distinct()
+
+    if not users.exists():
+        return Response({'error': 'No user account found matching this phone number.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    for user in users:
+        user.set_password(new_password)
+        user.save()
+
+    # Flag OTP as used
+    otp_entry.is_used = True
+    otp_entry.save()
+
+    return Response({
+        'message': 'Password has been reset successfully! You may now log in with your new password.'
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_request(request):
+    """
+    Endpoint: POST /api/password-reset/
+    Wrapper delegating to request_password_reset_otp.
+    """
+    return request_password_reset_otp(request)
 
 
 @api_view(['POST'])
@@ -264,16 +270,22 @@ def password_reset_request(request):
 def password_reset_confirm(request):
     """
     Endpoint: POST /api/password-reset-confirm/
-    Verifies the uidb64 and token, and securely sets the new password.
+    Supports both OTP verification and link verification.
     """
+    if 'otp_code' in request.data:
+        return verify_password_reset_otp(request)
+
     serializer = PasswordResetConfirmSerializer(data=request.data)
     if not serializer.is_valid():
         first_err = list(serializer.errors.values())[0][0] if serializer.errors else 'Invalid parameters.'
         return Response({'error': first_err, 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-    uidb64 = serializer.validated_data['uidb64']
-    token = serializer.validated_data['token']
-    new_password = serializer.validated_data['new_password']
+    uidb64 = serializer.validated_data.get('uidb64')
+    token = serializer.validated_data.get('token')
+    new_password = serializer.validated_data.get('new_password')
+
+    if not uidb64 or not token:
+        return Response({'error': 'Missing reset parameters.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         uid = force_str(urlsafe_base64_decode(uidb64))
@@ -282,7 +294,7 @@ def password_reset_confirm(request):
         return Response({'error': 'Invalid reset link or user does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
     if not default_token_generator.check_token(user, token):
-        return Response({'error': 'The password reset link is invalid or has expired. Please request a new one.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': 'The password reset link is invalid or has expired.'}, status=status.HTTP_400_BAD_REQUEST)
 
     user.set_password(new_password)
     user.save()
@@ -290,6 +302,7 @@ def password_reset_confirm(request):
     return Response({
         'message': 'Password has been updated successfully! You may now log in with your new password.'
     }, status=status.HTTP_200_OK)
+
 
 
 

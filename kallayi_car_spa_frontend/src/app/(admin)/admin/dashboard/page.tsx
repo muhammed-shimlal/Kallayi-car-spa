@@ -82,7 +82,21 @@ function AdminDashboardContent() {
     const [services, setServices] = useState<any[]>([]);
     const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
     const [editingService, setEditingService] = useState<any | null>(null);
-    const [serviceForm, setServiceForm] = useState({ name: '', description: '', price: '', duration_minutes: '' });
+    const [serviceForm, setServiceForm] = useState({ 
+        name: '', 
+        description: '', 
+        price: '', 
+        duration_minutes: '45',
+        tiered_prices: {
+            HATCHBACK: '',
+            SEDAN: '',
+            COMPACT_SUV: '',
+            SUV: '',
+            MUV: '',
+            BIKE: '',
+            LUXURY: ''
+        } as Record<string, string>
+    });
 
     // --- Staff Directory State ---
     const [staffDirectory, setStaffDirectory] = useState<any[]>([]);
@@ -208,37 +222,107 @@ function AdminDashboardContent() {
     const openServiceModal = (service: any | null = null) => {
         if (service) {
             setEditingService(service);
-            setServiceForm({ name: service.name, description: service.description || '', price: String(service.price), duration_minutes: String(service.duration_minutes) });
+            const tieredMap: Record<string, string> = {
+                HATCHBACK: '', SEDAN: '', COMPACT_SUV: '', SUV: '', MUV: '', BIKE: '', LUXURY: ''
+            };
+            if (service.tiered_prices && Array.isArray(service.tiered_prices)) {
+                service.tiered_prices.forEach((tp: any) => {
+                    if (tp.vehicle_type) {
+                        tieredMap[tp.vehicle_type.toUpperCase()] = String(tp.price);
+                    }
+                });
+            }
+            // Fill any empty fields with main service price
+            Object.keys(tieredMap).forEach(k => {
+                if (!tieredMap[k]) tieredMap[k] = String(service.price || '');
+            });
+
+            setServiceForm({ 
+                name: service.name, 
+                description: service.description || '', 
+                price: String(service.price || ''), 
+                duration_minutes: String(service.duration_minutes || '45'),
+                tiered_prices: tieredMap
+            });
         } else {
             setEditingService(null);
-            setServiceForm({ name: '', description: '', price: '', duration_minutes: '' });
+            setServiceForm({ 
+                name: '', 
+                description: '', 
+                price: '', 
+                duration_minutes: '45',
+                tiered_prices: { HATCHBACK: '', SEDAN: '', COMPACT_SUV: '', SUV: '', MUV: '', BIKE: '', LUXURY: '' }
+            });
         }
         setIsServiceModalOpen(true);
+    };
+
+    const applyDefaultPriceToAll = (val: string) => {
+        if (!val) return;
+        setServiceForm(prev => ({
+            ...prev,
+            price: val,
+            tiered_prices: {
+                HATCHBACK: val,
+                SEDAN: val,
+                COMPACT_SUV: val,
+                SUV: val,
+                MUV: val,
+                BIKE: val,
+                LUXURY: val,
+            }
+        }));
+    };
+
+    const getServicePriceRange = (svc: any) => {
+        if (svc.tiered_prices && Array.isArray(svc.tiered_prices) && svc.tiered_prices.length > 0) {
+            const prices = svc.tiered_prices.map((p: any) => parseFloat(p.price)).filter((p: number) => !isNaN(p));
+            if (prices.length > 0) {
+                const min = Math.min(...prices);
+                const max = Math.max(...prices);
+                if (min === max) return `₹${min.toLocaleString()}`;
+                return `₹${min.toLocaleString()} - ₹${max.toLocaleString()}`;
+            }
+        }
+        return `₹${parseFloat(svc.price || 0).toLocaleString()}`;
     };
 
     const saveService = async () => {
         const token = localStorage.getItem('auth_token');
         const url = editingService
-            ? `http://127.0.0.1:8001/api/bookings/services/${editingService.id}/`
+            ? `${API_BASE}/bookings/services/${editingService.id}/`
             : `${API_BASE}/bookings/services/`;
         const method = editingService ? 'PATCH' : 'POST';
+
+        const tieredArray = Object.entries(serviceForm.tiered_prices).map(([v_type, p_val]) => ({
+            vehicle_type: v_type,
+            price: parseFloat(p_val) || parseFloat(serviceForm.price) || 0
+        }));
+
+        const mainPrice = parseFloat(serviceForm.price) || (tieredArray.length > 0 ? tieredArray[0].price : 0);
+
         try {
             const res = await fetch(url, {
                 method,
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                headers: { 
+                    'Authorization': token ? `Token ${token}` : '', 
+                    'Content-Type': 'application/json' 
+                },
                 body: JSON.stringify({ 
-                    ...serviceForm, 
-                    price: parseFloat(serviceForm.price) || 0, 
-                    duration_minutes: parseInt(serviceForm.duration_minutes) || 0 
+                    name: serviceForm.name, 
+                    description: serviceForm.description, 
+                    price: mainPrice, 
+                    duration_minutes: parseInt(serviceForm.duration_minutes) || 45,
+                    tiered_prices: tieredArray
                 })
             });
             if (res.ok) {
-                toast.success('Service saved successfully!');
+                toast.success('Service package saved successfully!');
                 setIsServiceModalOpen(false);
                 fetchServices();
             } else {
                 const data = await res.json();
-                toast.error(data.detail || 'Failed to save service');
+                toast.error(data.detail || 'Failed to save service package');
             }
         } catch (e) { toast.error('Network error'); }
     };
@@ -1403,7 +1487,9 @@ function AdminDashboardContent() {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-5 text-right">
-                                                    <span className="font-syncopate font-bold text-emerald-400">₹{parseFloat(svc.price).toLocaleString()}</span>
+                                                    <span className="font-syncopate font-bold text-emerald-400">
+                                                        {getServicePriceRange(svc)}
+                                                    </span>
                                                 </td>
                                                 <td className="px-6 py-5">
                                                     <div className="flex items-center justify-center gap-2">
@@ -1433,10 +1519,10 @@ function AdminDashboardContent() {
                 )}
             </main>
 
-                {/* SERVICE CREATE/EDIT MODAL */}
+            {/* SERVICE CREATE/EDIT MODAL */}
             {isServiceModalOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
-                    <div className="bg-[#141518] border border-white/10 p-6 sm:p-8 rounded-[2.5rem] w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+                    <div className="bg-[#141518] border border-white/10 p-6 sm:p-8 rounded-[2.5rem] w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)]">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="font-syncopate font-bold tracking-widest text-amber-400">
                                 {editingService ? 'EDIT SERVICE' : 'NEW SERVICE'}
@@ -1446,33 +1532,15 @@ function AdminDashboardContent() {
                             </button>
                         </div>
 
-                        <div className="space-y-4 mb-8">
-                            <div>
-                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Service Name</label>
-                                <input
-                                    type="text" value={serviceForm.name}
-                                    onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
-                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-2"
-                                    placeholder="e.g. Foam Wash & Wax"
-                                />
-                            </div>
-                            <div>
-                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Description</label>
-                                <textarea
-                                    value={serviceForm.description}
-                                    onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
-                                    className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-2 resize-none h-24"
-                                    placeholder="Brief description of the service"
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Price (₹)</label>
+                        <div className="space-y-4 mb-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="sm:col-span-2">
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Service Name</label>
                                     <input
-                                        type="number" value={serviceForm.price}
-                                        onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
-                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-2"
-                                        placeholder="500"
+                                        type="text" value={serviceForm.name}
+                                        onChange={(e) => setServiceForm({ ...serviceForm, name: e.target.value })}
+                                        className="w-full bg-white/5 border border-white/10 py-3.5 px-5 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-1 text-sm"
+                                        placeholder="e.g. Full Spa Body Wash"
                                     />
                                 </div>
                                 <div>
@@ -1480,9 +1548,93 @@ function AdminDashboardContent() {
                                     <input
                                         type="number" value={serviceForm.duration_minutes}
                                         onChange={(e) => setServiceForm({ ...serviceForm, duration_minutes: e.target.value })}
-                                        className="w-full bg-white/5 border border-white/10 py-4 px-6 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-2"
-                                        placeholder="60"
+                                        className="w-full bg-white/5 border border-white/10 py-3.5 px-5 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-1 text-sm"
+                                        placeholder="45"
                                     />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold ml-2">Description</label>
+                                <textarea
+                                    value={serviceForm.description}
+                                    onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 py-3.5 px-5 rounded-xl text-white focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all mt-1 resize-none h-20 text-xs"
+                                    placeholder="Brief description of the service"
+                                />
+                            </div>
+
+                            {/* Quick Apply Default Price */}
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-amber-400 font-bold">
+                                        Default / Base Fallback Price (₹)
+                                    </label>
+                                    {serviceForm.price && (
+                                        <button
+                                            type="button"
+                                            onClick={() => applyDefaultPriceToAll(serviceForm.price)}
+                                            className="text-[10px] font-bold uppercase tracking-wider text-[#01FFFF] hover:underline"
+                                        >
+                                            ⚡ Apply Price to All Body-Types
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="number"
+                                        value={serviceForm.price}
+                                        onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
+                                        className="flex-1 bg-black/40 border border-white/10 py-2.5 px-4 rounded-xl text-white text-sm focus:outline-none focus:border-amber-400"
+                                        placeholder="e.g. 500"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => applyDefaultPriceToAll(serviceForm.price)}
+                                        className="bg-amber-400/20 text-amber-400 border border-amber-400/30 hover:bg-amber-400 hover:text-black px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+                                    >
+                                        Apply to All
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Body-Type Pricing Matrix */}
+                            <div className="space-y-2">
+                                <label className="font-grotesk text-[10px] uppercase tracking-[0.2em] text-[#8E939B] font-bold block ml-1">
+                                    Body-Type Pricing Matrix (₹)
+                                </label>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                                    {[
+                                        { key: 'HATCHBACK', label: 'Hatchback', icon: '🚗' },
+                                        { key: 'SEDAN', label: 'Sedan', icon: '🚘' },
+                                        { key: 'COMPACT_SUV', label: 'Compact SUV', icon: '🚙' },
+                                        { key: 'SUV', label: 'Full SUV', icon: '🚙' },
+                                        { key: 'MUV', label: 'MUV', icon: '🚐' },
+                                        { key: 'BIKE', label: 'Bike', icon: '🏍️' },
+                                        { key: 'LUXURY', label: 'Luxury', icon: '🏎️' },
+                                    ].map(bt => (
+                                        <div key={bt.key} className="bg-black/30 border border-white/5 p-2.5 rounded-xl space-y-1">
+                                            <span className="text-[10px] font-bold text-zinc-300 flex items-center gap-1">
+                                                <span>{bt.icon}</span> {bt.label}
+                                            </span>
+                                            <input
+                                                type="number"
+                                                value={serviceForm.tiered_prices[bt.key] || ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setServiceForm(prev => ({
+                                                        ...prev,
+                                                        tiered_prices: {
+                                                            ...prev.tiered_prices,
+                                                            [bt.key]: val
+                                                        }
+                                                    }));
+                                                }}
+                                                placeholder={serviceForm.price || "₹ Price"}
+                                                className="w-full bg-[#141518] border border-white/10 px-3 py-2 rounded-lg text-xs font-mono font-bold text-[#01FFFF] outline-none focus:border-[#01FFFF]"
+                                            />
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         </div>

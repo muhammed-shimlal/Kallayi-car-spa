@@ -65,10 +65,14 @@ class Coupon(models.Model):
 
 class CustomerVehicle(models.Model):
     VEHICLE_TYPE_CHOICES = [
-        ('CAR', 'Car'),
+        ('HATCHBACK', 'Hatchback'),
+        ('SEDAN', 'Sedan'),
+        ('SUV', 'SUV'),
         ('BIKE', 'Bike'),
-        ('AUTO', 'Auto'),
         ('VAN', 'Van'),
+        ('LUXURY', 'Luxury'),
+        ('CAR', 'Car'),
+        ('AUTO', 'Auto'),
         ('TRUCK', 'Truck'),
     ]
 

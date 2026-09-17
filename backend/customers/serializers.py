@@ -44,10 +44,12 @@ class CustomerVehicleSerializer(serializers.ModelSerializer):
 class CustomerRegistrationSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=150, required=True)
     phone = serializers.CharField(max_length=20, required=True)
-    email = serializers.EmailField(required=True)
+    email = serializers.EmailField(required=False, allow_blank=True, default='')
     password = serializers.CharField(max_length=128, required=True, write_only=True)
 
     def validate_email(self, value):
+        if not value:
+            return ''
         email_clean = value.strip().lower()
         if not email_clean.endswith('@gmail.com'):
             raise serializers.ValidationError("Please use a valid Gmail address (@gmail.com). Temp mails are not allowed.")

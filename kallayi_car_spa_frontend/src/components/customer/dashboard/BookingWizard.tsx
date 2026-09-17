@@ -4,6 +4,8 @@ import { X, Car, MapPin, Calendar, Clock, Award, CreditCard, ChevronRight, Plus,
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { Vehicle } from './types';
+import { SmartVehicleSelector } from '@/components/ui/smart-vehicle-selector';
+import { DjangoVehicleType } from '@/lib/vehicleCatalog';
 
 export interface SlotInfo {
     time: string;
@@ -34,7 +36,12 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
 
     // Add Vehicle Modal States
     const [isAddVehicleOpen, setIsAddVehicleOpen] = useState(false);
-    const [newVehicleForm, setNewVehicleForm] = useState({ make: '', model: '', plate: '' });
+    const [newVehicleForm, setNewVehicleForm] = useState<{ make: string; model: string; plate: string; vehicle_type: DjangoVehicleType }>({ 
+        make: '', 
+        model: '', 
+        plate: '', 
+        vehicle_type: 'HATCHBACK' 
+    });
     const [isSavingVehicle, setIsSavingVehicle] = useState(false);
 
     useEffect(() => {
@@ -60,6 +67,7 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                 make: newVehicleForm.make,
                 model: newVehicleForm.model,
                 plate_number: newVehicleForm.plate,
+                vehicle_type: newVehicleForm.vehicle_type,
             };
             const res = await api.post('/customer-vehicles/', payload);
             const created = res.data;
@@ -68,10 +76,11 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                 make: created.make,
                 model: created.model,
                 plate: created.plate_number,
+                vehicle_type: created.vehicle_type,
             };
             setVehiclesList(prev => [...prev, newVehicle]);
             setSelectedVehicle(newVehicle);
-            setNewVehicleForm({ make: '', model: '', plate: '' });
+            setNewVehicleForm({ make: '', model: '', plate: '', vehicle_type: 'HATCHBACK' });
             setIsAddVehicleOpen(false);
             toast.success("Vehicle successfully added to your garage!");
         } catch (err: any) {
@@ -100,17 +109,30 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
         return hour <= currentHour;
     };
 
+    // Body-Type Package Fetch & Package Invalidation Effect
     useEffect(() => {
         const fetchPackages = async () => {
             try {
-                const res = await api.get('/service-packages/'); 
-                setServicePackages(res.data);
+                const vType = (selectedVehicle as any)?.vehicle_type || (selectedVehicle as any)?.type;
+                const params = vType ? { vehicle_type: vType } : {};
+                const res = await api.get('/service-packages/', { params }); 
+                const pkgs = res.data.results || res.data || [];
+                setServicePackages(pkgs);
+
+                // Package invalidation check: if selected package is no longer valid for vehicle body type
+                if (selectedPackage && vType) {
+                    const isStillValid = pkgs.some((p: any) => p.id === selectedPackage.id);
+                    if (!isStillValid) {
+                        setSelectedPackage(null);
+                        toast.info(`Vehicle body type changed. Selected service package reset for ${vType}.`);
+                    }
+                }
             } catch (error) {
                 console.error("Failed to fetch packages", error);
             }
         };
         fetchPackages();
-    }, []);
+    }, [selectedVehicle]);
 
     useEffect(() => {
         const fetchSlots = async () => {
@@ -297,7 +319,7 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                         >
                                             <div>
                                                 <span className="font-bold block text-sm sm:text-base">{pkg.name}</span>
-                                                <span className="text-xs text-spa-sky font-bold">₹{parseFloat(pkg.price)}</span>
+                                                <span className="text-xs text-spa-sky font-bold">₹{parseFloat(pkg.base_price || pkg.price)}</span>
                                             </div>
                                             <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${selectedPackage?.id === pkg.id ? 'border-spa-sky bg-spa-sky' : 'border-gray-500'}`}>
                                                 {selectedPackage?.id === pkg.id && <div className="w-2 h-2 rounded-full bg-slate-950" />}
@@ -462,17 +484,17 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
             {/* Inline Add Vehicle Modal Overlay */}
             <AnimatePresence>
                 {isAddVehicleOpen && (
-                    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-out]">
+                    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto overscroll-contain">
                         <motion.div 
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ duration: 0.2 }}
-                            className="bg-[#0f0f0f] border border-white/10 p-6 sm:p-8 rounded-3xl w-full max-w-md shadow-2xl relative"
+                            className="bg-[#0f0f0f] border border-white/10 p-5 sm:p-6 rounded-3xl w-full max-w-md shadow-2xl relative max-h-[90dvh] overflow-y-auto overscroll-contain flex flex-col my-auto"
                         >
-                            <div className="flex justify-between items-center mb-6 pb-3 border-b border-white/10">
+                            <div className="flex justify-between items-center mb-4 pb-2.5 border-b border-white/10 shrink-0">
                                 <div>
-                                    <h3 className="text-lg font-bold uppercase tracking-wider text-white">Register New Vehicle</h3>
+                                    <h3 className="text-base sm:text-lg font-bold uppercase tracking-wider text-white">Register New Vehicle</h3>
                                     <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5 font-semibold">Add car to your garage for instant selection</p>
                                 </div>
                                 <button 
@@ -485,42 +507,34 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                 </button>
                             </div>
                             
-                            <form onSubmit={handleAddVehicleSubmit} className="space-y-4">
+                            <form onSubmit={handleAddVehicleSubmit} className="space-y-4 flex-1 overflow-y-auto pr-1">
                                 <div>
-                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 block">Make (e.g. BMW, Toyota)</label>
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 block">License Plate Number</label>
                                     <input 
                                         required
                                         type="text"
-                                        placeholder="e.g. BMW"
-                                        value={newVehicleForm.make}
-                                        onChange={e => setNewVehicleForm({ ...newVehicleForm, make: e.target.value })}
-                                        className="w-full min-h-[44px] bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-white outline-none focus:border-spa-sky transition"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 block">Model (e.g. M3, Camry)</label>
-                                    <input 
-                                        required
-                                        type="text"
-                                        placeholder="e.g. M3 Series"
-                                        value={newVehicleForm.model}
-                                        onChange={e => setNewVehicleForm({ ...newVehicleForm, model: e.target.value })}
-                                        className="w-full min-h-[44px] bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-white outline-none focus:border-spa-sky transition"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 block">Plate Number</label>
-                                    <input 
-                                        required
-                                        type="text"
-                                        placeholder="e.g. KL-10-XX-1234"
+                                        placeholder="e.g. KL 10 AV 1234"
                                         value={newVehicleForm.plate}
-                                        onChange={e => setNewVehicleForm({ ...newVehicleForm, plate: e.target.value })}
-                                        className="w-full min-h-[44px] bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-white outline-none focus:border-spa-sky transition uppercase"
+                                        onChange={e => setNewVehicleForm({ ...newVehicleForm, plate: e.target.value.toUpperCase() })}
+                                        className="w-full min-h-[44px] bg-white/5 border border-white/10 px-4 py-3 rounded-xl text-white outline-none focus:border-spa-sky transition uppercase font-mono font-bold tracking-wider"
                                     />
                                 </div>
 
-                                <div className="flex gap-3 pt-4">
+                                <SmartVehicleSelector
+                                    initialMake={newVehicleForm.make}
+                                    initialModel={newVehicleForm.model}
+                                    initialBodyType={newVehicleForm.vehicle_type}
+                                    onVehicleChange={(vData) => {
+                                        setNewVehicleForm(prev => ({
+                                            ...prev,
+                                            make: vData.make,
+                                            model: vData.model,
+                                            vehicle_type: vData.vehicle_type
+                                        }));
+                                    }}
+                                />
+
+                                <div className="flex gap-3 pt-4 sticky bottom-0 bg-[#0f0f0f] pb-1">
                                     <button
                                         type="button"
                                         onClick={() => setIsAddVehicleOpen(false)}

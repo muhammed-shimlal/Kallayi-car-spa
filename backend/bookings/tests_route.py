@@ -1,22 +1,22 @@
 from django.test import TestCase
 from django.utils import timezone
 from bookings.models import Booking, ServicePackage
-from customers.models import Customer
-from fleet.models import Vehicle
+from customers.models import Customer, CustomerVehicle
 from django.contrib.auth.models import User
 from rest_framework.test import APIClient
 from rest_framework import status
 
 class RouteOptimizationTest(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='driver', password='password')
-        self.customer = Customer.objects.create(user=User.objects.create_user(username='cust', password='pwd'))
-        self.vehicle = Vehicle.objects.create(owner=self.customer, model='Test Car', plate_number='TEST-123')
+        self.user = User.objects.create_user(username='driver', password='password', is_staff=True)
+        self.cust_user = User.objects.create_user(username='cust', password='pwd')
+        self.customer = Customer.objects.create(user=self.cust_user)
+        self.vehicle = CustomerVehicle.objects.create(customer=self.cust_user, make='Test', model='Test Car', plate_number='TEST-123')
         self.package = ServicePackage.objects.create(name='Wash', price=10.0, duration_minutes=30)
         self.client = APIClient()
 
     def test_booking_address_storage(self):
-        # Create booking with address
+        self.client.force_authenticate(user=self.cust_user)
         url = '/api/bookings/'
         data = {
             'customer': self.customer.id,
@@ -36,7 +36,7 @@ class RouteOptimizationTest(TestCase):
         self.assertEqual(booking.longitude, 20.0)
 
     def test_driver_jobs_sorted_by_time(self):
-        # Create two bookings at different times
+        self.client.force_authenticate(user=self.user)
         time1 = timezone.now()
         time2 = time1 + timezone.timedelta(hours=2)
         
@@ -54,6 +54,5 @@ class RouteOptimizationTest(TestCase):
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 2)
-        # Should be sorted by time, so b2 (time1) comes before b1 (time2)
         self.assertEqual(response.data[0]['id'], b2.id)
         self.assertEqual(response.data[1]['id'], b1.id)
