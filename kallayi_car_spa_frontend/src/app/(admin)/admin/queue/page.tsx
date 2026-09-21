@@ -36,7 +36,7 @@ interface BookingCardData {
     customer_id: number | null;
     price: number;
     technician_name: string | null;
-    technician_id: number | null;
+    technician_id: string | number | null;
     created_at: string | null;
     time_slot: string | null;
     bay_assignment: string | null;
@@ -139,13 +139,18 @@ function QueueCard({
     col: Column;
     onCheckout?: (id: number) => void;
     staffMembers?: StaffMember[];
-    onAssignStaff?: (bookingId: number, staffId: number) => void;
+    onAssignStaff?: (bookingId: number, staffId: string) => void;
     onCancel?: (card: BookingCardData) => void;
     onEditService?: (id: number) => void;
     onMoveStage?: (id: number, targetColId: string) => void;
     isDragging?: boolean;
     dragProps?: any;
 }) {
+    const assignedStaff = staffMembers?.find(
+        (s) => String(s.user_id) === String(card.technician_id) || String(s.id) === String(card.technician_id)
+    );
+    const displayTechName = card.technician_name || assignedStaff?.first_name || assignedStaff?.name || null;
+
     return (
         <div
             {...dragProps}
@@ -233,20 +238,19 @@ function QueueCard({
                                 : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
                         }`}
                         onClick={(e) => e.stopPropagation()}
-                        value={card.technician_id || ""}
+                        value={card.technician_id ? String(card.technician_id) : ""}
                         onChange={(e) => {
                             if (onAssignStaff && e.target.value) {
-                                const staffId = parseInt(e.target.value);
-                                if (!isNaN(staffId)) onAssignStaff(card.id, staffId);
+                                onAssignStaff(card.id, e.target.value);
                             }
                         }}
                     >
                         <option value="" disabled className="bg-[#141518] text-[#8E939B]">
-                            {card.technician_name ? `Tech: ${card.technician_name}` : "Assign Tech..."}
+                            {displayTechName ? `Tech: ${displayTechName}` : "Assign Tech..."}
                         </option>
                         {staffMembers?.map(s => (
-                            <option key={s.id} value={s.user_id || s.id} className="bg-[#141518] text-white">
-                                {s.first_name || s.username} ({s.role})
+                            <option key={String(s.id)} value={String(s.user_id || s.id)} className="bg-[#141518] text-white">
+                                {s.first_name || s.name || s.username} ({s.role})
                             </option>
                         ))}
                     </select>
@@ -426,30 +430,50 @@ export default function AdminQueueBoard() {
     }, [matchedCustomer, checkoutModal.customerId]);
 
     const fetchQueue = useCallback(async (silent = false) => {
-        const token = localStorage.getItem('auth_token');
-        if (!token) return router.push('/login');
         if (!silent) setIsLoading(true);
 
         try {
-            const endpoint = viewFilter === 'upcoming' 
-                ? `${getApiBase()}/bookings/live-queue/?type=upcoming`
-                : `${getApiBase()}/bookings/live-queue/?date=${selectedDate}`;
-            const res = await fetch(endpoint, {
-                headers: { 'Authorization': `Token ${token}` }
-            });
+            const queryParams = new URLSearchParams();
+            if (viewFilter === 'upcoming') {
+                // upcoming view
+            } else if (selectedDate) {
+                queryParams.append('date', selectedDate);
+            }
+
+            const res = await fetch(`/api/bookings?${queryParams.toString()}`);
             if (!res.ok) throw new Error('API error');
 
-            const data: BookingCardData[] = await res.json();
+            const json = await res.json();
+            const data: any[] = json.data || (Array.isArray(json) ? json : []);
+
             const newCols: Record<string, BookingCardData[]> = { WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [] };
-            data.forEach(card => {
+            data.forEach((card: any) => {
+                const mappedCard: BookingCardData = {
+                    id: card.id,
+                    status: card.status,
+                    plate_number: card.vehicle?.plate_number || card.plate_number || 'KL-XX-0000',
+                    vehicle_make: card.vehicle?.make || card.vehicle_make,
+                    vehicle_model: `${card.vehicle?.make || ''} ${card.vehicle?.model || ''}`.trim() || card.vehicle_model || 'Vehicle',
+                    service_name: card.service_package?.name || card.service_name || 'Car Spa Service',
+                    service_details: card.service_package?.description || card.service_details || '',
+                    customer_name: card.customer?.name || card.customer_name || 'Customer',
+                    customer_phone: card.customer?.phone_number || card.customer_phone || '',
+                    customer_id: card.customer_id,
+                    price: Number(card.final_price || card.base_price || card.price || 0),
+                    technician_name: card.technician?.first_name || card.technician?.username || card.technician_name || null,
+                    technician_id: card.technician_id,
+                    created_at: card.created_at,
+                    time_slot: card.time_slot,
+                    bay_assignment: card.bay_assignment,
+                };
+
                 let targetCol = card.status;
                 if (card.status === 'IN_PROGRESS') {
-                    if (card.bay_assignment === 'Bay 1') targetCol = 'IN_BAY_1';
-                    else if (card.bay_assignment === 'Bay 2') targetCol = 'IN_BAY_2';
+                    if (card.bay_assignment === 'Bay 2') targetCol = 'IN_BAY_2';
                     else targetCol = 'IN_BAY_1';
                 }
                 const colKey = newCols[targetCol] !== undefined ? targetCol : 'WAITING';
-                newCols[colKey].push(card);
+                newCols[colKey].push(mappedCard);
             });
             setColumns(newCols);
             setIsConnected(true);
@@ -457,27 +481,20 @@ export default function AdminQueueBoard() {
 
             if (!silent) {
                 try {
-                    const staffRes = await fetch(`${getApiBase()}/staff/directory/`, {
-                        headers: { 'Authorization': `Token ${token}` }
-                    });
-                    if (staffRes.ok) {
+                    const staffRes = await fetch(`/api/staff/directory`).catch(() => null);
+                    if (staffRes && staffRes.ok) {
                         const staffData = await staffRes.json();
-                        const list = Array.isArray(staffData) ? staffData : (staffData.results || []);
+                        const list = Array.isArray(staffData) ? staffData : (staffData.results || staffData.data || []);
                         const activeList = list.filter((s: any) => s.is_active !== false);
-                        const assignable = activeList.filter((s: StaffMember) => 
-                            ['WASHER', 'TECHNICIAN', 'DRIVER', 'MANAGER', 'ADMIN'].includes((s.role || '').toUpperCase())
-                        );
-                        setStaffMembers(assignable.length > 0 ? assignable : activeList);
+                        setStaffMembers(activeList);
                     }
                 } catch (e) { console.error('[fetchQueue] Staff fetch error:', e); }
 
                 try {
-                    const svcRes = await fetch(`${getApiBase()}/service-packages/`, {
-                        headers: { 'Authorization': `Token ${token}` }
-                    });
-                    if (svcRes.ok) {
+                    const svcRes = await fetch(`/api/service-packages`).catch(() => null);
+                    if (svcRes && svcRes.ok) {
                         const svcData = await svcRes.json();
-                        const svcList = Array.isArray(svcData) ? svcData : (svcData.results || []);
+                        const svcList = Array.isArray(svcData) ? svcData : (svcData.results || svcData.data || []);
                         setServicePackages(svcList);
                     }
                 } catch { /* ignore err */ }
@@ -487,7 +504,7 @@ export default function AdminQueueBoard() {
         } finally {
             setIsLoading(false);
         }
-    }, [router, selectedDate, viewFilter]);
+    }, [selectedDate, viewFilter]);
 
     useEffect(() => {
         fetchQueue();
@@ -505,14 +522,11 @@ export default function AdminQueueBoard() {
 
         const timer = setTimeout(async () => {
             setIsSearchingKhata(true);
-            const token = localStorage.getItem('auth_token');
             try {
-                const res = await fetch(`${getApiBase()}/customers/search/?search=${encodeURIComponent(khataSearchInput.trim())}`, {
-                    headers: { 'Authorization': `Token ${token}` }
-                });
-                if (res.ok) {
+                const res = await fetch(`/api/customers/search?search=${encodeURIComponent(khataSearchInput.trim())}`).catch(() => null);
+                if (res && res.ok) {
                     const data = await res.json();
-                    setKhataSearchResults(Array.isArray(data) ? data : (data.results || []));
+                    setKhataSearchResults(Array.isArray(data) ? data : (data.results || data.data || []));
                     setIsDropdownOpen(true);
                 }
             } catch (e) {
@@ -553,22 +567,27 @@ export default function AdminQueueBoard() {
             return newCols;
         });
 
-        const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${getApiBase()}/bookings/update-stage/${bookingId}/`, {
+            const destStatus = targetColId.startsWith('IN_BAY') ? 'IN_PROGRESS' : targetColId;
+            const bayAssignment = targetColId.startsWith('IN_BAY') ? targetColId.replace('IN_BAY_', 'Bay ') : null;
+
+            const res = await fetch(`/api/bookings/${bookingId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    new_status: targetColId.startsWith('IN_BAY') ? 'IN_PROGRESS' : targetColId,
-                    bay_assignment: targetColId.startsWith('IN_BAY') ? targetColId.replace('IN_BAY_', 'Bay ') : null,
+                    status: destStatus,
+                    bay_assignment: bayAssignment,
                 }),
             });
-            if (!res.ok) throw new Error('API failed');
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to move stage');
+            }
             const destCol = COLUMNS.find(c => c.id === targetColId);
-            toast.success(`Vehicle moved to ${destCol?.title || targetColId}`);
+            toast.success(`Vehicle moved to ${destCol?.title || targetColId}! WhatsApp update dispatched.`);
             fetchQueue(true);
-        } catch {
-            toast.error("Failed to move vehicle stage.");
+        } catch (err: any) {
+            toast.error(err.message || "Failed to move vehicle stage.");
             fetchQueue(true);
         }
     };
@@ -587,11 +606,11 @@ export default function AdminQueueBoard() {
         if (!deleteTargetBooking) return;
         const id = deleteTargetBooking.id;
         setIsDeleting(true);
-        const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${getApiBase()}/bookings/${id}/`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' }
+            const res = await fetch(`/api/bookings/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'CANCELLED' }),
             });
             if (!res.ok) throw new Error('API failed');
 
@@ -604,11 +623,11 @@ export default function AdminQueueBoard() {
                 return newCols;
             });
 
-            toast.success("Booking cancelled & deleted successfully!");
+            toast.success("Booking cancelled successfully!");
             setDeleteTargetBooking(null);
             fetchQueue(true);
         } catch {
-            toast.error("Failed to delete booking.");
+            toast.error("Failed to cancel booking.");
         } finally {
             setIsDeleting(false);
         }
@@ -625,12 +644,11 @@ export default function AdminQueueBoard() {
             toast.error("Please select a service package.");
             return;
         }
-        const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${getApiBase()}/bookings/${editBookingId}/`, {
+            const res = await fetch(`/api/bookings/${editBookingId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ service_package: parseInt(newPackageId) })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service_package_id: parseInt(newPackageId) })
             });
             if (!res.ok) throw new Error('API failed');
             toast.success("Service package updated!");
@@ -642,21 +660,18 @@ export default function AdminQueueBoard() {
         }
     };
 
-    const handleAssignStaff = async (bookingId: number, staffId: number) => {
-        const token = localStorage.getItem('auth_token');
-        const baseUrl = getApiBase();
+    const handleAssignStaff = async (bookingId: number, staffId: string) => {
         try {
-            const res = await fetch(`${baseUrl}/bookings/update-stage/${bookingId}/`, {
+            const res = await fetch(`/api/bookings/${bookingId}`, {
                 method: 'PATCH',
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    assigned_technician_id: staffId,
-                    technician_id: staffId,
-                    technician: staffId
+                    technician_id: staffId
                 }),
             });
             if (!res.ok) {
-                toast.error(`Failed to assign technician.`);
+                const err = await res.json().catch(() => ({}));
+                toast.error(err.error || `Failed to assign technician.`);
                 return;
             }
             toast.success('Worker assigned successfully!');
@@ -670,23 +685,9 @@ export default function AdminQueueBoard() {
         const foundCard = queueData.find(c => c.id === bookingId);
         if (!foundCard) return;
 
-        let initialPhone = '';
+        let initialPhone = foundCard.customer_phone || '';
         let initialCustName = foundCard.customer_name || '';
         let initialCustId = foundCard.customer_id || null;
-
-        const token = localStorage.getItem('auth_token');
-        if (foundCard.plate_number && token) {
-            try {
-                const res = await fetch(`${getApiBase()}/vehicles/lookup/?plate=${encodeURIComponent(foundCard.plate_number)}`, {
-                    headers: { 'Authorization': `Token ${token}` }
-                });
-                if (res.ok) {
-                    const lookupData = await res.json();
-                    if (lookupData.phone) initialPhone = lookupData.phone;
-                    if (lookupData.customer_name) initialCustName = lookupData.customer_name;
-                }
-            } catch { /* fallback silently */ }
-        }
 
         setCheckoutModal({ 
             isOpen: true, 
@@ -736,51 +737,59 @@ export default function AdminQueueBoard() {
             finalCashAmount = finalCashAmount - changeToGiveBack; 
         }
 
-        const token = localStorage.getItem('auth_token');
+        const upiAmount = checkoutModal.method === 'UPI' && !checkoutModal.isSplit
+            ? checkoutModal.totalAmount
+            : (checkoutModal.upi || 0);
+
         try {
-            const formData = new FormData();
-            const upiAmount = checkoutModal.method === 'UPI' && !checkoutModal.isSplit
-                ? checkoutModal.totalAmount
-                : (checkoutModal.upi || 0);
+            const payload = {
+                booking_id: checkoutModal.bookingId!,
+                split_cash: finalCashAmount,
+                split_online: upiAmount,
+                split_khata: totalKhata,
+                payment_method: checkoutModal.isSplit ? 'SPLIT' : checkoutModal.method,
+            };
 
-            formData.append('amount_cash', String(finalCashAmount));
-            formData.append('amount_upi', String(upiAmount));
-            formData.append('amount_khata', String(totalKhata));
-            
-            const targetCustId = checkoutModal.customerId || (matchedCustomer ? matchedCustomer.id : null);
-            if (targetCustId) {
-                formData.append('customer_id', String(targetCustId));
-            }
-            formData.append('customer_name', checkoutModal.customerName || '');
-            formData.append('phone_number', checkoutModal.phoneNumber || '');
-            formData.append('vehicle_model', checkoutModal.vehicleModel || '');
-            formData.append('plate_number', checkoutModal.plateNumber || '');
-
-            if (activePhotoFile) {
-                formData.append('number_plate_image', activePhotoFile);
-            }
-
-            const res = await fetch(`${getApiBase()}/bookings/${checkoutModal.bookingId}/checkout/`, {
+            const res = await fetch('/api/pos/checkout', {
                 method: 'POST',
-                headers: { 'Authorization': `Token ${token}` },
-                body: formData,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
             });
-            if (!res.ok) throw new Error('API failed');
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Checkout failed.');
+            }
+
+            const invoiceId = data.data?.invoice?.id;
 
             toast.dismiss();
             toast((t) => (
-                <div className="flex items-center justify-between gap-4 p-1">
+                <div className="flex flex-col gap-2 p-1">
                     <span className="font-bold text-emerald-400 text-xs sm:text-sm">
-                        Vehicle Complete &amp; Checkout Successful!
+                        Vehicle Complete &amp; Checkout Successful! WhatsApp invoice sent.
                     </span>
-                    <button 
-                        onClick={() => toast.dismiss(t.id)} 
-                        className="px-4 py-2 bg-[#141518] hover:bg-white/20 border border-white/20 text-white rounded-xl text-xs font-bold transition flex items-center justify-center tracking-widest uppercase active:scale-95 touch-manipulation"
-                    >
-                        Done
-                    </button>
+                    <div className="flex items-center gap-2 pt-1">
+                        {invoiceId && (
+                            <button 
+                                onClick={() => {
+                                    window.open(`/invoice-preview?id=${invoiceId}`, '_blank');
+                                    toast.dismiss(t.id);
+                                }}
+                                className="px-3 py-1.5 bg-[#01FFFF] hover:bg-[#01FFFF]/80 text-black rounded-lg text-xs font-bold transition flex items-center justify-center uppercase active:scale-95"
+                            >
+                                View Receipt #INV-{invoiceId}
+                            </button>
+                        )}
+                        <button 
+                            onClick={() => toast.dismiss(t.id)} 
+                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition uppercase"
+                        >
+                            Done
+                        </button>
+                    </div>
                 </div>
-            ), { duration: 5000 });
+            ), { duration: 6000 });
 
             setKhataProofFile(null);
             if (khataProofPreview) {
@@ -804,8 +813,8 @@ export default function AdminQueueBoard() {
                 method: 'CASH' 
             });
             fetchQueue(true);
-        } catch {
-            toast.error('Failed to checkout vehicle.');
+        } catch (err: any) {
+            toast.error(err.message || 'Failed to checkout vehicle.');
         }
     };
 

@@ -15,22 +15,37 @@ class ServicePackageSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_base_price(self, obj):
+        return str(obj.price)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
         request = self.context.get('request')
         v_type = None
         if request:
             v_type = request.query_params.get('vehicle_type')
         
+        base_price_str = str(instance.price or 0)
+        data['base_price'] = base_price_str
+        
         if v_type:
             v_upper = v_type.strip().upper()
-            prices = getattr(obj, '_prefetched_objects_cache', {}).get('tiered_prices')
+            prices = getattr(instance, '_prefetched_objects_cache', {}).get('tiered_prices')
             if prices is not None:
                 match = next((p for p in prices if p.vehicle_type.upper() == v_upper), None)
             else:
-                match = obj.tiered_prices.filter(vehicle_type__iexact=v_upper).first()
-            if match:
-                return str(match.price)
+                match = instance.tiered_prices.filter(vehicle_type__iexact=v_upper).first()
+            
+            if match and float(match.price) > 0:
+                data['price'] = str(match.price)
+                data['final_price'] = str(match.price)
+            else:
+                data['price'] = base_price_str
+                data['final_price'] = base_price_str
+        else:
+            data['price'] = base_price_str
+            data['final_price'] = base_price_str
 
-        return str(obj.price)
+        return data
 
     def create(self, validated_data):
         tiered_prices_data = validated_data.pop('tiered_prices', [])
@@ -51,18 +66,16 @@ class ServicePackageSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
 
         if tiered_prices_data is not None:
+            instance.tiered_prices.all().delete()
             for price_data in tiered_prices_data:
                 v_type = price_data.get('vehicle_type')
                 price_val = price_data.get('price')
-                if v_type:
-                    ServicePackagePrice.objects.update_or_create(
+                if v_type and price_val is not None:
+                    ServicePackagePrice.objects.create(
                         package=instance,
                         vehicle_type=v_type,
-                        defaults={'price': price_val}
+                        price=price_val
                     )
-            first_price = instance.tiered_prices.first()
-            if first_price:
-                instance.price = first_price.price
 
         instance.save()
         return instance

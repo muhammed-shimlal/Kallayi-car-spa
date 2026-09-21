@@ -106,83 +106,95 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const userQuery = useQuery({
         queryKey: ['userMe'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/core/users/me/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/auth/me`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
-            setAdminName(data.first_name || data.username);
+            setAdminName(data.first_name || data.username || 'Admin');
             return data;
         },
-        enabled: !!token
+        enabled: true
+    });
+
+    const overviewQuery = useQuery({
+        queryKey: ['dashboardOverview'],
+        queryFn: async () => {
+            const res = await fetch(`${API_BASE}/dashboard/overview`, { headers: fetchHeaders });
+            if (!res.ok) throw new Error('Failed to fetch dashboard overview');
+            return res.json();
+        },
+        refetchInterval: 10000
     });
 
     const kpiQuery = useQuery<KpiSummary>({
-        queryKey: ['kpiData'],
+        queryKey: ['kpiData', overviewQuery.data],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/dashboard/kpi_summary/`, { headers: fetchHeaders });
+            if (overviewQuery.data?.kpiData) {
+                return overviewQuery.data.kpiData;
+            }
+            const res = await fetch(`${API_BASE}/dashboard/overview`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed to fetch KPI');
-            return res.json();
+            const data = await res.json();
+            return data.kpiData;
         },
-        enabled: !!token
+        enabled: true
     });
 
     const chartQuery = useQuery({
-        queryKey: ['chartData'],
+        queryKey: ['chartData', overviewQuery.data],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: fetchHeaders });
+            if (overviewQuery.data?.chartData) {
+                return overviewQuery.data.chartData;
+            }
+            const res = await fetch(`${API_BASE}/dashboard/overview`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed to fetch chart data');
             const data = await res.json();
-            
-            // Map the backend data to the exact format Recharts needs
-            // This handles multiple common backend naming conventions automatically
-            return data.map((item: any) => ({
-                name: item.date || item.day || item.name, 
-                value: Number(item.total || item.revenue || item.value || item.amount || 0)
-            }));
+            return data.chartData || [];
         },
-        enabled: !!token
+        enabled: true
     });
 
     const bookingsQuery = useQuery<RecentBooking[]>({
-        queryKey: ['recentBookings'],
+        queryKey: ['recentBookings', overviewQuery.data],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/bookings/`, { headers: fetchHeaders });
+            if (overviewQuery.data?.recentBookings) {
+                return overviewQuery.data.recentBookings;
+            }
+            const res = await fetch(`${API_BASE}/bookings`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
             const b = await res.json();
-            return Array.isArray(b) ? b : (Array.isArray(b.results) ? b.results : []);
+            return Array.isArray(b) ? b : (Array.isArray(b.results) ? b.results : (b.data || []));
         },
-        enabled: !!token
+        enabled: true
     });
 
     const todayWashedQuery = useQuery({
-        queryKey: ['todayWashedVehicles'],
+        queryKey: ['todayWashedVehicles', overviewQuery.data],
         queryFn: async () => {
-            const apiBase = getApiBaseUrl();
-            const res = await fetch(`${apiBase}/bookings/today-washed/`, { headers: fetchHeaders });
-            if (!res.ok) {
-                const fallbackRes = await fetch(`${apiBase}/bookings/?status=COMPLETED&date=today`, { headers: fetchHeaders });
-                if (!fallbackRes.ok) throw new Error('Failed to fetch today washed vehicles');
-                const data = await fallbackRes.json();
-                const list = Array.isArray(data) ? data : (data.results || []);
+            if (overviewQuery.data?.todayWashedVehicles) {
+                const list = overviewQuery.data.todayWashedVehicles;
                 return { count: list.length, today_washed_count: list.length, results: list };
             }
-            return res.json();
+            const res = await fetch(`${API_BASE}/dashboard/overview`, { headers: fetchHeaders });
+            if (!res.ok) throw new Error('Failed to fetch today washed vehicles');
+            const data = await res.json();
+            const list = data.todayWashedVehicles || [];
+            return { count: list.length, today_washed_count: list.length, results: list };
         },
-        enabled: !!token,
+        enabled: true,
         refetchInterval: 10000
     });
 
     const expensesQuery = useQuery<Expense[]>({
         queryKey: ['expenses'],
         queryFn: async () => {
-            const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
-            const res = await fetch(`${API_BASE}/finance/general-expenses/`, { 
-                headers: { 'Authorization': `Token ${token}` } 
+            const res = await fetch(`${API_BASE}/finance/expenses`, { 
+                headers: fetchHeaders 
             });
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             if (Array.isArray(data)) return data;
-            if (data && Array.isArray(data.results)) return data.results;
             if (data && Array.isArray(data.data)) return data.data;
+            if (data && Array.isArray(data.results)) return data.results;
             return [];
         },
         enabled: true
@@ -191,53 +203,57 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const expenseCategoriesQuery = useQuery<ExpenseCategory[]>({
         queryKey: ['expenseCategories'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/expense-categories/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/finance/expense-categories`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
-            return res.json();
+            const data = await res.json();
+            return Array.isArray(data) ? data : (data.data || []);
         },
-        enabled: !!token
+        enabled: true
     });
 
     const khataQuery = useQuery<KhataCustomer[]>({
         queryKey: ['khataCustomers'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/khata/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/finance/khata`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
-            const customerList = Array.isArray(data) ? data : (data.results || []);
+            const customerList = Array.isArray(data) ? data : (data.customers || data.results || []);
             return customerList.filter((c: KhataCustomer) => Number(c.outstanding_balance || 0) > 0);
         },
-        enabled: !!token
+        enabled: true
     });
 
     const customerCreditsQuery = useQuery<KhataCustomer[]>({
         queryKey: ['customerCredits'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/finance/khata`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
-            return res.json();
+            const data = await res.json();
+            return Array.isArray(data) ? data : (data.customers || data.results || []);
         },
-        enabled: !!token
+        enabled: true
     });
 
     const payrollQuery = useQuery<PayrollWorker[]>({
         queryKey: ['payrollData'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/staff/daily-settlement/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/staff/daily-settlement`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
-            return res.json();
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
         },
-        enabled: !!token
+        enabled: true
     });
 
     const servicesQuery = useQuery<ServicePackage[]>({
         queryKey: ['services'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/bookings/services/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/bookings/services`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
-            return res.json();
+            const data = await res.json();
+            return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : (data?.results || []));
         },
-        enabled: !!token
+        enabled: true
     });
 
     const [staffStatusFilter, setStaffStatusFilter] = useState<'all' | 'active' | 'terminated'>('active');
@@ -246,7 +262,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const staffQuery = useQuery<any[]>({
         queryKey: ['staff', staffStatusFilter, staffSearchQuery],
         queryFn: async () => {
-            let url = `${API_BASE}/staff/directory/`;
+            let url = `${API_BASE}/staff/directory`;
             const params = new URLSearchParams();
             if (staffStatusFilter === 'active') params.append('is_active', 'true');
             if (staffStatusFilter === 'terminated') params.append('is_active', 'false');
@@ -254,32 +270,34 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             if (params.toString()) url += `?${params.toString()}`;
             const res = await fetch(url, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
-            return res.json();
+            const data = await res.json();
+            return Array.isArray(data) ? data : [];
         },
-        enabled: !!token
+        enabled: true
     });
 
     const eodQuery = useQuery<EodData>({
         queryKey: ['eodData'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/close-register/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/finance/daily-audit`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
-            return res.json();
+            const data = await res.json();
+            return data.data?.summary || data;
         },
-        enabled: !!token
+        enabled: true
     });
 
     const analyticsQuery = useQuery<AnalyticsData>({
         queryKey: ['analyticsData'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/analytics/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/finance/analytics`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
             return res.json();
         },
-        enabled: !!token
+        enabled: true
     });
 
-    const isGlobalLoading = !isMounted || userQuery.isLoading || kpiQuery.isLoading || chartQuery.isLoading || bookingsQuery.isLoading || expensesQuery.isLoading || khataQuery.isLoading || customerCreditsQuery.isLoading || payrollQuery.isLoading || servicesQuery.isLoading || staffQuery.isLoading || eodQuery.isLoading || analyticsQuery.isLoading;
+    const isGlobalLoading = !isMounted || userQuery.isLoading;
 
     const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, today_total_credit: 0, today_collection_bank: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 };
     const chartData = chartQuery.data || generateDemoChartData();
@@ -330,7 +348,24 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     // --- Service Menu State ---
         const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
     const [editingService, setEditingService] = useState<ServicePackage | null>(null);
-    const [serviceForm, setServiceForm] = useState({ name: '', description: '', price: '', duration_minutes: '' });
+    const [serviceForm, setServiceForm] = useState({ 
+        name: '', 
+        description: '', 
+        price: '', 
+        duration_minutes: '45',
+        tiered_prices: {
+            HATCHBACK: '',
+            SEDAN: '',
+            COMPACT_SUV: '',
+            SUV: '',
+            MUV: '',
+            VAN: '',
+            LUXURY: '',
+            BIKE: '',
+            AUTO: '',
+            TRUCK: '',
+        } as Record<string, string>
+    });
 
     // --- Staff Directory State ---
         const [staffSubTab, setStaffSubTab] = useState('payroll');
@@ -354,10 +389,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const invoiceQuery = useQuery({
         queryKey: ['invoiceData'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/bookings/completed/`, { headers: fetchHeaders });
+            const res = await fetch(`${API_BASE}/bookings/completed`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed to fetch invoices');
             const data = await res.json();
-            return Array.isArray(data) ? data : (data.results || []);
+            return Array.isArray(data) ? data : (data.results || data.data || []);
         },
         enabled: !!token,
         refetchOnMount: true,
@@ -371,10 +406,67 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const openServiceModal = (service: ServicePackage | null = null) => {
         if (service) {
             setEditingService(service);
-            setServiceForm({ name: service.name, description: service.description || '', price: String(service.price), duration_minutes: String(service.duration_minutes) });
+            const tierMap: Record<string, string> = {
+                HATCHBACK: '',
+                SEDAN: '',
+                COMPACT_SUV: '',
+                SUV: '',
+                MUV: '',
+                VAN: '',
+                LUXURY: '',
+                BIKE: '',
+                AUTO: '',
+                TRUCK: ''
+            };
+            if (service.tier_prices && typeof service.tier_prices === 'object') {
+                Object.entries(service.tier_prices).forEach(([k, v]) => {
+                    tierMap[k.toUpperCase()] = String(v || '');
+                });
+            } else if (service.tiered_prices && Array.isArray(service.tiered_prices)) {
+                service.tiered_prices.forEach((tp: any) => {
+                    if (tp.vehicle_type) {
+                        tierMap[tp.vehicle_type.toUpperCase()] = String(tp.price);
+                    }
+                });
+            } else if (service.service_package_prices && Array.isArray(service.service_package_prices)) {
+                service.service_package_prices.forEach((tp: any) => {
+                    if (tp.vehicle_type) {
+                        tierMap[tp.vehicle_type.toUpperCase()] = String(tp.price);
+                    }
+                });
+            }
+            // Fill empty fields with main service price
+            Object.keys(tierMap).forEach(k => {
+                if (!tierMap[k]) tierMap[k] = String(service.price || service.base_price || '');
+            });
+
+            setServiceForm({ 
+                name: service.name, 
+                description: service.description || '', 
+                price: String(service.price || service.base_price || ''), 
+                duration_minutes: String(service.duration_minutes || '45'),
+                tiered_prices: tierMap
+            });
         } else {
             setEditingService(null);
-            setServiceForm({ name: '', description: '', price: '', duration_minutes: '' });
+            setServiceForm({ 
+                name: '', 
+                description: '', 
+                price: '', 
+                duration_minutes: '45',
+                tiered_prices: {
+                    HATCHBACK: '',
+                    SEDAN: '',
+                    COMPACT_SUV: '',
+                    SUV: '',
+                    MUV: '',
+                    VAN: '',
+                    LUXURY: '',
+                    BIKE: '',
+                    AUTO: '',
+                    TRUCK: ''
+                }
+            });
         }
         setIsServiceModalOpen(true);
     };
@@ -382,17 +474,28 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const saveService = async () => {
         const token = localStorage.getItem('auth_token');
         const url = editingService
-            ? `${API_BASE}/bookings/services/${editingService.id}/`
-            : `${API_BASE}/bookings/services/`;
+            ? `${API_BASE}/services/${editingService.id}`
+            : `${API_BASE}/services`;
         const method = editingService ? 'PATCH' : 'POST';
+        const ALL_BODY_TYPE_KEYS = ['HATCHBACK', 'SEDAN', 'COMPACT_SUV', 'SUV', 'MUV', 'VAN', 'LUXURY', 'BIKE', 'AUTO', 'TRUCK'];
+        const mainPrice = parseFloat(serviceForm.price) || 0;
+
+        const tieredArray = ALL_BODY_TYPE_KEYS.map((k) => ({
+            vehicle_type: k,
+            price: parseFloat(serviceForm.tiered_prices[k]) || mainPrice
+        }));
+
         try {
             const res = await fetch(url, {
                 method,
                 headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    ...serviceForm, 
-                    price: parseFloat(serviceForm.price) || 0, 
-                    duration_minutes: parseInt(serviceForm.duration_minutes) || 0 
+                    name: serviceForm.name, 
+                    description: serviceForm.description, 
+                    price: mainPrice, 
+                    duration_minutes: parseInt(serviceForm.duration_minutes) || 45,
+                    tiered_prices: tieredArray,
+                    tier_prices: serviceForm.tiered_prices,
                 })
             });
             if (res.ok) {
@@ -401,7 +504,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
                 queryClient.invalidateQueries({ queryKey: ['services'] });
             } else {
                 const data = await res.json();
-                toast.error(data.detail || 'Failed to save service');
+                toast.error(data.detail || data.error || 'Failed to save service');
             }
         } catch (e) { toast.error('Network error'); }
     };
@@ -410,7 +513,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         if (!confirm('Are you sure you want to delete this service?')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/bookings/services/${id}/`, {
+            const res = await fetch(`${API_BASE}/services/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
@@ -662,18 +765,35 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     };
 
     const expenseMutation = useMutation({
-        mutationFn: async (formData: FormData) => {
+        mutationFn: async (data: FormData | Record<string, any>) => {
             const token = localStorage.getItem('auth_token');
             const url = editingExpense ? `${API_BASE}/finance/general-expenses/${editingExpense.id}/` : `${API_BASE}/finance/general-expenses/`;
             const method = editingExpense ? 'PATCH' : 'POST';
-            const res = await fetch(url, { method, headers: { 'Authorization': `Token ${token}` }, body: formData });
+
+            let body: BodyInit;
+            let headers: HeadersInit = { 'Authorization': `Token ${token}` };
+
+            if (data instanceof FormData) {
+                body = data;
+            } else {
+                headers['Content-Type'] = 'application/json';
+                const sanitizedPayload = {
+                    ...data,
+                    category_id: data.category ? Number(data.category) : (data.category_id ? Number(data.category_id) : null),
+                    amount: Number(data.amount) || 0,
+                };
+                body = JSON.stringify(sanitizedPayload);
+            }
+
+            const res = await fetch(url, { method, headers, body });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.detail || err.error || (typeof err === 'object' ? JSON.stringify(err) : 'Failed to record expense.'));
             }
             return res.json();
         },
-        onSuccess: async (newOrUpdatedData: any) => {
+        onSuccess: async (responsePayload: any) => {
+            const newOrUpdatedData = responsePayload?.data || responsePayload;
             toast.success(editingExpense ? 'Expense updated successfully!' : 'Expense recorded successfully!');
             cancelEditingExpense();
 
@@ -703,10 +823,17 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             toast.error('Category, Amount, and Date are required.');
             return;
         }
+
+        const categoryNum = Number(expenseForm.category);
+        const amountNum = Number(expenseForm.amount) || 0;
+
         const formData = new FormData();
+        if (!isNaN(categoryNum) && categoryNum > 0) {
+            formData.append('category_id', String(categoryNum));
+        }
         formData.append('category', expenseForm.category);
-        formData.append('amount', expenseForm.amount);
-        formData.append('date', expenseForm.date);
+        formData.append('amount', String(amountNum));
+        formData.append('date', expenseForm.date || new Date().toISOString().split('T')[0]);
         formData.append('description', expenseForm.description || '');
         if (receiptFile) formData.append('receipt_image', receiptFile);
         
@@ -936,7 +1063,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         try {
             const res = await fetch(`${API_BASE}/finance/khata/${customer.id}/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
             if (res.ok) {
-                setKhataLedger(await res.json());
+                const data = await res.json();
+                const safeList = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : (Array.isArray(data?.data) ? data.data : []));
+                setKhataLedger(safeList);
                 setIsKhataLedgerModalOpen(true);
             } else {
                 toast.error('Failed to load Khata ledger.');

@@ -63,9 +63,14 @@ function useActiveWash() {
         queryKey: ['activeWash'],
         queryFn: async () => {
             const res = await api.get('/bookings/');
-            const bookings: any[] = res.data;
+            const raw = res.data;
+            const bookings: any[] = Array.isArray(raw)
+                ? raw
+                : (Array.isArray(raw?.data)
+                    ? raw.data
+                    : (Array.isArray(raw?.results) ? raw.results : []));
             const active = bookings.find(
-                (b) => !['COMPLETED', 'CANCELLED'].includes(b.status)
+                (b) => b && !['COMPLETED', 'CANCELLED'].includes(b.status)
             );
             if (!active) return null;
 
@@ -76,8 +81,8 @@ function useActiveWash() {
             return {
                 status: active.status,
                 progress,
-                package: active.service_package_name || active.service_package_details?.name || 'Standard Wash',
-                vehicle: active.vehicle_plate || active.vehicle_info || 'Unknown Vehicle',
+                package: active.service_package_name || active.service_package_details?.name || active.service_name || 'Standard Wash',
+                vehicle: active.vehicle_plate || active.plate_number || active.vehicle_info || 'Unknown Vehicle',
             };
         },
         // Refetch every 30 s as a polling fallback
@@ -317,13 +322,17 @@ export function OverviewTab({ setIsBooking, handleLogout, customerName }: Overvi
     const displayName = rawName ? rawName.charAt(0).toUpperCase() + rawName.slice(1) : '';
 
     // ------------------------------------------------------------------
-    // WebSocket stub — listens to the live_queue channel from Django Channels
-    // and invalidates the React Query cache on any booking update event.
-    // The Django consumer broadcasts to ws://host/ws/queue/
+    // ------------------------------------------------------------------
+    // WebSocket listener (Optional) — connects only if NEXT_PUBLIC_ENABLE_WS is enabled.
+    // The polling fallback via React Query (refetchInterval: 30000) handles live queue updates.
     // ------------------------------------------------------------------
     const wsRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
+        if (process.env.NEXT_PUBLIC_ENABLE_WS !== 'true') {
+            return;
+        }
+
         const WS_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api')
             .replace(/^http/, 'ws')
             .replace('/api', '');
@@ -337,18 +346,16 @@ export function OverviewTab({ setIsBooking, handleLogout, customerName }: Overvi
                 try {
                     const msg = JSON.parse(e.data);
                     if (msg.type === 'queue_update') {
-                        // Invalidate so React Query refetches the active wash
                         queryClient.invalidateQueries({ queryKey: ['activeWash'] });
                     }
                 } catch { /* ignore malformed frames */ }
             };
 
             ws.onerror = () => {
-                // WebSocket unavailable (no Django Channels configured yet) — fail silently,
-                // polling via refetchInterval covers real-time updates as a fallback.
+                // Ignore errors
             };
         } catch {
-            // new WebSocket() can throw in SSR — safe to ignore
+            // Safe ignore
         }
 
         return () => {

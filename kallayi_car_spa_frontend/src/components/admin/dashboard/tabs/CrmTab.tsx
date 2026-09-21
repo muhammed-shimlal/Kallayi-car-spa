@@ -8,9 +8,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { getApiBaseUrl } from '@/lib/api';
-
-const getApiBase = () => getApiBaseUrl();
+import { fetchGlobalWashHistory, lookupVehicleDossier, extractErrorMessage } from '@/lib/api';
 
 export interface WashedVehicle {
     id: number;
@@ -47,19 +45,12 @@ export default function CrmTab() {
     const [dossierData, setDossierData] = useState<any | null>(null);
     const [isSearching, setIsSearching] = useState<boolean>(false);
 
-    // Fetch Completed Washes History from Django Backend
+    // Fetch Completed Washes History from Internal API
     const fetchHistory = useCallback(async (dateStr: string, silent = false) => {
-        const token = localStorage.getItem('auth_token');
-        if (!token) return;
         if (!silent) setIsLoading(true);
 
         try {
-            const res = await fetch(`${getApiBase()}/bookings/global-history/?date=${dateStr}`, {
-                headers: { 'Authorization': `Token ${token}` }
-            });
-            if (!res.ok) throw new Error('API fetch failed');
-
-            const data = await res.json();
+            const data = await fetchGlobalWashHistory(dateStr);
             setWashedVehicles(data.feed || []);
             if (data.stats) {
                 setStats({
@@ -94,22 +85,13 @@ export default function CrmTab() {
     const handleSearchSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!searchQuery.trim()) return;
-        const token = localStorage.getItem('auth_token');
-        if (!token) return;
 
         setIsSearching(true);
         try {
-            const res = await fetch(`${getApiBase()}/bookings/vehicle-history/?q=${encodeURIComponent(searchQuery.trim())}`, {
-                headers: { 'Authorization': `Token ${token}` }
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || 'No matching vehicle/customer records found');
-            }
-            const data = await res.json();
+            const data = await lookupVehicleDossier(searchQuery.trim());
             setDossierData(data);
-        } catch (err: any) {
-            toast.error(err.message || `No service records found for "${searchQuery}".`);
+        } catch (err: unknown) {
+            toast.error(extractErrorMessage(err) || `No service records found for "${searchQuery}".`);
             setDossierData(null);
         } finally {
             setIsSearching(false);
@@ -143,8 +125,8 @@ export default function CrmTab() {
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search Plate or Phone Number..."
-                            className="w-full bg-[#141518] border border-white/10 py-2.5 pl-10 pr-4 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-[#01FFFF] transition-all uppercase"
+                            placeholder="Search plate, customer name, or phone..."
+                            className="w-full bg-[#141518] border border-white/10 py-2.5 pl-10 pr-4 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-[#01FFFF] transition-all"
                         />
                     </div>
                     <button

@@ -4,12 +4,12 @@ import React, { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, Search, User, Phone, Sparkles, AlertCircle, X, Check } from "lucide-react";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { ServicePackage } from '@/types/admin';
+import { ServicePackage, UnifiedSearchResult } from '@/types/admin';
 import api from '@/lib/api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
@@ -78,6 +78,7 @@ const posSchema = z.object({
   phone: z.string().min(1, { message: "Phone number is required" }).refine((val) => val && isValidPhoneNumber(val), {
     message: "Invalid phone number",
   }),
+  customer_name: z.string().optional(),
   package_id: z.number().refine((val) => val !== undefined, {
     message: "Please select a service package",
   }),
@@ -103,6 +104,12 @@ export default function AdminExpressPOSPage() {
 
   const [customerGarage, setCustomerGarage] = useState<any[]>([]);
   const [matchedVehicles, setMatchedVehicles] = useState<any[]>([]);
+
+  // UNIFIED LIVE SEARCH STATE
+  const [universalSearchQuery, setUniversalSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<UnifiedSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
 
   const {
     control,
@@ -167,6 +174,8 @@ export default function AdminExpressPOSPage() {
       }
     }
   };
+
+  const activeVehicleType = (selectedType === "Other" ? (customType || category) : (selectedType || category || "HATCHBACK")).toUpperCase();
 
   const applyVehicleToForm = (data: any) => {
     if (!data) return;
@@ -236,18 +245,91 @@ export default function AdminExpressPOSPage() {
       }
     }
 
+    if (data.customer_name && data.customer_name !== "Guest Customer") {
+      setValue("customer_name", data.customer_name);
+    }
+
     toast.success(`Vehicle Autofilled: ${data.plate_number || ''} (${data.make || ''} ${data.model || ''})`);
   };
 
-  // STEP 1: License Plate Entry & Phone Lookup (Debounced 1500ms, min 5 chars)
+  // STEP 0: UNIFIED MULTI-FIELD LIVE SEARCH (Name, Plate, Phone with 300ms debounce)
+  useEffect(() => {
+    const q = universalSearchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem("auth_token") : null;
+        const res = await fetch(`/api/customer-vehicles/lookup?q=${encodeURIComponent(q)}`, {
+          headers: token ? { Authorization: `Token ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const list = Array.isArray(data.results) ? data.results : [];
+          setSearchResults(list);
+          setShowSearchDropdown(list.length > 0);
+        } else {
+          setSearchResults([]);
+          setShowSearchDropdown(false);
+        }
+      } catch (err) {
+        console.error("Unified search error:", err);
+        setSearchResults([]);
+        setShowSearchDropdown(false);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [universalSearchQuery]);
+
+  const handleSelectSearchResult = (item: UnifiedSearchResult) => {
+    if (item.plate_number) {
+      setValue("plate_number", item.plate_number, { shouldValidate: true });
+    }
+    if (item.phone_number) {
+      const rawPhone = String(item.phone_number).trim();
+      const isGuest = rawPhone.startsWith("guest_") || rawPhone.includes("guest");
+      if (!isGuest && rawPhone) {
+        setValue("phone", rawPhone, { shouldValidate: true });
+      }
+    }
+    if (item.customer_name && item.customer_name !== "Guest Customer" && item.customer_name !== "Walk-In Customer") {
+      setValue("customer_name", item.customer_name);
+    }
+    applyVehicleToForm(item);
+
+    if (item.outstanding_balance && Number(item.outstanding_balance) > 0) {
+      toast(
+        () => (
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400 font-bold">⚠️ Khata Credit Due:</span>
+            <span>{item.customer_name} has ₹{Number(item.outstanding_balance).toLocaleString()} outstanding.</span>
+          </div>
+        ),
+        { duration: 5000, icon: '💳' }
+      );
+    }
+
+    setShowSearchDropdown(false);
+    setUniversalSearchQuery("");
+  };
+
+  // STEP 1: License Plate Entry & Phone Lookup (Debounced 1500ms, min 4 chars)
   useEffect(() => {
     const cleanPlate = (plateNumber || "").replace(/[\s-]/g, "").trim();
-    if (cleanPlate.length < 5) return;
+    if (cleanPlate.length < 4) return;
 
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("auth_token");
-        const res = await fetch(`${API_BASE}/vehicles/lookup/?plate=${encodeURIComponent(plateNumber.trim())}`, {
+        const res = await fetch(`/api/customer-vehicles/lookup?plate=${encodeURIComponent(plateNumber.trim())}`, {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
 
@@ -287,7 +369,7 @@ export default function AdminExpressPOSPage() {
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("auth_token");
-        const res = await fetch(`${API_BASE}/customer-vehicles/garage/?phone=${encodeURIComponent(phone.trim())}`, {
+        const res = await fetch(`/api/customer-vehicles/garage?phone=${encodeURIComponent(phone.trim())}`, {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
 
@@ -325,75 +407,70 @@ export default function AdminExpressPOSPage() {
     }
   }, [customerGarage, plateNumber]);
 
+  // STEP 4: Reactive Dynamic Package Fetching Driven by Active Vehicle Type
   useEffect(() => {
     const fetchPackages = async () => {
+      setIsLoadingPackages(true);
       try {
-        const token = localStorage.getItem("auth_token");
-        const res = await fetch(`${API_BASE}/service-packages/`, {
-          headers: token ? { Authorization: `Token ${token}` } : {},
-        });
+        const res = await fetch(`/api/services?vehicle_type=${encodeURIComponent(activeVehicleType)}`);
         if (res.ok) {
           const data = await res.json();
-          setPackages(data.results || data);
+          const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : (data.results || []));
+          setPackages(list);
         } else {
-          setPackages([
-            { id: 1, name: "Foam Wash", price: "500.00" },
-            { id: 2, name: "Deep Detail", price: "1200.00" },
-            { id: 3, name: "Interior Polish", price: "800.00" },
-          ]);
+          setPackages([]);
         }
       } catch (err) {
-        setPackages([
-          { id: 1, name: "Foam Wash", price: "500.00" },
-          { id: 2, name: "Deep Detail", price: "1200.00" },
-          { id: 3, name: "Interior Polish", price: "800.00" },
-        ]);
+        console.error("Failed to load services for POS:", err);
+        setPackages([]);
       } finally {
         setIsLoadingPackages(false);
       }
     };
     fetchPackages();
-  }, []);
+  }, [activeVehicleType]);
 
   const onSubmit = async (data: POSFormValues) => {
     try {
-      const token = localStorage.getItem("auth_token");
-
       const realMake = data.make === "Other" ? (customMake || "Custom Make") : (data.make || "Standard");
       const realModel = (data.make === "Other" || data.model === "Other") ? (customModel || "Custom Model") : (data.model || "Vehicle");
       const realType = data.vehicle_type === "Other" ? (customType || category) : (data.vehicle_type || category);
       const realColor = data.color === "Other" ? (customColor || "Other") : (data.color || "White");
 
       const payload = {
-        ...data,
-        category,
+        name: data.customer_name || 'Guest Customer',
+        customer_name: data.customer_name || 'Guest Customer',
+        phone: data.phone,
+        plate_number: data.plate_number,
+        service_package_id: data.package_id,
         make: realMake,
         model: realModel,
         vehicle_type: realType,
-        color: realColor
+        color: realColor,
+        status: 'WAITING',
       };
 
-      const res = await fetch(`${API_BASE}/bookings/express-walkin/`, {
-        method: "POST",
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          Authorization: `Token ${token}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        throw new Error("Failed to process walk-in");
+      const resData = await res.json();
+      if (!res.ok || !resData.success) {
+        throw new Error(resData.error || 'Failed to process walk-in intake');
       }
 
-      toast.success("Vehicle Added to Queue!");
+      toast.success(`Vehicle ${data.plate_number} Added to Live Queue!`);
       reset();
       setCustomMake("");
       setCustomModel("");
       setCustomType("");
       setCustomColor("");
-    } catch (error) {
-      alert("Error processing walk-in. Ensure you have proper permissions (Washer/Tech/Manager).");
+    } catch (error: any) {
+      toast.error(error.message || "Error processing walk-in intake.");
       console.error(error);
     }
   };
@@ -426,6 +503,107 @@ export default function AdminExpressPOSPage() {
         {/* POS Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 flex-1 flex flex-col justify-between">
           <div className="space-y-8">
+            {/* UNIFIED MULTI-FIELD SEARCH BAR */}
+            <div className="relative z-30">
+              <div className="bg-[#141518]/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-3 sm:p-4 shadow-2xl focus-within:border-[#01FFFF] focus-within:shadow-[0_0_25px_rgba(1,255,255,0.15)] transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-black/60 border border-white/10 flex items-center justify-center text-[#01FFFF] flex-shrink-0">
+                    {isSearching ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Search className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#8E939B] block mb-0.5">
+                      Universal Live Search (Name, Plate, or Phone)
+                    </label>
+                    <input
+                      type="text"
+                      value={universalSearchQuery}
+                      onChange={(e) => setUniversalSearchQuery(e.target.value)}
+                      onFocus={() => {
+                        if (searchResults.length > 0) setShowSearchDropdown(true);
+                      }}
+                      placeholder="Search plate (e.g. KL 10), customer name, or phone..."
+                      className="w-full bg-transparent text-sm sm:text-base font-medium text-white placeholder:text-zinc-600 outline-none"
+                    />
+                  </div>
+                  {universalSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUniversalSearchQuery("");
+                        setSearchResults([]);
+                        setShowSearchDropdown(false);
+                      }}
+                      className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* SEARCH RESULTS DROPDOWN POPOVER */}
+              {showSearchDropdown && searchResults.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-2 bg-[#0d0e12]/95 backdrop-blur-3xl border border-[#01FFFF]/30 rounded-2xl p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)] max-h-[380px] overflow-y-auto space-y-1.5 z-50">
+                  <div className="px-3 py-1.5 flex items-center justify-between border-b border-white/5 text-[10px] uppercase font-bold tracking-widest text-[#8E939B]">
+                    <span>Found {searchResults.length} Match{searchResults.length > 1 ? 'es' : ''}</span>
+                    <span className="text-[#01FFFF]">Click to Auto-Fill</span>
+                  </div>
+                  {searchResults.map((item, idx) => (
+                    <button
+                      key={`${item.plate_number}_${item.customer_id || idx}`}
+                      type="button"
+                      onClick={() => handleSelectSearchResult(item)}
+                      className="w-full text-left p-3 rounded-xl bg-white/[0.03] hover:bg-[#01FFFF]/10 border border-white/5 hover:border-[#01FFFF]/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="px-2.5 py-1 rounded-lg bg-black/60 border border-[#01FFFF]/30 font-mono font-bold text-xs text-[#01FFFF] tracking-wider group-hover:border-[#01FFFF]">
+                          {item.plate_number || 'NO PLATE'}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white group-hover:text-[#01FFFF] transition-colors">
+                            {item.make} {item.model}
+                            {item.color ? ` • ${item.color}` : ''}
+                            <span className="ml-2 text-[10px] font-mono text-zinc-400 uppercase">({item.vehicle_type || 'CAR'})</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-[#8E939B] mt-0.5">
+                            <span className="flex items-center gap-1">
+                              <User className="w-3 h-3 text-[#01FFFF]" />
+                              <strong className="text-zinc-300">{item.customer_name}</strong>
+                            </span>
+                            {item.phone_number && (
+                              <span className="flex items-center gap-1 font-mono">
+                                <Phone className="w-3 h-3 text-emerald-400" />
+                                {item.phone_number}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center">
+                        {(item.outstanding_balance || 0) > 0 && (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono font-bold flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            ₹{(item.outstanding_balance || 0).toLocaleString()} Due
+                          </span>
+                        )}
+                        {(item.loyalty_points || 0) > 0 && (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[10px] font-mono font-bold flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            {item.loyalty_points} pts
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Input Groups Container */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Plate Number */}
@@ -448,22 +626,36 @@ export default function AdminExpressPOSPage() {
                 )}
               </div>
 
-              {/* Phone Number */}
-              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-center">
-                <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] mb-4 text-center block">
-                  Customer Master Key
-                </label>
-                <div className="w-full">
-                  <Controller
-                    name="phone"
-                    control={control}
-                    render={({ field }) => (
-                      <CinematicPhoneInput
-                        value={field.value}
-                        onChange={field.onChange}
-                        error={errors.phone?.message}
-                      />
-                    )}
+              {/* Phone Number & Customer Name */}
+              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-center gap-4">
+                <div>
+                  <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] mb-3 text-center block">
+                    Customer Master Key (Phone)
+                  </label>
+                  <div className="w-full">
+                    <Controller
+                      name="phone"
+                      control={control}
+                      render={({ field }) => (
+                        <CinematicPhoneInput
+                          value={field.value}
+                          onChange={field.onChange}
+                          error={errors.phone?.message}
+                        />
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-[#8E939B] mb-1.5 block">
+                    Customer Name (Walk-In / Optional)
+                  </label>
+                  <input
+                    {...register("customer_name")}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-semibold text-white placeholder:text-zinc-600 focus:border-[#01FFFF] focus:outline-none transition-all"
+                    placeholder="e.g. Rahul Sharma"
+                    autoComplete="off"
                   />
                 </div>
               </div>
@@ -657,16 +849,21 @@ export default function AdminExpressPOSPage() {
                 <div className="flex justify-center h-48 items-center bg-[#141518]/40 border border-white/5 rounded-3xl">
                   <Loader2 className="w-8 h-8 animate-spin text-[#01FFFF]" />
                 </div>
+              ) : packages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-8 bg-[#141518]/40 border border-white/5 rounded-3xl text-center">
+                  <p className="text-zinc-400 text-xs font-semibold">No service packages found in database for {activeVehicleType}.</p>
+                </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   {packages.map((pkg) => {
                     const isSelected = selectedPackageId === pkg.id;
+                    const displayPrice = parseFloat(String((pkg as any).price || (pkg as any).final_price || (pkg as any).base_price || 0));
                     return (
                       <button
                         type="button"
                         key={pkg.id}
                         onClick={() => setValue("package_id", pkg.id, { shouldValidate: true })}
-                        className={`p-4 sm:p-6 rounded-3xl text-left transition-all duration-300 min-h-[52px] touch-manipulation ${
+                        className={`p-4 sm:p-6 rounded-3xl text-left transition-all duration-300 min-h-[52px] touch-manipulation cursor-pointer ${
                           isSelected
                             ? "bg-[#01FFFF]/10 border-2 border-[#01FFFF] shadow-[0_0_30px_rgba(1,255,255,0.15)] scale-[1.02] sm:scale-105"
                             : "bg-[#141518]/60 border border-white/5 hover:border-white/20 hover:bg-[#141518]"
@@ -676,7 +873,7 @@ export default function AdminExpressPOSPage() {
                           {pkg.name}
                         </h3>
                         <p className={`font-mono font-bold text-lg ${isSelected ? "text-[#01FFFF]" : "text-zinc-500"}`}>
-                          ₹{pkg.price}
+                          ₹{displayPrice.toLocaleString()}
                         </p>
                       </button>
                     );

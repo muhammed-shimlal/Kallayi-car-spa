@@ -5,6 +5,7 @@ import FinanceTab from '@/components/admin/dashboard/tabs/FinanceTab';
 import StaffTab from '@/components/admin/dashboard/tabs/StaffTab';
 import CrmTab from '@/components/admin/dashboard/tabs/CrmTab';
 import BankDepositTab from '@/components/admin/dashboard/tabs/BankDepositTab';
+import ServicesTab from '@/components/admin/dashboard/tabs/ServicesTab';
 import StaffModal from '@/components/admin/dashboard/modals/StaffModal';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { DashboardProvider, useDashboard } from '@/components/admin/dashboard/context/DashboardContext';
@@ -93,8 +94,11 @@ function AdminDashboardContent() {
             COMPACT_SUV: '',
             SUV: '',
             MUV: '',
+            VAN: '',
+            LUXURY: '',
             BIKE: '',
-            LUXURY: ''
+            AUTO: '',
+            TRUCK: '',
         } as Record<string, string>
     });
 
@@ -133,12 +137,12 @@ function AdminDashboardContent() {
             const token = localStorage.getItem('auth_token');
             if (!token) return;
             try {
-                const res = await fetch(`${API_BASE}/bookings/completed/`, {
+                const res = await fetch(`${API_BASE}/bookings/completed`, {
                     headers: { 'Authorization': `Token ${token}` }
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    setInvoiceList(Array.isArray(data) ? data : (data.results || []));
+                    setInvoiceList(Array.isArray(data) ? data : (data.results || data.data || []));
                 }
             } catch (e) { 
                 console.error("Failed to load invoice list", e); 
@@ -212,21 +216,43 @@ function AdminDashboardContent() {
     const fetchServices = useCallback(async () => {
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/bookings/services/`, {
-                headers: { 'Authorization': `Token ${token}` }
+            const res = await fetch(`/api/services`, {
+                headers: { 'Authorization': token ? `Token ${token}` : '' }
             });
-            if (res.ok) setServices(await res.json());
-        } catch (e) { console.error('Failed to fetch services'); }
+            if (res.ok) {
+                const data = await res.json();
+                setServices(Array.isArray(data) ? data : (data.data || data.results || []));
+            }
+        } catch (e) { console.error('Failed to fetch services', e); }
     }, []);
 
     const openServiceModal = (service: any | null = null) => {
         if (service) {
             setEditingService(service);
             const tieredMap: Record<string, string> = {
-                HATCHBACK: '', SEDAN: '', COMPACT_SUV: '', SUV: '', MUV: '', BIKE: '', LUXURY: ''
+                HATCHBACK: '',
+                SEDAN: '',
+                COMPACT_SUV: '',
+                SUV: '',
+                MUV: '',
+                VAN: '',
+                LUXURY: '',
+                BIKE: '',
+                AUTO: '',
+                TRUCK: ''
             };
-            if (service.tiered_prices && Array.isArray(service.tiered_prices)) {
+            if (service.tier_prices && typeof service.tier_prices === 'object') {
+                Object.entries(service.tier_prices).forEach(([k, v]) => {
+                    tieredMap[k.toUpperCase()] = String(v || '');
+                });
+            } else if (service.tiered_prices && Array.isArray(service.tiered_prices)) {
                 service.tiered_prices.forEach((tp: any) => {
+                    if (tp.vehicle_type) {
+                        tieredMap[tp.vehicle_type.toUpperCase()] = String(tp.price);
+                    }
+                });
+            } else if (service.service_package_prices && Array.isArray(service.service_package_prices)) {
+                service.service_package_prices.forEach((tp: any) => {
                     if (tp.vehicle_type) {
                         tieredMap[tp.vehicle_type.toUpperCase()] = String(tp.price);
                     }
@@ -234,13 +260,13 @@ function AdminDashboardContent() {
             }
             // Fill any empty fields with main service price
             Object.keys(tieredMap).forEach(k => {
-                if (!tieredMap[k]) tieredMap[k] = String(service.price || '');
+                if (!tieredMap[k]) tieredMap[k] = String(service.price || service.base_price || '');
             });
 
             setServiceForm({ 
                 name: service.name, 
                 description: service.description || '', 
-                price: String(service.price || ''), 
+                price: String(service.price || service.base_price || ''), 
                 duration_minutes: String(service.duration_minutes || '45'),
                 tiered_prices: tieredMap
             });
@@ -251,7 +277,18 @@ function AdminDashboardContent() {
                 description: '', 
                 price: '', 
                 duration_minutes: '45',
-                tiered_prices: { HATCHBACK: '', SEDAN: '', COMPACT_SUV: '', SUV: '', MUV: '', BIKE: '', LUXURY: '' }
+                tiered_prices: {
+                    HATCHBACK: '',
+                    SEDAN: '',
+                    COMPACT_SUV: '',
+                    SUV: '',
+                    MUV: '',
+                    VAN: '',
+                    LUXURY: '',
+                    BIKE: '',
+                    AUTO: '',
+                    TRUCK: ''
+                }
             });
         }
         setIsServiceModalOpen(true);
@@ -268,13 +305,25 @@ function AdminDashboardContent() {
                 COMPACT_SUV: val,
                 SUV: val,
                 MUV: val,
-                BIKE: val,
+                VAN: val,
                 LUXURY: val,
+                BIKE: val,
+                AUTO: val,
+                TRUCK: val,
             }
         }));
     };
 
     const getServicePriceRange = (svc: any) => {
+        if (svc.tier_prices && typeof svc.tier_prices === 'object') {
+            const prices = Object.values(svc.tier_prices).map((p: any) => parseFloat(p)).filter((p: number) => !isNaN(p) && p > 0);
+            if (prices.length > 0) {
+                const min = Math.min(...prices);
+                const max = Math.max(...prices);
+                if (min === max) return `₹${min.toLocaleString()}`;
+                return `₹${min.toLocaleString()} - ₹${max.toLocaleString()}`;
+            }
+        }
         if (svc.tiered_prices && Array.isArray(svc.tiered_prices) && svc.tiered_prices.length > 0) {
             const prices = svc.tiered_prices.map((p: any) => parseFloat(p.price)).filter((p: number) => !isNaN(p));
             if (prices.length > 0) {
@@ -284,22 +333,23 @@ function AdminDashboardContent() {
                 return `₹${min.toLocaleString()} - ₹${max.toLocaleString()}`;
             }
         }
-        return `₹${parseFloat(svc.price || 0).toLocaleString()}`;
+        return `₹${parseFloat(svc.price || svc.base_price || 0).toLocaleString()}`;
     };
 
     const saveService = async () => {
         const token = localStorage.getItem('auth_token');
         const url = editingService
-            ? `${API_BASE}/bookings/services/${editingService.id}/`
-            : `${API_BASE}/bookings/services/`;
+            ? `/api/services/${editingService.id}`
+            : `/api/services`;
         const method = editingService ? 'PATCH' : 'POST';
 
-        const tieredArray = Object.entries(serviceForm.tiered_prices).map(([v_type, p_val]) => ({
-            vehicle_type: v_type,
-            price: parseFloat(p_val) || parseFloat(serviceForm.price) || 0
-        }));
+        const ALL_BODY_TYPE_KEYS = ['HATCHBACK', 'SEDAN', 'COMPACT_SUV', 'SUV', 'MUV', 'VAN', 'LUXURY', 'BIKE', 'AUTO', 'TRUCK'];
+        const mainPrice = parseFloat(serviceForm.price) || 0;
 
-        const mainPrice = parseFloat(serviceForm.price) || (tieredArray.length > 0 ? tieredArray[0].price : 0);
+        const tieredArray = ALL_BODY_TYPE_KEYS.map((k) => ({
+            vehicle_type: k,
+            price: parseFloat(serviceForm.tiered_prices[k]) || mainPrice
+        }));
 
         try {
             const res = await fetch(url, {
@@ -313,7 +363,8 @@ function AdminDashboardContent() {
                     description: serviceForm.description, 
                     price: mainPrice, 
                     duration_minutes: parseInt(serviceForm.duration_minutes) || 45,
-                    tiered_prices: tieredArray
+                    tiered_prices: tieredArray,
+                    tier_prices: serviceForm.tiered_prices,
                 })
             });
             if (res.ok) {
@@ -321,8 +372,8 @@ function AdminDashboardContent() {
                 setIsServiceModalOpen(false);
                 fetchServices();
             } else {
-                const data = await res.json();
-                toast.error(data.detail || 'Failed to save service package');
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || data.detail || 'Failed to save service package');
             }
         } catch (e) { toast.error('Network error'); }
     };
@@ -331,16 +382,20 @@ function AdminDashboardContent() {
         if (!confirm('Are you sure you want to delete this service?')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/bookings/services/${id}/`, {
+            const res = await fetch(`/api/services/${id}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Token ${token}` }
+                headers: { 'Authorization': token ? `Token ${token}` : '' }
             });
             if (res.ok || res.status === 204) {
                 toast.success('Service deleted.');
                 setServices(prev => prev.filter(s => s.id !== id));
-            } else { toast.error('Failed to delete.'); }
+            } else {
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || 'Failed to delete service.');
+            }
         } catch (e) { toast.error('Network error'); }
     };
+
 
     // --- Staff Directory CRUD ---
     const fetchStaffDirectory = useCallback(async () => {
@@ -367,8 +422,8 @@ function AdminDashboardContent() {
     const saveStaff = async () => {
         const token = localStorage.getItem('auth_token');
         const url = editingStaff
-            ? `http://127.0.0.1:8001/api/staff/directory/${editingStaff.id}/`
-            : `${API_BASE}/staff/directory/`;
+            ? `${API_BASE}/staff/directory/${editingStaff.id}`
+            : `${API_BASE}/staff/directory`;
         const method = editingStaff ? 'PATCH' : 'POST';
         try {
             const res = await fetch(url, {
@@ -391,7 +446,7 @@ function AdminDashboardContent() {
         if (!confirm('WARNING: Are you sure you want to remove this staff member? Their past payroll records will be preserved, but their login will be revoked.')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/staff/directory/${id}/`, {
+            const res = await fetch(`${API_BASE}/staff/directory/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
@@ -610,9 +665,15 @@ function AdminDashboardContent() {
         setIsSubmittingExpense(true);
         const token = localStorage.getItem('auth_token');
         try {
+            const categoryNum = Number(expenseForm.category);
+            const amountNum = Number(expenseForm.amount) || 0;
+
             const formData = new FormData();
+            if (!isNaN(categoryNum) && categoryNum > 0) {
+                formData.append('category_id', String(categoryNum));
+            }
             formData.append('category', expenseForm.category);
-            formData.append('amount', expenseForm.amount);
+            formData.append('amount', String(amountNum));
             formData.append('date', expenseForm.date);
             formData.append('description', expenseForm.description);
             if (receiptFile) formData.append('receipt_image', receiptFile);
@@ -630,8 +691,8 @@ function AdminDashboardContent() {
                 cancelEditingExpense();
                 fetchDashboardData();
             } else {
-                const err = await res.json();
-                toast.error(err.error || `Failed to ${editingExpense ? 'update' : 'record'} expense.`);
+                const err = await res.json().catch(() => ({}));
+                toast.error(err.detail || err.error || `Failed to ${editingExpense ? 'update' : 'record'} expense.`);
             }
         } catch (error) {
             toast.error(`Network error while ${editingExpense ? 'updating' : 'recording'} expense.`);
@@ -718,7 +779,7 @@ function AdminDashboardContent() {
 
     const approveExpense = async (id: number) => {
         try {
-            await fetch(`http://127.0.0.1:8001/api/finance/expenses/${id}/`, {
+            await fetch(`${API_BASE}/finance/expenses/${id}`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ is_approved: true })
@@ -730,7 +791,7 @@ function AdminDashboardContent() {
     const settleCredit = async (id: number) => {
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/invoices/${id}/mark_paid/`, {
+            const res = await fetch(`${API_BASE}/invoices/${id}/mark_paid`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Token ${token}`,
@@ -827,7 +888,9 @@ function AdminDashboardContent() {
         try {
             const res = await fetch(`${API_BASE}/finance/khata/${customer.id}/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
             if (res.ok) {
-                setKhataLedger(await res.json());
+                const data = await res.json();
+                const safeList = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : (Array.isArray(data?.data) ? data.data : []));
+                setKhataLedger(safeList);
                 setIsKhataLedgerModalOpen(true);
             } else {
                 toast.error('Failed to load Khata ledger.');
@@ -840,7 +903,7 @@ function AdminDashboardContent() {
     const handleKhataSettle = async () => {
         if (!selectedKhataCustomer || !khataPaymentAmount) return;
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/finance/khata/settle/`, {
+            const res = await fetch(`${API_BASE}/finance/khata/settle/`, {
                 method: 'POST',
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ customer_id: selectedKhataCustomer.id, amount: khataPaymentAmount, description: "Admin Dashboard Settlement" })
@@ -1440,81 +1503,10 @@ function AdminDashboardContent() {
                     </div>
                 )}
 
-                {/* === SERVICE MENU TAB === */}
+                {/* === SERVICE & PRICING MASTER TAB === */}
                 {activeTab === 'services' && (
-                    <div className="space-y-8 animate-[fadeIn_0.3s_ease-out]">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                            <div>
-                                <h2 className="font-syncopate font-bold text-xl tracking-widest">SERVICE MENU<span className="text-amber-400">.</span></h2>
-                                <p className="text-[10px] text-[#8E939B] uppercase tracking-[0.25em] font-bold mt-1">Configuration & Pricing</p>
-                            </div>
-                            <button
-                                onClick={() => openServiceModal()}
-                                className="bg-[#01FFFF] text-black font-syncopate font-bold text-xs tracking-widest px-6 py-3 rounded-xl flex items-center gap-2 shadow-[0_0_20px_rgba(1,255,255,0.3)] hover:bg-white transition-all active:scale-95"
-                            >
-                                <PlusCircle className="w-4 h-4" /> ADD NEW SERVICE
-                            </button>
-                        </div>
-
-                        {/* Services Table */}
-                        <div className="bg-[#141518]/60 backdrop-blur-xl rounded-[2rem] border border-white/5 overflow-hidden">
-                            <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="border-b border-white/10">
-                                            <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Service Name</th>
-                                            <th className="text-left px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B] hidden md:table-cell">Description</th>
-                                            <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Duration</th>
-                                            <th className="text-right px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Price (₹)</th>
-                                            <th className="text-center px-6 py-4 text-[9px] font-bold uppercase tracking-[0.2em] text-[#8E939B]">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {services.length === 0 && (
-                                            <tr><td colSpan={5} className="text-center py-12 text-[#8E939B] text-sm">No services configured yet. Click "Add New Service" to get started.</td></tr>
-                                        )}
-                                        {services.map((svc: any) => (
-                                            <tr key={svc.id} className="border-b border-white/5 hover:bg-white/2 transition-colors">
-                                                <td className="px-6 py-5">
-                                                    <p className="font-bold text-sm text-white">{svc.name}</p>
-                                                </td>
-                                                <td className="px-6 py-5 hidden md:table-cell">
-                                                    <p className="text-xs text-[#8E939B] max-w-xs truncate">{svc.description || '—'}</p>
-                                                </td>
-                                                <td className="px-6 py-5 text-center">
-                                                    <span className="inline-flex items-center gap-1 text-xs text-[#8E939B]">
-                                                        <Clock className="w-3 h-3" /> {svc.duration_minutes} min
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-5 text-right">
-                                                    <span className="font-syncopate font-bold text-emerald-400">
-                                                        {getServicePriceRange(svc)}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-5">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        <button
-                                                            onClick={() => openServiceModal(svc)}
-                                                            className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#01FFFF] hover:border-[#01FFFF]/30 transition-all"
-                                                            title="Edit"
-                                                        >
-                                                            <Pencil className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => deleteService(svc.id)}
-                                                            className="w-9 h-9 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#FF2A6D] hover:border-[#FF2A6D]/30 transition-all"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                    <div className="animate-[fadeIn_0.3s_ease-out]">
+                        <ServicesTab />
                     </div>
                 )}
             </main>
@@ -1610,8 +1602,11 @@ function AdminDashboardContent() {
                                         { key: 'COMPACT_SUV', label: 'Compact SUV', icon: '🚙' },
                                         { key: 'SUV', label: 'Full SUV', icon: '🚙' },
                                         { key: 'MUV', label: 'MUV', icon: '🚐' },
-                                        { key: 'BIKE', label: 'Bike', icon: '🏍️' },
+                                        { key: 'VAN', label: 'Van', icon: '🚐' },
                                         { key: 'LUXURY', label: 'Luxury', icon: '🏎️' },
+                                        { key: 'BIKE', label: 'Bike', icon: '🏍️' },
+                                        { key: 'AUTO', label: 'Auto Rickshaw', icon: '🛺' },
+                                        { key: 'TRUCK', label: 'Commercial Truck', icon: '🚚' },
                                     ].map(bt => (
                                         <div key={bt.key} className="bg-black/30 border border-white/5 p-2.5 rounded-xl space-y-1">
                                             <span className="text-[10px] font-bold text-zinc-300 flex items-center gap-1">

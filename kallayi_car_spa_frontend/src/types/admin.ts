@@ -1,5 +1,6 @@
 export interface ServicePackagePrice {
     id?: number;
+    package_id?: number;
     vehicle_type: string;
     price: number | string;
 }
@@ -10,17 +11,22 @@ export interface ServicePackage {
     description?: string;
     price: number | string;
     base_price?: number | string;
+    final_price?: number | string;
     duration_minutes?: number | string;
     vehicle_type?: string;
     tiered_prices?: ServicePackagePrice[];
+    service_package_prices?: ServicePackagePrice[];
+    tier_prices?: Record<string, number | string>;
+    is_applicable?: boolean;
+    created_at?: string;
 }
 
 export interface StaffMember {
-    id: number;
-    user_id: number;
+    id: string | number;
+    user_id: string | number;
     first_name: string;
     name?: string;
-    username: string;
+    username?: string;
     phone_number?: string;
     phone?: string;
     role: string;
@@ -58,12 +64,17 @@ export interface PayrollWorker {
     username?: string;
     role: string;
     jobs_completed?: number;
+    tips?: number | string;
+    commission?: number | string;
     base_salary?: number | string;
     commission_earned?: number | string;
     advances?: number | string;
-    final_payout: number;
+    final_payout?: number | string;
+    pending_balance?: number | string;
+    due_amount?: number | string;
+    amount?: number | string;
     status?: string;
-    user_id?: number;
+    user_id?: string | number;
 }
 
 export interface RecentBooking {
@@ -76,7 +87,7 @@ export interface RecentBooking {
     customer_id?: number | null;
     price?: number | string;
     technician_name?: string | null;
-    technician_id?: number | null;
+    technician_id?: string | number | null;
     created_at?: string | null;
     time_slot?: string | null;
     bay_assignment?: string | null;
@@ -145,3 +156,19 @@ export interface AnalyticsData {
 export interface GenericData {
     [key: string]: unknown;
 }
+
+export interface UnifiedSearchResult {
+    vehicle_id?: number | string;
+    plate_number: string;
+    make: string;
+    model: string;
+    vehicle_type?: string;
+    color?: string;
+    customer_id?: string;
+    customer_name: string;
+    phone_number: string;
+    user_id?: string | null;
+    outstanding_balance?: number;
+    loyalty_points?: number;
+}
+

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Camera, RefreshCw, Check, X, Upload, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import { Camera, RefreshCw, Check, X, Upload, Image as ImageIcon, AlertCircle, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface CameraCaptureModalProps {
@@ -26,6 +26,7 @@ export function CameraCaptureModal({
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isInsecureContext, setIsInsecureContext] = useState<boolean>(false);
   const [isInitializing, setIsInitializing] = useState<boolean>(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
@@ -38,17 +39,29 @@ export function CameraCaptureModal({
 
   const startCameraStream = useCallback(async () => {
     stopCameraStream();
-    setIsInitializing(true);
     setCameraError(null);
 
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Camera API is not supported in your current browser.");
-      }
+    // Check if running in a Secure Context (HTTPS or localhost)
+    const isSecure = typeof window !== 'undefined' && (
+      window.isSecureContext === true ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.protocol === 'https:'
+    );
 
+    if (!isSecure || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setIsInsecureContext(true);
+      setCameraError("Live camera streaming requires HTTPS or localhost. Use device camera upload below.");
+      return;
+    }
+
+    setIsInsecureContext(false);
+    setIsInitializing(true);
+
+    try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: facingMode,
+          facingMode: { ideal: facingMode },
           width: { ideal: 1280 },
           height: { ideal: 720 }
         },
@@ -60,12 +73,14 @@ export function CameraCaptureModal({
         videoRef.current.srcObject = mediaStream;
       }
     } catch (err: any) {
-      console.error("Camera access error:", err);
+      console.warn("[Camera Capture Warning]:", err);
       let msg = "Could not access device camera. Please upload an image file instead.";
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        msg = "Camera permission was denied. Please grant camera permissions or upload an image file.";
+        msg = "Camera permission was denied. Please grant permissions or upload an image file.";
       } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
         msg = "No camera hardware detected. Please upload an image file.";
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        msg = "Camera is already in use by another application. Please upload an image file.";
       }
       setCameraError(msg);
     } finally {
@@ -83,7 +98,7 @@ export function CameraCaptureModal({
     return () => {
       stopCameraStream();
     };
-  }, [isOpen, capturedPreview, facingMode]);
+  }, [isOpen, capturedPreview, facingMode, startCameraStream, stopCameraStream]);
 
   const handleCapture = () => {
     if (!videoRef.current) return;
@@ -184,7 +199,7 @@ export function CameraCaptureModal({
           </button>
         </div>
 
-        {/* Viewport Content Container with Strict Dimensions */}
+        {/* Viewport Content Container */}
         <div className="p-4 sm:p-6 flex items-center justify-center bg-black/60 flex-shrink-0">
           <div className="relative w-full aspect-video min-h-[260px] max-h-[340px] rounded-2xl overflow-hidden border border-white/10 bg-black flex items-center justify-center">
             {capturedPreview ? (
@@ -200,8 +215,25 @@ export function CameraCaptureModal({
                   <span className="text-[10px] font-bold text-emerald-400 tracking-wider uppercase">Photo Ready</span>
                 </div>
               </div>
+            ) : isInsecureContext ? (
+              /* LAN HTTP Insecure Context Fallback */
+              <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-amber-950/20 border border-amber-500/20">
+                <ShieldAlert className="w-10 h-10 text-amber-400 mb-2" />
+                <h4 className="font-bold text-xs text-white mb-1 uppercase tracking-wide font-syncopate">LAN HTTP Access Detected</h4>
+                <p className="text-[11px] text-zinc-300 max-w-sm mb-4">
+                  Web browsers restrict live camera access to HTTPS or localhost. Tap below to capture or select a photo using your phone's native camera.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-[#01FFFF] text-slate-950 px-6 py-3.5 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white transition shadow-[0_0_20px_rgba(1,255,255,0.3)] active:scale-95 cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" /> Take Photo / Select Image
+                </button>
+              </div>
             ) : cameraError ? (
-              /* Error / Fallback Upload Mode */
+              /* Generic Camera Error Fallback */
               <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-red-950/20">
                 <AlertCircle className="w-10 h-10 text-[#FF2A6D] mb-2" />
                 <h4 className="font-bold text-xs text-white mb-1 uppercase tracking-wide">Camera Unavailable</h4>
@@ -210,7 +242,7 @@ export function CameraCaptureModal({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="bg-[#01FFFF] text-slate-950 px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white transition shadow-[0_0_20px_rgba(1,255,255,0.3)] active:scale-95"
+                  className="bg-[#01FFFF] text-slate-950 px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-white transition shadow-[0_0_20px_rgba(1,255,255,0.3)] active:scale-95 cursor-pointer"
                 >
                   <Upload className="w-4 h-4" /> Upload Number Plate Photo
                 </button>
@@ -245,12 +277,13 @@ export function CameraCaptureModal({
             )}
           </div>
 
-          {/* Hidden Canvas & File Input */}
+          {/* Hidden Canvas & Native Mobile Camera / File Input */}
           <canvas ref={canvasRef} className="hidden" />
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            capture="environment"
             className="hidden"
             onChange={handleFileUpload}
           />
@@ -258,12 +291,12 @@ export function CameraCaptureModal({
 
         {/* Footer Actions */}
         <div className="p-6 border-t border-white/10 bg-black/40 flex flex-wrap items-center justify-between gap-4">
-          {!capturedPreview && !cameraError && (
+          {!capturedPreview && !cameraError && !isInsecureContext && (
             <>
               <button
                 type="button"
                 onClick={toggleFacingMode}
-                className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white/10 active:scale-95"
+                className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white/10 active:scale-95 cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" /> Switch Camera
               </button>
@@ -272,7 +305,7 @@ export function CameraCaptureModal({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white/10 active:scale-95"
+                  className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white/10 active:scale-95 cursor-pointer"
                 >
                   <ImageIcon className="w-4 h-4" /> Upload File
                 </button>
@@ -280,7 +313,7 @@ export function CameraCaptureModal({
                 <button
                   type="button"
                   onClick={handleCapture}
-                  className="px-6 py-3.5 bg-[#FF2A6D] text-white font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-rose-600 transition shadow-[0_0_25px_rgba(255,42,109,0.4)] flex items-center gap-2 active:scale-95"
+                  className="px-6 py-3.5 bg-[#FF2A6D] text-white font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-rose-600 transition shadow-[0_0_25px_rgba(255,42,109,0.4)] flex items-center gap-2 active:scale-95 cursor-pointer"
                 >
                   <Camera className="w-4 h-4" /> Capture Photo
                 </button>
@@ -293,7 +326,7 @@ export function CameraCaptureModal({
               <button
                 type="button"
                 onClick={handleRetake}
-                className="px-5 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white/10 active:scale-95"
+                className="px-5 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white/10 active:scale-95 cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4" /> Retake Photo
               </button>
@@ -301,21 +334,33 @@ export function CameraCaptureModal({
               <button
                 type="button"
                 onClick={handleConfirm}
-                className="px-8 py-3.5 bg-[#01FFFF] text-slate-950 font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-white transition shadow-[0_0_25px_rgba(1,255,255,0.4)] flex items-center gap-2 active:scale-95"
+                className="px-8 py-3.5 bg-[#01FFFF] text-slate-950 font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-white transition shadow-[0_0_25px_rgba(1,255,255,0.4)] flex items-center gap-2 active:scale-95 cursor-pointer"
               >
                 <Check className="w-4 h-4" /> Attach Proof Photo
               </button>
             </>
           )}
 
-          {cameraError && !capturedPreview && (
-            <button
-              type="button"
-              onClick={startCameraStream}
-              className="ml-auto px-5 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white/10 active:scale-95"
-            >
-              <RefreshCw className="w-4 h-4" /> Retry Camera
-            </button>
+          {(cameraError || isInsecureContext) && !capturedPreview && (
+            <div className="flex items-center justify-between w-full">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-5 py-3 rounded-xl bg-[#01FFFF] text-slate-950 text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white active:scale-95 cursor-pointer"
+              >
+                <ImageIcon className="w-4 h-4" /> Choose from Device
+              </button>
+              
+              {!isInsecureContext && (
+                <button
+                  type="button"
+                  onClick={startCameraStream}
+                  className="px-5 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition hover:bg-white/10 active:scale-95 cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4" /> Retry Camera
+                </button>
+              )}
+            </div>
           )}
         </div>
 

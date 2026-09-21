@@ -47,45 +47,42 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // 1. Authenticate with Django Backend API
-      const authRes = await api.post("/api-token-auth/", {
-        username: data.phone,
+      // 1. Authenticate with Next.js 16 Supabase Auth API
+      const authRes = await api.post("/auth/login", {
+        phone: data.phone,
         password: data.password,
       });
 
-      const token = authRes.data.token;
+      const { token, user, redirect } = authRes.data;
 
       // Save token to localStorage and cookie for authentication state
-      localStorage.setItem("auth_token", token);
-      document.cookie = `auth_token=${token}; path=/;`;
+      if (token) {
+        localStorage.setItem("auth_token", token);
+        document.cookie = `auth_token=${token}; path=/; max-age=2592000; SameSite=Lax;`;
+      }
 
-      // 2. Fetch User Profile to determine role
-      const meRes = await api.get("/core/users/me/", {
-        headers: {
-          Authorization: `Token ${token}`,
-        },
-      });
-
-      const userData = meRes.data;
-      const isAdmin = Boolean(
-        userData.is_superuser ||
-        userData.is_staff ||
-        userData.is_staff_user ||
-        userData.role === "ADMIN" ||
-        userData.role === "MANAGER"
-      );
-      const isStaff = Boolean(
-        !isAdmin &&
-        ["WASHER", "DRIVER", "TECHNICIAN"].includes(userData.role)
-      );
-
-      // 3. Route user based on role
-      if (isAdmin) {
-        router.push("/admin/dashboard");
-      } else if (isStaff) {
-        router.push("/staff/dashboard");
+      if (redirect) {
+        router.push(redirect);
       } else {
-        router.push("/customer/dashboard");
+        const isAdmin = Boolean(
+          user?.is_superuser ||
+          user?.is_staff ||
+          user?.is_staff_user ||
+          user?.role === "ADMIN" ||
+          user?.role === "MANAGER"
+        );
+        const isStaff = Boolean(
+          !isAdmin &&
+          ["WASHER", "DRIVER", "TECHNICIAN"].includes(user?.role)
+        );
+
+        if (isAdmin) {
+          router.push("/admin/dashboard");
+        } else if (isStaff) {
+          router.push("/staff/dashboard");
+        } else {
+          router.push("/customer/dashboard");
+        }
       }
     } catch (err: any) {
       const errData = err.response?.data;

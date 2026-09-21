@@ -204,59 +204,64 @@ export default function QueueBoard() {
     useEffect(() => {
         fetchQueue();
         
-        // Setup WebSocket for Real-Time Live Queue
-        const wsUrl = 'ws://127.0.0.1:8001/ws/queue/';
-        const ws = new WebSocket(wsUrl);
-        
-        ws.onopen = () => {
-            console.log('Connected to Live Queue WebSocket');
-            setIsConnected(true);
-        };
-        
-        ws.onmessage = (event) => {
+        let ws: WebSocket | null = null;
+        if (process.env.NEXT_PUBLIC_ENABLE_WS === 'true') {
             try {
-                const message = JSON.parse(event.data);
-                if (message.type === 'queue_update' && message.data) {
-                    const updatedBooking: BookingCard = message.data;
-                    
-                    setColumns((prev) => {
-                        const newCols = { ...prev };
-                        
-                        // 1. Remove the booking from all columns
-                        Object.keys(newCols).forEach(colId => {
-                            newCols[colId] = newCols[colId].filter(card => card.id !== updatedBooking.id);
-                        });
-                        
-                        // 2. Add booking to new column
-                        const destCol = newCols[updatedBooking.status] !== undefined ? updatedBooking.status : 'WAITING';
-                        newCols[destCol] = [...newCols[destCol], updatedBooking];
-                        
-                        return newCols;
-                    });
-                    
-                    setLastUpdated(new Date());
-                }
-            } catch (err) {
-                console.error("Failed to parse websocket message", err);
+                const wsUrl = 'ws://127.0.0.1:8001/ws/queue/';
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    setIsConnected(true);
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        if (message.type === 'queue_update' && message.data) {
+                            const updatedBooking: BookingCard = message.data;
+                            
+                            setColumns((prev) => {
+                                const newCols = { ...prev };
+                                
+                                // 1. Remove the booking from all columns
+                                Object.keys(newCols).forEach(colId => {
+                                    newCols[colId] = newCols[colId].filter(card => card.id !== updatedBooking.id);
+                                });
+                                
+                                // 2. Add booking to new column
+                                const destCol = newCols[updatedBooking.status] !== undefined ? updatedBooking.status : 'WAITING';
+                                newCols[destCol] = [...newCols[destCol], updatedBooking];
+                                
+                                return newCols;
+                            });
+                            
+                            setLastUpdated(new Date());
+                        }
+                    } catch (err) {
+                        console.error("Failed to parse websocket message", err);
+                    }
+                };
+                
+                ws.onclose = () => {
+                    setIsConnected(false);
+                };
+                
+                ws.onerror = () => {
+                    setIsConnected(false);
+                };
+            } catch {
+                // Ignore WebSocket failure
             }
-        };
-        
-        ws.onclose = () => {
-            setIsConnected(false);
-            console.log('Live Queue WebSocket disconnected');
-        };
-        
-        ws.onerror = (err) => {
-            console.error('WebSocket error:', err);
-            setIsConnected(false);
-        };
+        }
 
-        // Fallback polling (every 5 mins) just in case
-        const interval = setInterval(() => fetchQueue(true), 300000);
+        // Active polling (every 30s)
+        const interval = setInterval(() => fetchQueue(true), 30000);
         
         return () => {
             clearInterval(interval);
-            ws.close();
+            if (ws) {
+                ws.close();
+            }
         };
     }, [fetchQueue]);
 

@@ -4,9 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Landmark, Calendar, TrendingUp, PlusCircle, Clock, User, CheckCircle2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { getApiBaseUrl } from '@/lib/api';
-
-const API_BASE = getApiBaseUrl();
+import { fetchBankDeposits as getBankDeposits, saveBankDeposit, extractErrorMessage } from '@/lib/api';
 
 interface BankDepositEntry {
     id: number;
@@ -41,24 +39,11 @@ export default function BankDepositTab() {
     });
 
     const fetchBankDeposits = useCallback(async () => {
-        const token = localStorage.getItem('auth_token');
-        if (!token) return;
-
         try {
-            const res = await fetch(`${API_BASE}/finance/bank-deposits/`, {
-                headers: {
-                    'Authorization': `Token ${token}`,
-                    'Content-Type': 'application/json',
-                },
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setDepositData(data);
-            } else {
-                toast.error('Failed to load bank deposit data.');
-            }
-        } catch (error) {
-            toast.error('Network error loading bank deposits.');
+            const data = await getBankDeposits();
+            setDepositData(data);
+        } catch {
+            toast.error('Failed to load bank deposit data.');
         } finally {
             setIsLoading(false);
         }
@@ -76,24 +61,15 @@ export default function BankDepositTab() {
         }
 
         setIsSubmitting(true);
-        const token = localStorage.getItem('auth_token');
 
         try {
-            const res = await fetch(`${API_BASE}/finance/bank-deposits/`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Token ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    amount: parseFloat(form.amount),
-                    date: form.date,
-                    notes: form.notes || 'Daily Reserved Savings Deposit',
-                }),
+            const data = await saveBankDeposit({
+                amount: parseFloat(form.amount),
+                date: form.date,
+                notes: form.notes || 'Daily Reserved Savings Deposit',
             });
 
-            const data = await res.json();
-            if (res.ok) {
+            if (data?.success) {
                 toast.success(`Bank deposit of ₹${form.amount} recorded successfully!`);
                 setForm({
                     amount: '',
@@ -111,10 +87,10 @@ export default function BankDepositTab() {
                     fetchBankDeposits();
                 }
             } else {
-                toast.error(data.error || 'Failed to save deposit.');
+                toast.error(data?.error || 'Failed to save deposit.');
             }
-        } catch (error) {
-            toast.error('Network error saving deposit.');
+        } catch (error: unknown) {
+            toast.error(extractErrorMessage(error) || 'Network error saving deposit.');
         } finally {
             setIsSubmitting(false);
         }

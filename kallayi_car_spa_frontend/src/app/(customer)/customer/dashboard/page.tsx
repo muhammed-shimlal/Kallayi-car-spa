@@ -71,25 +71,44 @@ export default function CustomerDashboard() {
                 } catch (cErr) { /* fallback silently */ }
 
                 // Fetch the logged-in customer's bookings
-                const bookingsRes = await api.get('/bookings/');
-                const bookings = bookingsRes.data;
+                let bookings: any[] = [];
+                try {
+                    const bookingsRes = await api.get('/bookings/');
+                    const rawBookings = bookingsRes.data;
+                    bookings = Array.isArray(rawBookings)
+                        ? rawBookings
+                        : (Array.isArray(rawBookings?.data)
+                            ? rawBookings.data
+                            : (Array.isArray(rawBookings?.results) ? rawBookings.results : []));
+                } catch (bErr) {
+                    console.error("Failed to fetch customer bookings", bErr);
+                    bookings = [];
+                }
 
                 // 1. Fetch Customer Vehicles natively
                 try {
                     const vehiclesRes = await api.get('/customer-vehicles/');
-                    const formattedVehicles = vehiclesRes.data.map((v: any) => ({
+                    const rawVehicles = vehiclesRes.data;
+                    const vehiclesList = Array.isArray(rawVehicles)
+                        ? rawVehicles
+                        : (Array.isArray(rawVehicles?.data)
+                            ? rawVehicles.data
+                            : (Array.isArray(rawVehicles?.vehicles) ? rawVehicles.vehicles : []));
+
+                    const formattedVehicles = vehiclesList.map((v: any) => ({
                         id: v.id,
-                        make: v.make,
-                        model: v.model,
-                        plate: v.plate_number
+                        make: v.make || 'Vehicle',
+                        model: v.model || '',
+                        plate: v.plate_number || v.plate || 'N/A'
                     }));
                     setMyVehicles(formattedVehicles);
                 } catch (vErr) {
                     console.error("Failed to fetch garage vehicles", vErr);
+                    setMyVehicles([]);
                 }
 
                 // 2. Derive active wash directly from bookings list
-                const active = bookings.find((b: any) => !['COMPLETED', 'CANCELLED'].includes(b.status));
+                const active = bookings.find((b: any) => b && !['COMPLETED', 'CANCELLED'].includes(b.status));
                 if (active) {
                     let progress = 10;
                     if (active.status === 'IN_PROGRESS') progress = 50;
@@ -98,15 +117,15 @@ export default function CustomerDashboard() {
                     setActiveWash({
                         status: active.status,
                         progress,
-                        package: active.service_package_name || 'Standard Wash',
-                        vehicle: active.vehicle_plate || 'Unknown',
+                        package: active.service_package_name || active.service_name || 'Standard Wash',
+                        vehicle: active.vehicle_plate || active.plate_number || 'Unknown',
                     });
                 } else {
                     setActiveWash(null);
                 }
 
                 // 3. Set Wash History with accurate payment status
-                const completedBookings = bookings.filter((b: any) => b.status === 'COMPLETED').map((b: any) => {
+                const completedBookings = bookings.filter((b: any) => b && b.status === 'COMPLETED').map((b: any) => {
                     const isKhata = b.payment_method === 'KHATA' || b.payment_method === 'CREDIT' || b.invoice_status === 'CREDIT';
                     return {
                         ...b,
@@ -125,7 +144,7 @@ export default function CustomerDashboard() {
                         ledgerRes = await api.get('/customers/me/ledger/');
                     }
 
-                    const ledgerData = ledgerRes.data;
+                    const ledgerData = ledgerRes.data || {};
 
                     const credit = parseFloat(ledgerData.total_credit || 0);
                     const settled = parseFloat(ledgerData.total_settled || 0);
@@ -135,14 +154,20 @@ export default function CustomerDashboard() {
                     setTotalSettled(settled);
                     setOutstandingBalance(outstanding);
 
-                    if (Array.isArray(ledgerData.transactions) && ledgerData.transactions.length > 0) {
-                        const formattedTxns = ledgerData.transactions.map((entry: any) => {
+                    const txnList = Array.isArray(ledgerData.transactions)
+                        ? ledgerData.transactions
+                        : (Array.isArray(ledgerData.data)
+                            ? ledgerData.data
+                            : (Array.isArray(ledgerData.results) ? ledgerData.results : []));
+
+                    if (txnList.length > 0) {
+                        const formattedTxns = txnList.map((entry: any) => {
                             const isSettlement = entry.transaction_type === 'SETTLEMENT' || entry.transaction_type === 'PAYMENT';
                             return {
-                                id: entry.id || `KHATA-${entry.raw_id}`,
-                                date: entry.date,
-                                service: entry.description,
-                                amount: parseFloat(entry.amount),
+                                id: entry.id || `KHATA-${entry.raw_id || Math.random()}`,
+                                date: entry.date || (entry.created_at ? entry.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+                                service: entry.description || entry.service || 'Khata Transaction',
+                                amount: parseFloat(entry.amount || 0),
                                 status: isSettlement ? 'PAID' : 'UNPAID',
                                 transaction_type: entry.transaction_type,
                                 number_plate_image: entry.number_plate_image || null,

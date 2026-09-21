@@ -4,15 +4,17 @@ import React, { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, Search, User, Phone, Sparkles, AlertCircle, X, Check } from "lucide-react";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
+import { UnifiedSearchResult } from "@/types/admin";
 
 import { SmartVehicleSelector } from "@/components/ui/smart-vehicle-selector";
 import { DjangoVehicleType } from "@/lib/vehicleCatalog";
+import { resolvePackagePriceForVehicle } from "@/lib/logic/booking";
 
 export type CategoryKey = "Car" | "Bike" | "Auto Rickshaw" | "Van / Heavy";
 
@@ -78,6 +80,7 @@ const posSchema = z.object({
   phone: z.string().min(1, { message: "Phone number is required" }).refine((val) => val && isValidPhoneNumber(val), {
     message: "Invalid phone number",
   }),
+  customer_name: z.string().optional(),
   package_id: z.number().refine((val) => val !== undefined, {
     message: "Please select a service package",
   }),
@@ -100,6 +103,12 @@ export default function ExpressPOSPage() {
   const [customType, setCustomType] = useState<string>("");
   const [customColor, setCustomColor] = useState<string>("");
   const [agreedPriceInput, setAgreedPriceInput] = useState<string>("");
+
+  // UNIFIED LIVE SEARCH STATE
+  const [universalSearchQuery, setUniversalSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<UnifiedSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
 
   const {
     control,
@@ -132,17 +141,11 @@ export default function ExpressPOSPage() {
 
   const getPackageActivePrice = (pkg: any, targetVehicleType: string) => {
     if (!pkg) return 0;
-    const vTypeUpper = (targetVehicleType || "").toUpperCase();
-    if (pkg.tiered_prices && Array.isArray(pkg.tiered_prices) && pkg.tiered_prices.length > 0) {
-      const match = pkg.tiered_prices.find(
-        (tp: any) => tp.vehicle_type && tp.vehicle_type.toUpperCase() === vTypeUpper
-      );
-      if (match) return parseFloat(match.price);
-    }
-    if (pkg.base_price !== undefined && pkg.base_price !== null) {
-      return parseFloat(pkg.base_price);
-    }
-    return parseFloat(pkg.price || "0");
+    return resolvePackagePriceForVehicle(
+      pkg.base_price || pkg.price,
+      pkg.tiered_prices || pkg.service_package_prices,
+      targetVehicleType
+    );
   };
 
   // Selected Package Object & Calculated Discount
@@ -160,6 +163,139 @@ export default function ExpressPOSPage() {
     setCustomMake("");
     setCustomModel("");
     setCustomType("");
+  };
+
+  const applyVehicleToForm = (data: any) => {
+    if (!data) return;
+
+    const phoneVal = data.phone_number || data.phone || data.owner_phone;
+    if (phoneVal) {
+      const rawPhone = String(phoneVal).trim();
+      const isGuestOrInvalid = rawPhone.startsWith("guest_") || rawPhone.includes("guest") || (!rawPhone.startsWith("+") && !/^[0-9]{7,15}$/.test(rawPhone.replace(/[\s-]/g, '')));
+      if (!isGuestOrInvalid) {
+        setValue("phone", rawPhone, { shouldValidate: true });
+      }
+    }
+
+    if (data.plate_number) {
+      setValue("plate_number", data.plate_number, { shouldValidate: true });
+    }
+
+    const fetchedType = (data.vehicle_type || "").toUpperCase();
+    let targetCategory: CategoryKey = "Car";
+    if (["BIKE", "SCOOTER", "COMMUTER", "CRUISER", "SPORTS BIKE", "SUPERBIKE", "ADVENTURE"].some(t => fetchedType.includes(t))) {
+      targetCategory = "Bike";
+    } else if (["AUTO", "RICKSHAW", "THREE", "PASSENGER AUTO", "GOODS CARRIER", "E-RICKSHAW"].some(t => fetchedType.includes(t))) {
+      targetCategory = "Auto Rickshaw";
+    } else if (["VAN", "HEAVY", "TRAVELLER", "PICKUP", "MINIVAN", "TRUCK", "BUS", "TEMPO", "ACE"].some(t => fetchedType.includes(t))) {
+      targetCategory = "Van / Heavy";
+    }
+    setCategory(targetCategory);
+
+    const makesObj = VEHICLE_DATA[targetCategory].makes;
+    if (data.make && makesObj[data.make]) {
+      setValue("make", data.make);
+      const modelsObj = makesObj[data.make] || {};
+      if (data.model && modelsObj[data.model]) {
+        setValue("model", data.model);
+        const autoType = modelsObj[data.model];
+        if (autoType && autoType !== "Other") {
+          setValue("vehicle_type", autoType);
+        }
+      } else if (data.model) {
+        setValue("model", "Other");
+        setCustomModel(data.model);
+      }
+    } else if (data.make) {
+      setValue("make", "Other");
+      setCustomMake(data.make);
+      if (data.model) {
+        setCustomModel(data.model);
+      }
+    }
+
+    if (data.vehicle_type) {
+      if (VEHICLE_DATA[targetCategory].types.includes(data.vehicle_type)) {
+        setValue("vehicle_type", data.vehicle_type);
+      } else {
+        setValue("vehicle_type", "Other");
+        setCustomType(data.vehicle_type);
+      }
+    }
+
+    if (data.color) {
+      if (VEHICLE_COLORS.includes(data.color as any)) {
+        setValue("color", data.color);
+      } else {
+        setValue("color", "Other");
+        setCustomColor(data.color);
+      }
+    }
+
+    if (data.customer_name && data.customer_name !== "Guest Customer" && data.customer_name !== "Walk-In Customer") {
+      setValue("customer_name", data.customer_name);
+    }
+  };
+
+  // UNIFIED LIVE SEARCH EFFECT (300ms debounce)
+  useEffect(() => {
+    const q = universalSearchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setShowSearchDropdown(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await api.get(`/customer-vehicles/lookup?q=${encodeURIComponent(q)}`);
+        const list = Array.isArray(res.data?.results) ? res.data.results : [];
+        setSearchResults(list);
+        setShowSearchDropdown(list.length > 0);
+      } catch (err) {
+        console.error("Unified search error:", err);
+        setSearchResults([]);
+        setShowSearchDropdown(false);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [universalSearchQuery]);
+
+  const handleSelectSearchResult = (item: UnifiedSearchResult) => {
+    if (item.plate_number) {
+      setValue("plate_number", item.plate_number, { shouldValidate: true });
+    }
+    if (item.phone_number) {
+      const rawPhone = String(item.phone_number).trim();
+      const isGuest = rawPhone.startsWith("guest_") || rawPhone.includes("guest");
+      if (!isGuest && rawPhone) {
+        setValue("phone", rawPhone, { shouldValidate: true });
+      }
+    }
+    if (item.customer_name && item.customer_name !== "Guest Customer" && item.customer_name !== "Walk-In Customer") {
+      setValue("customer_name", item.customer_name);
+    }
+    applyVehicleToForm(item);
+
+    if (item.outstanding_balance && Number(item.outstanding_balance) > 0) {
+      toast(
+        () => (
+          <div className="flex items-center gap-2">
+            <span className="text-amber-400 font-bold">⚠️ Khata Credit Due:</span>
+            <span>{item.customer_name} has ₹{Number(item.outstanding_balance).toLocaleString()} outstanding.</span>
+          </div>
+        ),
+        { duration: 5000, icon: '💳' }
+      );
+    }
+
+    setShowSearchDropdown(false);
+    setUniversalSearchQuery("");
+    toast.success(`Vehicle Autofilled: ${item.plate_number || ''} (${item.make || ''} ${item.model || ''})`);
   };
 
   const handleMakeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -200,59 +336,7 @@ export default function ExpressPOSPage() {
       try {
         const res = await api.get(`/customer-vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`);
         if (res.data) {
-          if (res.data.phone) setValue("phone", res.data.phone, { shouldValidate: true });
-
-          const fetchedType = (res.data.vehicle_type || "").toUpperCase();
-          let targetCategory: CategoryKey = "Car";
-          if (["BIKE", "SCOOTER", "COMMUTER", "CRUISER", "SPORTS BIKE", "SUPERBIKE"].some(t => fetchedType.includes(t))) {
-            targetCategory = "Bike";
-          } else if (["AUTO", "RICKSHAW", "THREE", "PASSENGER AUTO", "GOODS CARRIER", "E-RICKSHAW"].some(t => fetchedType.includes(t))) {
-            targetCategory = "Auto Rickshaw";
-          } else if (["VAN", "HEAVY", "TRAVELLER", "PICKUP", "MINIVAN", "TRUCK", "BUS", "TEMPO", "ACE"].some(t => fetchedType.includes(t))) {
-            targetCategory = "Van / Heavy";
-          }
-          setCategory(targetCategory);
-
-          const makesObj = VEHICLE_DATA[targetCategory].makes;
-          if (res.data.make && makesObj[res.data.make]) {
-            setValue("make", res.data.make);
-            const modelsObj = makesObj[res.data.make] || {};
-            if (res.data.model && modelsObj[res.data.model]) {
-              setValue("model", res.data.model);
-              const autoType = modelsObj[res.data.model];
-              if (autoType && autoType !== "Other") {
-                setValue("vehicle_type", autoType);
-              }
-            } else if (res.data.model) {
-              setValue("model", "Other");
-              setCustomModel(res.data.model);
-            }
-          } else if (res.data.make) {
-            setValue("make", "Other");
-            setCustomMake(res.data.make);
-            if (res.data.model) {
-              setCustomModel(res.data.model);
-            }
-          }
-
-          if (res.data.vehicle_type) {
-            if (VEHICLE_DATA[targetCategory].types.includes(res.data.vehicle_type)) {
-              setValue("vehicle_type", res.data.vehicle_type);
-            } else {
-              setValue("vehicle_type", "Other");
-              setCustomType(res.data.vehicle_type);
-            }
-          }
-
-          if (res.data.color) {
-            if (VEHICLE_COLORS.includes(res.data.color as any)) {
-              setValue("color", res.data.color);
-            } else {
-              setValue("color", "Other");
-              setCustomColor(res.data.color);
-            }
-          }
-
+          applyVehicleToForm(res.data);
           toast.success(`Found Vehicle: ${res.data.make || ''} ${res.data.model || ''}`);
         }
       } catch (err) {
@@ -261,17 +345,18 @@ export default function ExpressPOSPage() {
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [plateNumber, setValue]);
+  }, [plateNumber]);
 
   // Reactive Package Fetching driven by active vehicle body type
   useEffect(() => {
     const fetchPackages = async () => {
       setIsLoadingPackages(true);
       try {
-        const res = await api.get("/service-packages/", {
+        const res = await api.get("/services", {
           params: activeVehicleType ? { vehicle_type: activeVehicleType } : {}
         });
-        setPackages(res.data.results || res.data || []);
+        const list = Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data) ? res.data : (res.data?.results || []));
+        setPackages(list);
       } catch (err) {
         console.error(err);
         setPackages([]);
@@ -297,6 +382,8 @@ export default function ExpressPOSPage() {
 
       const payload = {
         ...data,
+        name: data.customer_name || 'Guest Customer',
+        customer_name: data.customer_name || 'Guest Customer',
         category,
         make: realMake,
         model: realModel,
@@ -347,6 +434,107 @@ export default function ExpressPOSPage() {
         {/* POS Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 flex-1 flex flex-col justify-between">
           <div className="space-y-8">
+            {/* UNIFIED MULTI-FIELD LIVE SEARCH BAR */}
+            <div className="relative z-30">
+              <div className="bg-[#141518]/90 backdrop-blur-2xl border border-white/10 rounded-2xl p-3 sm:p-4 shadow-2xl focus-within:border-[#01FFFF] focus-within:shadow-[0_0_25px_rgba(1,255,255,0.15)] transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-black/60 border border-white/10 flex items-center justify-center text-[#01FFFF] flex-shrink-0">
+                    {isSearching ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Search className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#8E939B] block mb-0.5">
+                      Universal Live Search (Name, Plate, or Phone)
+                    </label>
+                    <input
+                      type="text"
+                      value={universalSearchQuery}
+                      onChange={(e) => setUniversalSearchQuery(e.target.value)}
+                      onFocus={() => {
+                        if (searchResults.length > 0) setShowSearchDropdown(true);
+                      }}
+                      placeholder="Search plate (e.g. KL 10), customer name, or phone..."
+                      className="w-full bg-transparent text-sm sm:text-base font-medium text-white placeholder:text-zinc-600 outline-none"
+                    />
+                  </div>
+                  {universalSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUniversalSearchQuery("");
+                        setSearchResults([]);
+                        setShowSearchDropdown(false);
+                      }}
+                      className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* SEARCH RESULTS DROPDOWN POPOVER */}
+              {showSearchDropdown && searchResults.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-2 bg-[#0d0e12]/95 backdrop-blur-3xl border border-[#01FFFF]/30 rounded-2xl p-2 shadow-[0_10px_40px_rgba(0,0,0,0.8)] max-h-[380px] overflow-y-auto space-y-1.5 z-50">
+                  <div className="px-3 py-1.5 flex items-center justify-between border-b border-white/5 text-[10px] uppercase font-bold tracking-widest text-[#8E939B]">
+                    <span>Found {searchResults.length} Match{searchResults.length > 1 ? 'es' : ''}</span>
+                    <span className="text-[#01FFFF]">Click to Auto-Fill</span>
+                  </div>
+                  {searchResults.map((item, idx) => (
+                    <button
+                      key={`${item.plate_number}_${item.customer_id || idx}`}
+                      type="button"
+                      onClick={() => handleSelectSearchResult(item)}
+                      className="w-full text-left p-3 rounded-xl bg-white/[0.03] hover:bg-[#01FFFF]/10 border border-white/5 hover:border-[#01FFFF]/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="px-2.5 py-1 rounded-lg bg-black/60 border border-[#01FFFF]/30 font-mono font-bold text-xs text-[#01FFFF] tracking-wider group-hover:border-[#01FFFF]">
+                          {item.plate_number || 'NO PLATE'}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white group-hover:text-[#01FFFF] transition-colors">
+                            {item.make} {item.model}
+                            {item.color ? ` • ${item.color}` : ''}
+                            <span className="ml-2 text-[10px] font-mono text-zinc-400 uppercase">({item.vehicle_type || 'CAR'})</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-[#8E939B] mt-0.5">
+                            <span className="flex items-center gap-1">
+                              <User className="w-3 h-3 text-[#01FFFF]" />
+                              <strong className="text-zinc-300">{item.customer_name}</strong>
+                            </span>
+                            {item.phone_number && (
+                              <span className="flex items-center gap-1 font-mono">
+                                <Phone className="w-3 h-3 text-emerald-400" />
+                                {item.phone_number}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center">
+                        {(item.outstanding_balance || 0) > 0 && (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono font-bold flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            ₹{(item.outstanding_balance || 0).toLocaleString()} Due
+                          </span>
+                        )}
+                        {(item.loyalty_points || 0) > 0 && (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[10px] font-mono font-bold flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" />
+                            {item.loyalty_points} pts
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Input Groups Container */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Plate Number */}
@@ -369,22 +557,36 @@ export default function ExpressPOSPage() {
                 )}
               </div>
 
-              {/* Phone Number */}
-              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-center">
-                <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] mb-4 text-center block">
-                  Customer Master Key
-                </label>
-                <div className="w-full">
-                  <Controller
-                    name="phone"
-                    control={control}
-                    render={({ field }) => (
-                      <CinematicPhoneInput
-                        value={field.value}
-                        onChange={field.onChange}
-                        error={errors.phone?.message}
-                      />
-                    )}
+              {/* Phone Number & Customer Name */}
+              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-center gap-4">
+                <div>
+                  <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] mb-3 text-center block">
+                    Customer Master Key (Phone)
+                  </label>
+                  <div className="w-full">
+                    <Controller
+                      name="phone"
+                      control={control}
+                      render={({ field }) => (
+                        <CinematicPhoneInput
+                          value={field.value}
+                          onChange={field.onChange}
+                          error={errors.phone?.message}
+                        />
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-[#8E939B] mb-1.5 block">
+                    Customer Name (Walk-In / Optional)
+                  </label>
+                  <input
+                    {...register("customer_name")}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-semibold text-white placeholder:text-zinc-600 focus:border-[#01FFFF] focus:outline-none transition-all"
+                    placeholder="e.g. Rahul Sharma"
+                    autoComplete="off"
                   />
                 </div>
               </div>

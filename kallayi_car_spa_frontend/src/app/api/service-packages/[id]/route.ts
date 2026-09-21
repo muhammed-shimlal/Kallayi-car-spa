@@ -1,0 +1,40 @@
+/**
+ * KALLAYI CAR SPA & AUTO CARE - INDIVIDUAL SERVICE PACKAGE ALIAS ROUTE
+ * Next.js 16 Route Handler: GET, PUT, PATCH, DELETE /api/service-packages/[id]
+ */
+
+import { NextRequest } from 'next/server';
+import {
+  GET as getServiceById,
+  PUT as putServiceById,
+  PATCH as patchServiceById,
+  DELETE as deleteServiceById,
+} from '@/app/api/bookings/services/[id]/route';
+
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return getServiceById(request, context);
+}
+
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return putServiceById(request, context);
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return patchServiceById(request, context);
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return deleteServiceById(request, context);
+}

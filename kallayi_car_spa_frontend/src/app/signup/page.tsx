@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import api from '@/lib/api';
 import { GmailInput } from '@/components/ui/GmailInput';
+import { SmartVehicleSelector } from '@/components/ui/smart-vehicle-selector';
+import { VehicleType } from '@/types/database';
 
 // Password Strength Calculation Helper
 function getPasswordStrength(password: string) {
@@ -52,6 +54,18 @@ export default function SignupPage() {
     const [vehicleMake, setVehicleMake] = useState('');
     const [vehicleModel, setVehicleModel] = useState('');
     const [vehiclePlate, setVehiclePlate] = useState('');
+    const [vehicleType, setVehicleType] = useState<VehicleType>('HATCHBACK');
+
+    const handleVehicleChange = useCallback((vData: {
+        make: string;
+        model: string;
+        vehicle_type: VehicleType;
+        isManual: boolean;
+    }) => {
+        setVehicleMake(prev => (prev === vData.make ? prev : vData.make));
+        setVehicleModel(prev => (prev === vData.model ? prev : vData.model));
+        setVehicleType(prev => (prev === vData.vehicle_type ? prev : vData.vehicle_type));
+    }, []);
 
     // Status & Feedback State
     const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
@@ -134,7 +148,8 @@ export default function SignupPage() {
                 payload.vehicle = {
                     make: vehicleMake.trim(),
                     model: vehicleModel.trim(),
-                    plate_number: vehiclePlate.trim().toUpperCase()
+                    plate_number: vehiclePlate.trim().toUpperCase(),
+                    vehicle_type: vehicleType || 'HATCHBACK'
                 };
             }
 
@@ -163,11 +178,11 @@ export default function SignupPage() {
     return (
         <div className="min-h-screen bg-[#050505] text-white flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-hidden font-sans selection:bg-[#E52323]/30 selection:text-white">
             
-            {/* Cinematic Background Image Overlay & Ambient Lighting */}
+            {/* Cinematic Background Image Overlay & Mobile-Safe Ambient Lighting */}
             <div className="absolute inset-0 z-0 opacity-15 bg-[url('https://images.unsplash.com/photo-1603584173870-7f23fdae1b7a?q=80&w=2669&auto=format&fit=crop')] bg-cover bg-center mix-blend-luminosity" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent pointer-events-none" />
-            <div className="absolute top-1/4 -left-20 w-96 h-96 bg-[#01FFFF]/10 rounded-full blur-[140px] pointer-events-none" />
-            <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-[#E52323]/15 rounded-full blur-[140px] pointer-events-none" />
+            <div className="absolute top-1/4 -left-20 w-80 h-80 bg-[#01FFFF]/10 rounded-full blur-3xl sm:blur-[100px] transform-gpu pointer-events-none" />
+            <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-[#E52323]/15 rounded-full blur-3xl sm:blur-[100px] transform-gpu pointer-events-none" />
 
             <div className="w-full max-w-lg relative z-10 my-8">
                 
@@ -192,12 +207,12 @@ export default function SignupPage() {
                     </p>
                 </motion.div>
 
-                {/* Tactile Obsidian Neumorphic Card */}
+                {/* Tactile Obsidian Card */}
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ duration: 0.5, delay: 0.1 }}
-                    className="bg-[#0a0a0d] rounded-3xl p-6 sm:p-10 shadow-[10px_10px_30px_#020203,-10px_-10px_30px_#14151a] border border-white/10 relative overflow-hidden"
+                    className="bg-[#0a0a0d] rounded-3xl p-6 sm:p-10 shadow-2xl border border-white/10 relative overflow-hidden"
                 >
                     <form onSubmit={handleSubmit} className="space-y-5">
                         
@@ -226,12 +241,12 @@ export default function SignupPage() {
                                     onBlur={() => handleBlur('name')}
                                     disabled={isLoading}
                                     placeholder="Enter full name..."
-                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium transition-all duration-200 outline-none border touch-manipulation ${
                                         touched.name
                                             ? isNameValid
-                                                ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
-                                                : 'border-[#E52323]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(229,35,35,0.2)]'
-                                            : 'border-transparent focus:border-[#01FFFF] focus:shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_18px_rgba(1,255,255,0.3)]'
+                                                ? 'border-[#01FFFF]/60 shadow-[0_0_15px_rgba(1,255,255,0.2)]'
+                                                : 'border-[#E52323]/60 shadow-[0_0_15px_rgba(229,35,35,0.2)]'
+                                            : 'border-white/10 focus:border-[#01FFFF]'
                                     }`}
                                 />
                             </div>
@@ -262,12 +277,12 @@ export default function SignupPage() {
                                     onBlur={() => handleBlur('phone')}
                                     disabled={isLoading}
                                     placeholder="+91 98765 43210"
-                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none border touch-manipulation ${
                                         touched.phone
                                             ? isPhoneValid
-                                                ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
-                                                : 'border-[#E52323]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(229,35,35,0.2)]'
-                                            : 'border-transparent focus:border-[#01FFFF] focus:shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_18px_rgba(1,255,255,0.3)]'
+                                                ? 'border-[#01FFFF]/60 shadow-[0_0_15px_rgba(1,255,255,0.2)]'
+                                                : 'border-[#E52323]/60 shadow-[0_0_15px_rgba(229,35,35,0.2)]'
+                                            : 'border-white/10 focus:border-[#01FFFF]'
                                     }`}
                                 />
                             </div>
@@ -307,18 +322,18 @@ export default function SignupPage() {
                                     onBlur={() => handleBlur('password')}
                                     disabled={isLoading}
                                     placeholder="••••••••••••"
-                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-12 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-12 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none border touch-manipulation ${
                                         touched.password
                                             ? isPasswordValid
-                                                ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
-                                                : 'border-[#E52323]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(229,35,35,0.2)]'
-                                            : 'border-transparent focus:border-[#01FFFF] focus:shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_18px_rgba(1,255,255,0.3)]'
+                                                ? 'border-[#01FFFF]/60 shadow-[0_0_15px_rgba(1,255,255,0.2)]'
+                                                : 'border-[#E52323]/60 shadow-[0_0_15px_rgba(229,35,35,0.2)]'
+                                            : 'border-white/10 focus:border-[#01FFFF]'
                                     }`}
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-neutral-500 hover:text-[#01FFFF] transition-colors"
+                                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-neutral-500 hover:text-[#01FFFF] transition-colors touch-manipulation cursor-pointer"
                                 >
                                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                 </button>
@@ -331,11 +346,11 @@ export default function SignupPage() {
                                         <span className="text-neutral-400 uppercase tracking-widest">Password Strength</span>
                                         <span className="font-bold text-white tracking-wider">{passwordStrength.label}</span>
                                     </div>
-                                    <div className="grid grid-cols-4 gap-1.5 h-1.5 bg-[#050507] p-0.5 rounded-full shadow-[inset_2px_2px_4px_#000000]">
+                                    <div className="grid grid-cols-4 gap-1.5 h-1.5 bg-[#050507] p-0.5 rounded-full">
                                         {[1, 2, 3, 4].map((step) => (
                                             <div
                                                 key={step}
-                                                className={`h-full rounded-full transition-all duration-300 ${
+                                                className={`h-full rounded-full transition-colors duration-200 ${
                                                     step <= passwordStrength.score ? passwordStrength.color : 'bg-neutral-800'
                                                 }`}
                                             />
@@ -370,12 +385,12 @@ export default function SignupPage() {
                                     onBlur={() => handleBlur('confirmPassword')}
                                     disabled={isLoading}
                                     placeholder="••••••••••••"
-                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318] border ${
+                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none border touch-manipulation ${
                                         touched.confirmPassword
                                             ? isConfirmPasswordValid
-                                                ? 'border-[#01FFFF]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(1,255,255,0.2)]'
-                                                : 'border-[#E52323]/60 shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_15px_rgba(229,35,35,0.2)]'
-                                            : 'border-transparent focus:border-[#01FFFF] focus:shadow-[inset_4px_4px_10px_#000000,inset_-4px_-4px_10px_#121318,0_0_18px_rgba(1,255,255,0.3)]'
+                                                ? 'border-[#01FFFF]/60 shadow-[0_0_15px_rgba(1,255,255,0.2)]'
+                                                : 'border-[#E52323]/60 shadow-[0_0_15px_rgba(229,35,35,0.2)]'
+                                            : 'border-white/10 focus:border-[#01FFFF]'
                                     }`}
                                 />
                             </div>
@@ -386,10 +401,10 @@ export default function SignupPage() {
                             <button
                                 type="button"
                                 onClick={() => setAddVehicle(!addVehicle)}
-                                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-[#050507] shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-white/5 hover:border-[#01FFFF]/30 transition-all"
+                                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-[#050507] border border-white/5 hover:border-[#01FFFF]/30 transition-colors touch-manipulation cursor-pointer"
                             >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-xl bg-[#0a0a0d] shadow-[2px_2px_6px_#020203,-2px_-2px_6px_#14151a] flex items-center justify-center text-[#01FFFF]">
+                                    <div className="w-8 h-8 rounded-xl bg-[#0a0a0d] flex items-center justify-center text-[#01FFFF] border border-white/5">
                                         <Car className="w-4 h-4" />
                                     </div>
                                     <div className="text-left">
@@ -397,57 +412,34 @@ export default function SignupPage() {
                                         <p className="text-[10px] text-neutral-400">Save vehicle details for express booking</p>
                                     </div>
                                 </div>
-                                <ChevronDown className={`w-5 h-5 text-neutral-400 transition-transform duration-300 ${addVehicle ? 'rotate-180 text-[#01FFFF]' : ''}`} />
+                                <ChevronDown className={`w-5 h-5 text-neutral-400 transition-transform duration-200 ${addVehicle ? 'rotate-180 text-[#01FFFF]' : ''}`} />
                             </button>
 
-                            {/* Animated Expandable Vehicle Section */}
-                            <AnimatePresence>
-                                {addVehicle && (
-                                    <motion.div
-                                        initial={{ opacity: 0, height: 0 }}
-                                        animate={{ opacity: 1, height: 'auto' }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        transition={{ duration: 0.3 }}
-                                        className="overflow-hidden space-y-3.5 pt-3"
-                                    >
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] uppercase tracking-wider text-neutral-400">Make (Brand)</label>
-                                                <input
-                                                    type="text"
-                                                    value={vehicleMake}
-                                                    onChange={(e) => setVehicleMake(e.target.value)}
-                                                    onBlur={() => handleBlur('vehicleMake')}
-                                                    placeholder="e.g. Maruti Suzuki / Hyundai"
-                                                    className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs font-medium outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] uppercase tracking-wider text-neutral-400">Model Name</label>
-                                                <input
-                                                    type="text"
-                                                    value={vehicleModel}
-                                                    onChange={(e) => setVehicleModel(e.target.value)}
-                                                    onBlur={() => handleBlur('vehicleModel')}
-                                                    placeholder="e.g. Swift / Creta"
-                                                    className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs font-medium outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] uppercase tracking-wider text-neutral-400">License Plate Number</label>
-                                            <input
-                                                type="text"
-                                                value={vehiclePlate}
-                                                onChange={(e) => setVehiclePlate(e.target.value)}
-                                                onBlur={() => handleBlur('vehiclePlate')}
-                                                placeholder="e.g. KL 10 AW 9999"
-                                                className="w-full bg-[#050507] text-white placeholder-neutral-600 py-3 px-3.5 rounded-xl text-xs uppercase tracking-wider outline-none shadow-[inset_3px_3px_8px_#000000,inset_-3px_-3px_8px_#121318] border border-transparent focus:border-[#01FFFF]"
-                                            />
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                            {/* Lightweight Expandable Vehicle Section */}
+                            {addVehicle && (
+                                <div className="mt-3 p-4 rounded-2xl bg-[#0f1015] border border-white/10 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
+                                            License Plate / Registration Number
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={vehiclePlate}
+                                            onChange={(e) => setVehiclePlate(e.target.value.toUpperCase())}
+                                            onBlur={() => handleBlur('vehiclePlate')}
+                                            placeholder="e.g. KL 10 AW 9999"
+                                            className="w-full bg-[#141518] border border-white/10 rounded-xl px-3.5 py-3 text-xs uppercase tracking-wider font-mono font-bold text-white outline-none focus:border-[#01FFFF] transition-colors touch-manipulation"
+                                        />
+                                    </div>
+
+                                    <SmartVehicleSelector
+                                        initialMake={vehicleMake}
+                                        initialModel={vehicleModel}
+                                        initialBodyType={vehicleType}
+                                        onVehicleChange={handleVehicleChange}
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* Error Alert Display */}

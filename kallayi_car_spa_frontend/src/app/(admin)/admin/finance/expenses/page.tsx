@@ -190,9 +190,15 @@ export default function ExpensesPage() {
 
         setIsSubmitting(true);
         try {
+            const categoryNum = Number(form.category);
+            const amountNum = Number(form.amount) || 0;
+
             const fd = new FormData();
+            if (!isNaN(categoryNum) && categoryNum > 0) {
+                fd.append('category_id', String(categoryNum));
+            }
             fd.append('category', form.category);
-            fd.append('amount', form.amount);
+            fd.append('amount', String(amountNum));
             fd.append('date', form.date);
             fd.append('description', form.description);
             if (receiptFile) fd.append('receipt_image', receiptFile);
@@ -209,10 +215,11 @@ export default function ExpensesPage() {
 
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail ?? JSON.stringify(err) ?? 'Submission failed');
+                throw new Error(err.detail ?? err.error ?? JSON.stringify(err) ?? 'Submission failed');
             }
 
-            const savedExp: GeneralExpense = await res.json();
+            const rawJson = await res.json();
+            const savedExp: GeneralExpense = rawJson?.data || rawJson;
 
             if (isEdit) {
                 toast.success('Expense updated successfully!');

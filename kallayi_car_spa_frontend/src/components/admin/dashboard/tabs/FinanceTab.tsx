@@ -679,12 +679,18 @@ export default function FinanceTab() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
-                                    {khataLedger.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={6} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
-                                        </tr>
-                                    ) : (
-                                        khataLedger.map((entry: any) => (
+                                    {(() => {
+                                        const safeKhataLedger = Array.isArray(khataLedger) ? khataLedger : (Array.isArray((khataLedger as any)?.results) ? (khataLedger as any).results : (Array.isArray((khataLedger as any)?.data) ? (khataLedger as any).data : []));
+                                        
+                                        if (safeKhataLedger.length === 0) {
+                                            return (
+                                                <tr>
+                                                    <td colSpan={6} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
+                                                </tr>
+                                            );
+                                        }
+
+                                        return safeKhataLedger.map((entry: any) => (
                                             <tr key={entry.id} className="hover:bg-white/5 transition-colors">
                                                 <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
                                                 <td className="p-4 text-gray-300 max-w-[220px] truncate" title={entry.description}>{entry.description}</td>
@@ -728,8 +734,8 @@ export default function FinanceTab() {
                                                 </td>
                                                 <td className={`p-4 text-right font-bold ${entry.transaction_type === 'SETTLEMENT' ? 'text-emerald-400' : 'text-[#FF2A6D]'}`}>₹{entry.amount}</td>
                                             </tr>
-                                        ))
-                                    )}
+                                        ));
+                                    })()}
                                 </tbody>
                             </table>
                         </div>
