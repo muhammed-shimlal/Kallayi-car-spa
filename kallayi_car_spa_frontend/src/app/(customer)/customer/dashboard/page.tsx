@@ -9,6 +9,7 @@ import api from '@/lib/api';
 
 import { SidebarNavigation } from '@/components/customer/dashboard/SidebarNavigation';
 import { OverviewTab } from '@/components/customer/dashboard/OverviewTab';
+import { ServicesMenuTab } from '@/components/customer/dashboard/ServicesMenuTab';
 import { GarageTab } from '@/components/customer/dashboard/GarageTab';
 import { LedgerTab } from '@/components/customer/dashboard/LedgerTab';
 import { HistoryTab } from '@/components/customer/dashboard/HistoryTab';
@@ -21,6 +22,8 @@ export default function CustomerDashboard() {
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('overview');
     const [isBooking, setIsBooking] = useState(false);
+    const [bookingInitialVehicle, setBookingInitialVehicle] = useState<Vehicle | null>(null);
+    const [bookingInitialPackage, setBookingInitialPackage] = useState<any | null>(null);
 
     // Real API Data States
     const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
@@ -99,7 +102,8 @@ export default function CustomerDashboard() {
                         id: v.id,
                         make: v.make || 'Vehicle',
                         model: v.model || '',
-                        plate: v.plate_number || v.plate || 'N/A'
+                        plate: v.plate_number || v.plate || 'N/A',
+                        vehicle_type: v.vehicle_type || v.body_type || 'SEDAN'
                     }));
                     setMyVehicles(formattedVehicles);
                 } catch (vErr) {
@@ -139,9 +143,13 @@ export default function CustomerDashboard() {
                 try {
                     let ledgerRes;
                     try {
-                        ledgerRes = await api.get('/finance/khata/my-ledger/');
+                        ledgerRes = await api.get('/customer/khata');
                     } catch {
-                        ledgerRes = await api.get('/customers/me/ledger/');
+                        try {
+                            ledgerRes = await api.get('/finance/khata/my-ledger/');
+                        } catch {
+                            ledgerRes = await api.get('/customers/me/ledger/');
+                        }
                     }
 
                     const ledgerData = ledgerRes.data || {};
@@ -166,12 +174,14 @@ export default function CustomerDashboard() {
                             return {
                                 id: entry.id || `KHATA-${entry.raw_id || Math.random()}`,
                                 date: entry.date || (entry.created_at ? entry.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-                                service: entry.description || entry.service || 'Khata Transaction',
+                                service: entry.service || entry.description || 'Khata Transaction',
+                                description: entry.description,
                                 amount: parseFloat(entry.amount || 0),
                                 status: isSettlement ? 'PAID' : 'UNPAID',
                                 transaction_type: entry.transaction_type,
                                 number_plate_image: entry.number_plate_image || null,
-                                plate_number: entry.plate_number || 'N/A'
+                                plate_number: entry.plate_number || entry.vehicle_plate || 'N/A',
+                                vehicle_model: entry.vehicle_model || null
                             };
                         });
                         setTransactions(formattedTxns);
@@ -220,10 +230,18 @@ export default function CustomerDashboard() {
 
     const handleMobileTabChange = (tab: string) => {
         if (tab === 'booking') {
+            setBookingInitialVehicle(null);
+            setBookingInitialPackage(null);
             setIsBooking(true);
         } else {
             setActiveTab(tab);
         }
+    };
+
+    const handleBookService = (servicePkg: any, vehicle: Vehicle | null) => {
+        setBookingInitialVehicle(vehicle);
+        setBookingInitialPackage(servicePkg);
+        setIsBooking(true);
     };
 
     return (
@@ -243,6 +261,15 @@ export default function CustomerDashboard() {
                 <AnimatePresence mode="wait">
                     {activeTab === 'overview' && (
                         <OverviewTab key="overview" setIsBooking={setIsBooking} handleLogout={handleLogout} customerName={customerName} />
+                    )}
+
+                    {activeTab === 'services' && (
+                        <ServicesMenuTab 
+                            key="services" 
+                            myVehicles={myVehicles} 
+                            onBookService={handleBookService} 
+                            onOpenAddVehicle={() => setActiveTab('garage')} 
+                        />
                     )}
                     
                     {activeTab === 'garage' && (
@@ -275,7 +302,18 @@ export default function CustomerDashboard() {
 
             {/* Booking Wizard Setup */}
             {isBooking && (
-                <BookingWizard setIsBooking={setIsBooking} myVehicles={myVehicles} />
+                <BookingWizard 
+                    setIsBooking={(val) => {
+                        setIsBooking(val);
+                        if (!val) {
+                            setBookingInitialVehicle(null);
+                            setBookingInitialPackage(null);
+                        }
+                    }} 
+                    myVehicles={myVehicles}
+                    initialVehicle={bookingInitialVehicle}
+                    initialPackage={bookingInitialPackage}
+                />
             )}
 
             {/* Tailwind Keyframes injected locally for global effects */}

@@ -19,6 +19,7 @@ export const getApiBaseUrl = (): string => {
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,27 +29,38 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     config.baseURL = getApiBaseUrl();
-    let token = Cookies.get('auth_token');
+
+    // Extract token from cookies, localStorage, or sessionStorage
+    let token = Cookies.get('auth_token') || Cookies.get('access_token');
     if (!token && typeof window !== 'undefined') {
-      token = localStorage.getItem('auth_token') || undefined;
+      token =
+        localStorage.getItem('auth_token') ||
+        localStorage.getItem('access_token') ||
+        localStorage.getItem('token') ||
+        sessionStorage.getItem('auth_token') ||
+        sessionStorage.getItem('access_token') ||
+        undefined;
     }
+
     if (token) {
-      config.headers.Authorization = `Token ${token}`;
+      const cleanToken = String(token).replace(/^Bearer\s+|^Token\s+/i, '').trim();
+      if (cleanToken && cleanToken !== 'undefined' && cleanToken !== 'null') {
+        config.headers.Authorization = `Bearer ${cleanToken}`;
+      }
     }
+
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Response interceptor for auth redirects
+// Response interceptor for auth error logging
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        Cookies.remove('auth_token');
-        localStorage.removeItem('auth_token');
-      }
+      const url = error.config?.url || '';
+      console.warn(`[API Client] 401 Unauthorized encountered on ${url}`);
     }
     return Promise.reject(error);
   }
@@ -305,8 +317,59 @@ export interface BankDepositPayload {
   notes?: string;
 }
 
+export interface BankTransactionPayload {
+  amount: number;
+  transaction_type?: 'DEPOSIT' | 'WITHDRAWAL';
+  bank_name?: string;
+  purpose?: string;
+  reference_number?: string;
+  transaction_date?: string;
+  receipt_image?: string | null;
+}
+
 /**
- * Fetches all bank deposit and savings records
+ * Fetches bank balance summary, deposit totals, withdrawal totals, and transactions ledger
+ */
+export async function fetchBankOverview() {
+  try {
+    const res = await api.get('/finance/bank');
+    return res.data;
+  } catch (err) {
+    console.error('[fetchBankOverview] Error:', err);
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+/**
+ * Records a bank cash deposit (supports FormData or JSON payload)
+ */
+export async function recordBankDeposit(payload: FormData | BankTransactionPayload) {
+  try {
+    const config = payload instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined;
+    const res = await api.post('/finance/bank/deposit', payload, config);
+    return res.data;
+  } catch (err) {
+    console.error('[recordBankDeposit] Error:', err);
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+/**
+ * Records a bank cash withdrawal (supports FormData or JSON payload)
+ */
+export async function recordBankWithdrawal(payload: FormData | BankTransactionPayload) {
+  try {
+    const config = payload instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined;
+    const res = await api.post('/finance/bank/withdraw', payload, config);
+    return res.data;
+  } catch (err) {
+    console.error('[recordBankWithdrawal] Error:', err);
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+/**
+ * Fetches all bank deposit and savings records (Legacy)
  */
 export async function fetchBankDeposits() {
   try {
@@ -319,7 +382,7 @@ export async function fetchBankDeposits() {
 }
 
 /**
- * Records a daily bank deposit savings entry
+ * Records a daily bank deposit savings entry (Legacy)
  */
 export async function saveBankDeposit(payload: BankDepositPayload) {
   try {

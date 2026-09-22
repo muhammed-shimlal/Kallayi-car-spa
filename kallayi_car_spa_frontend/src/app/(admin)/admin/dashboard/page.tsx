@@ -7,6 +7,7 @@ import CrmTab from '@/components/admin/dashboard/tabs/CrmTab';
 import BankDepositTab from '@/components/admin/dashboard/tabs/BankDepositTab';
 import ServicesTab from '@/components/admin/dashboard/tabs/ServicesTab';
 import StaffModal from '@/components/admin/dashboard/modals/StaffModal';
+import EODTab from '@/components/admin/dashboard/tabs/EODTab';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { DashboardProvider, useDashboard } from '@/components/admin/dashboard/context/DashboardContext';
 import { useRouter } from 'next/navigation';
@@ -14,7 +15,7 @@ import MobileNavigation from '@/components/admin/dashboard/MobileNavigation';
 import toast from 'react-hot-toast';
 import {
     LayoutDashboard, Users, Car, Wallet, LogOut,
-    TrendingUp, Activity, Receipt, ChevronRight, Download,
+    TrendingUp, TrendingDown, Activity, Receipt, ChevronRight, Download,
     CreditCard, FileText, FlaskConical, CheckCircle, PlusCircle,
     Clock, AlertCircle, Check, BadgeDollarSign, UserCog, Lock,
     AlertTriangle, IndianRupee, Landmark, BookOpen, BarChart2, Trophy,
@@ -33,7 +34,7 @@ const API_BASE = getApiBaseUrl();
 
 function AdminDashboardContent() {
     const router = useRouter();
-    const { uiState } = useDashboard();
+    const { uiState, financeState, queueState } = useDashboard();
     const { activeTab, setActiveTab, financeSubTab, setFinanceSubTab } = uiState;
 
     // --- Data States ---
@@ -41,7 +42,21 @@ function AdminDashboardContent() {
     const [adminName, setAdminName] = useState('Loading...');
 
     // --- Data States ---
-    const [kpiData, setKpiData] = useState({ net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, today_total_credit: 0, today_collection_bank: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 });
+    const [kpiData, setKpiData] = useState<any>({
+        net_profit_today: 0,
+        revenue_today: 0,
+        today_revenue: 0,
+        pre_booking_revenue: 0,
+        today_total_credit: 0,
+        today_credit_asset: 0,
+        today_collection_bank: 0,
+        bank_today: 0,
+        general_expenses_today: 0,
+        general_expense_today: 0,
+        labor_cost_today: 0,
+        today_washed_count: 0,
+        washed_today: 0,
+    });
     const [collectionAmount, setCollectionAmount] = useState('');
     const [isSavingCollection, setIsSavingCollection] = useState(false);
     const generateDemoChartData = () => {
@@ -162,7 +177,7 @@ function AdminDashboardContent() {
             // Fetch all 10 endpoints safely (global-history is fetched separately)
             const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes, eodRes, analyticsRes] = await Promise.all([
                 fetch(`${API_BASE}/core/users/me/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/finance/dashboard/kpi_summary/`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/finance/dashboard/kpi_summary`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/bookings/`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/finance/general-expenses/`, { headers: HEADERS }).catch(() => null),
@@ -175,7 +190,10 @@ function AdminDashboardContent() {
 
             // Map data to state
             if (userRes?.ok) { const user = await userRes.json(); setAdminName(user.first_name || user.username); }
-            if (kpiRes?.ok) setKpiData(await kpiRes.json());
+            if (kpiRes?.ok) {
+                const kpiJson = await kpiRes.json();
+                setKpiData(kpiJson.kpiData || kpiJson);
+            }
             if (chartRes?.ok) {
                 const chartApiData = await chartRes.json();
                 if (Array.isArray(chartApiData) && chartApiData.length > 0) {
@@ -1045,8 +1063,8 @@ function AdminDashboardContent() {
                     <button onClick={() => setActiveTab('crm')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'crm' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'text-[#8E939B] hover:text-white'}`}>
                         <Search className="w-4 h-4" /> CRM & History
                     </button>
-                    <button onClick={() => setActiveTab('eod')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'eod' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30' : 'text-[#8E939B] hover:text-white'}`}>
-                        <FileText className="w-4 h-4" /> EOD Closing
+                    <button onClick={() => setActiveTab('eod')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'eod' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40' : 'text-[#8E939B] hover:text-white'}`}>
+                        <FileText className="w-4 h-4 text-purple-400" /> EOD Closing
                     </button>
                     <button onClick={() => setActiveTab('services')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'services' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'text-[#8E939B] hover:text-white'}`}>
                         <Wrench className="w-4 h-4" /> Service Menu
@@ -1081,9 +1099,9 @@ function AdminDashboardContent() {
             {/* MAIN CONTENT AREA */}
             <main className="flex-1 p-4 sm:p-8 lg:p-12 max-lg:pb-[calc(5.5rem+env(safe-area-inset-bottom))] w-full overflow-y-auto relative">
                 
-                {/* GLOBAL CRM SEARCH BAR */}
-                <div className="mb-6 sm:mb-8">
-                    <form onSubmit={handleCrmSearch} className="relative max-w-2xl w-full">
+                {/* TOP BAR: GLOBAL CRM SEARCH BAR + EOD AUDIT TRIGGER */}
+                <div className="mb-6 sm:mb-8 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+                    <form onSubmit={handleCrmSearch} className="relative max-w-2xl w-full flex-1">
                         <div className="relative flex items-center">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-[#8E939B] pointer-events-none" />
                             <input 
@@ -1113,6 +1131,14 @@ function AdminDashboardContent() {
                             </div>
                         </div>
                     </form>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('eod')}
+                        className="min-h-[48px] px-5 py-3 rounded-2xl bg-[#141518] hover:bg-purple-950/40 text-purple-200 border border-purple-500/30 hover:border-purple-400 font-syncopate font-bold text-xs tracking-wider uppercase transition-all flex items-center justify-center gap-2.5 active:scale-95 touch-manipulation whitespace-nowrap shadow-[0_0_15px_rgba(168,85,247,0.1)]"
+                    >
+                        <Calendar className="w-4 h-4 text-purple-400" />
+                        <span>🌙 EOD Summary</span>
+                    </button>
                     {crmError && <p className="text-[#FF2A6D] text-xs mt-3 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {crmError}</p>}
                 </div>
 
@@ -1200,60 +1226,156 @@ function AdminDashboardContent() {
                     </div>
                 )}
 
-                {/* REAL-TIME KPI DASHBOARD (Always Visible) */}
-                {isLoading ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                        <Skeleton className="h-[104px] sm:h-[124px]" />
-                        <Skeleton className="h-[104px] sm:h-[124px]" />
-                        <Skeleton className="h-[104px] sm:h-[124px]" />
-                        <Skeleton className="h-[104px] sm:h-[124px]" />
-                        <Skeleton className="h-[104px] sm:h-[124px]" />
-                        <Skeleton className="h-[104px] sm:h-[124px]" />
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                        <div className="bg-[#141518]/60 backdrop-blur-xl border border-[#01FFFF]/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(1,255,255,0.05)] min-w-0">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-[#01FFFF]/10 rounded-full blur-[40px] group-hover:bg-[#01FFFF]/20 transition-all"></div>
-                            <p className="text-[#01FFFF] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><TrendingUp className="w-3.5 h-3.5 flex-shrink-0" /> Net Profit Today</p>
-                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">₹{(kpiData.net_profit_today || 0).toLocaleString()}</h2>
-                        </div>
-                        <div className="bg-[#141518]/60 border border-emerald-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(16,185,129,0.05)] min-w-0">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-[40px] group-hover:bg-emerald-500/20 transition-all"></div>
-                            <p className="text-emerald-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><CheckCircle className="w-3.5 h-3.5 flex-shrink-0" /> Washed Today</p>
-                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">{kpiData.today_washed_count || 0} <span className="text-[10px] sm:text-xs font-normal text-[#8E939B] tracking-normal">cars</span></h2>
-                        </div>
-                        <div className="bg-[#141518]/60 border border-emerald-400/20 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group min-w-0">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-400/5 rounded-full blur-[40px] group-hover:bg-emerald-400/10 transition-all"></div>
-                            <p className="text-emerald-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><IndianRupee className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> Today's Revenue</p>
-                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">₹{((kpiData as any).today_revenue ?? kpiData.revenue_today ?? 0).toLocaleString()}</h2>
-                        </div>
-                        {/* Today's Credit (Asset) Card */}
-                        <div className="bg-[#141518]/60 border border-amber-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(245,158,11,0.05)] min-w-0">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-[40px] group-hover:bg-amber-500/20 transition-all"></div>
-                            <p className="text-amber-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><CreditCard className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" /> Today's Credit (Asset)</p>
-                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-amber-300 tracking-tight whitespace-nowrap">₹{((kpiData as any).today_total_credit || 0).toLocaleString()}</h2>
-                        </div>
-                        {/* Pre-booking Advances Card: Conditionally rendered only if > 0 */}
-                        {Number((kpiData as any).pre_booking_revenue || 0) > 0 && (
-                            <div className="bg-[#141518]/60 border border-cyan-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(6,182,212,0.05)] min-w-0">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-[40px] group-hover:bg-cyan-500/20 transition-all"></div>
-                                <p className="text-cyan-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap"><Calendar className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" /> Pre-booking Cash</p>
-                                <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-cyan-300 tracking-tight whitespace-nowrap">₹{((kpiData as any).pre_booking_revenue || 0).toLocaleString()}</h2>
+                {/* REAL-TIME KPI DASHBOARD (Strictly Asia/Kolkata Today, Hide Card if 0) */}
+                {(() => {
+                    const netProfitToday = Number(financeState?.kpiData?.net_profit_today ?? kpiData.net_profit_today ?? 0);
+                    const washedToday = Number(financeState?.kpiData?.washed_today ?? financeState?.kpiData?.today_washed_count ?? queueState?.todayWashedCount ?? kpiData.today_washed_count ?? 0);
+                    const revenueToday = Number(financeState?.kpiData?.today_revenue ?? financeState?.kpiData?.revenue_today ?? (kpiData as any).today_revenue ?? kpiData.revenue_today ?? 0);
+                    const creditAssetToday = Number(financeState?.kpiData?.today_credit_asset ?? financeState?.kpiData?.today_total_credit ?? (kpiData as any).today_credit_asset ?? (kpiData as any).today_total_credit ?? 0);
+                    const laborCostToday = Number(financeState?.kpiData?.labor_cost_today ?? kpiData.labor_cost_today ?? 0);
+                    const generalExpensesToday = Number(financeState?.kpiData?.general_expense_today ?? financeState?.kpiData?.general_expenses_today ?? (kpiData as any).general_expense_today ?? kpiData.general_expenses_today ?? 0);
+                    const bankToday = Number(financeState?.kpiData?.bank_today ?? financeState?.kpiData?.today_collection_bank ?? (kpiData as any)?.bank_today ?? (kpiData as any)?.today_collection_bank ?? 0);
+                    const preBookingCash = Number(financeState?.kpiData?.pre_booking_revenue ?? (kpiData as any).pre_booking_revenue ?? 0);
+
+                    const hasAnyMetric = (
+                        netProfitToday !== 0 ||
+                        washedToday > 0 ||
+                        revenueToday > 0 ||
+                        creditAssetToday > 0 ||
+                        laborCostToday > 0 ||
+                        generalExpensesToday > 0 ||
+                        bankToday > 0 ||
+                        preBookingCash > 0
+                    );
+
+                    if (isLoading) {
+                        return (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+                                <Skeleton className="h-[104px] sm:h-[120px] rounded-2xl sm:rounded-3xl" />
+                                <Skeleton className="h-[104px] sm:h-[120px] rounded-2xl sm:rounded-3xl" />
+                                <Skeleton className="h-[104px] sm:h-[120px] rounded-2xl sm:rounded-3xl" />
+                                <Skeleton className="h-[104px] sm:h-[120px] rounded-2xl sm:rounded-3xl" />
                             </div>
-                        )}
-                        <div className="bg-[#141518]/60 border border-white/5 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl min-w-0">
-                            <p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 whitespace-nowrap">Labor Cost</p>
-                            <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">₹{(kpiData.labor_cost_today || 0).toLocaleString()}</h2>
+                        );
+                    }
+
+                    return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+                            {/* 1. Net Profit / Loss Today (Render if !== 0) */}
+                            {netProfitToday !== 0 && (
+                                <div className={`bg-[#141518]/60 backdrop-blur-xl border ${netProfitToday > 0 ? 'border-[#01FFFF]/30 shadow-[0_0_30px_rgba(1,255,255,0.05)] hover:border-[#01FFFF]/60' : 'border-rose-500/30 shadow-[0_0_30px_rgba(244,63,94,0.05)] hover:border-rose-500/60'} p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group min-w-0 transition-all`}>
+                                    <div className={`absolute top-0 right-0 w-24 h-24 ${netProfitToday > 0 ? 'bg-[#01FFFF]/10 group-hover:bg-[#01FFFF]/20' : 'bg-rose-500/10 group-hover:bg-rose-500/20'} rounded-full blur-[40px] transition-all`}></div>
+                                    <p className={`${netProfitToday > 0 ? 'text-[#01FFFF]' : 'text-rose-400'} text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap`}>
+                                        {netProfitToday > 0 ? <TrendingUp className="w-3.5 h-3.5 flex-shrink-0" /> : <TrendingDown className="w-3.5 h-3.5 flex-shrink-0" />}
+                                        {netProfitToday > 0 ? 'Net Profit Today' : 'Net Loss Today'}
+                                    </p>
+                                    <h2 className={`text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold ${netProfitToday > 0 ? 'text-white' : 'text-rose-300'} tracking-tight whitespace-nowrap`}>
+                                        {netProfitToday > 0 ? `₹${netProfitToday.toLocaleString()}` : `-₹${Math.abs(netProfitToday).toLocaleString()}`}
+                                    </h2>
+                                </div>
+                            )}
+
+                            {/* 2. Washed Today (Render if > 0) */}
+                            {washedToday > 0 && (
+                                <div className="bg-[#141518]/60 border border-emerald-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_30px_rgba(16,185,129,0.05)] min-w-0 transition-all hover:border-emerald-500/60">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-[40px] group-hover:bg-emerald-500/20 transition-all"></div>
+                                    <p className="text-emerald-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
+                                        <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" /> Washed Today
+                                    </p>
+                                    <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">
+                                        {washedToday} <span className="text-[10px] sm:text-xs font-normal text-[#8E939B] tracking-normal">{washedToday === 1 ? 'car' : 'cars'}</span>
+                                    </h2>
+                                </div>
+                            )}
+
+                            {/* 3. Today Revenue (Render if > 0) */}
+                            {revenueToday > 0 && (
+                                <div className="bg-[#141518]/60 border border-emerald-400/25 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(52,211,153,0.05)] min-w-0 transition-all hover:border-emerald-400/50">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-400/10 rounded-full blur-[40px] group-hover:bg-emerald-400/20 transition-all"></div>
+                                    <p className="text-emerald-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
+                                        <IndianRupee className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" /> Today&apos;s Revenue
+                                    </p>
+                                    <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">
+                                        ₹{revenueToday.toLocaleString()}
+                                    </h2>
+                                </div>
+                            )}
+
+                            {/* 4. Today's Credit as Asset (Render if > 0) */}
+                            {creditAssetToday > 0 && (
+                                <div className="bg-[#141518]/60 border border-amber-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(245,158,11,0.05)] min-w-0 transition-all hover:border-amber-500/60">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-[40px] group-hover:bg-amber-500/20 transition-all"></div>
+                                    <p className="text-amber-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
+                                        <CreditCard className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" /> Today&apos;s Credit (Asset)
+                                    </p>
+                                    <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-amber-300 tracking-tight whitespace-nowrap">
+                                        ₹{creditAssetToday.toLocaleString()}
+                                    </h2>
+                                </div>
+                            )}
+
+                            {/* 5. Labor Cost Today (Render if > 0) */}
+                            {laborCostToday > 0 && (
+                                <div className="bg-[#141518]/60 border border-indigo-500/20 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group min-w-0 transition-all hover:border-indigo-500/40">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-[40px] group-hover:bg-indigo-500/20 transition-all"></div>
+                                    <p className="text-indigo-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
+                                        <Users className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" /> Labor Cost Today
+                                    </p>
+                                    <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-white tracking-tight whitespace-nowrap">
+                                        ₹{laborCostToday.toLocaleString()}
+                                    </h2>
+                                </div>
+                            )}
+
+                            {/* 6. General Expense Today (Render if > 0) */}
+                            {generalExpensesToday > 0 && (
+                                <div className="bg-[#141518]/60 border border-[#FF2A6D]/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(255,42,109,0.05)] min-w-0 transition-all hover:border-[#FF2A6D]/60">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-[#FF2A6D]/10 rounded-full blur-[40px] group-hover:bg-[#FF2A6D]/20 transition-all"></div>
+                                    <p className="text-[#FF2A6D] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
+                                        <TrendingDown className="w-3.5 h-3.5 text-[#FF2A6D] flex-shrink-0" /> General Expenses
+                                    </p>
+                                    <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-[#FF2A6D] tracking-tight whitespace-nowrap">
+                                        ₹{generalExpensesToday.toLocaleString()}
+                                    </h2>
+                                </div>
+                            )}
+
+                            {/* 7. Bank Deposits Today (Render if > 0) */}
+                            {bankToday > 0 && (
+                                <div className="bg-[#141518]/60 border border-sky-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(14,165,233,0.05)] min-w-0 transition-all hover:border-sky-500/60">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-sky-500/10 rounded-full blur-[40px] group-hover:bg-sky-500/20 transition-all"></div>
+                                    <p className="text-sky-300 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
+                                        <Landmark className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" /> Bank Today
+                                    </p>
+                                    <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-sky-300 tracking-tight whitespace-nowrap">
+                                        ₹{bankToday.toLocaleString()}
+                                    </h2>
+                                </div>
+                            )}
+
+                            {/* 8. Pre-booking Cash (Render if > 0) */}
+                            {preBookingCash > 0 && (
+                                <div className="bg-[#141518]/60 border border-cyan-500/30 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl relative overflow-hidden group shadow-[0_0_20px_rgba(6,182,212,0.05)] min-w-0 transition-all hover:border-cyan-500/60">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-[40px] group-hover:bg-cyan-500/20 transition-all"></div>
+                                    <p className="text-cyan-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 flex items-center gap-1.5 whitespace-nowrap">
+                                        <Calendar className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" /> Pre-booking Cash
+                                    </p>
+                                    <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-cyan-300 tracking-tight whitespace-nowrap">
+                                        ₹{preBookingCash.toLocaleString()}
+                                    </h2>
+                                </div>
+                            )}
+
+                            {/* Empty Fallback State (if no cards have positive values yet) */}
+                            {!hasAnyMetric && (
+                                <div className="col-span-full bg-[#141518]/40 border border-white/5 rounded-2xl p-4 text-center text-xs text-[#8E939B] font-mono tracking-wider flex items-center justify-center gap-2">
+                                    <Clock className="w-4 h-4 text-[#01FFFF]" />
+                                    No transactions or wash operations recorded yet today (Asia/Kolkata).
+                                </div>
+                            )}
                         </div>
-                        {/* General Expenses Card: Conditionally rendered only if > 0 */}
-                        {Number(kpiData.general_expenses_today || 0) > 0 && (
-                            <div className="bg-[#141518]/60 border border-white/5 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl min-w-0">
-                                <p className="text-[#8E939B] text-[9px] sm:text-[10px] font-bold uppercase tracking-[0.15em] mb-1.5 whitespace-nowrap">General Expenses</p>
-                                <h2 className="text-lg sm:text-xl xl:text-2xl 2xl:text-3xl font-syncopate font-bold text-[#FF2A6D] tracking-tight whitespace-nowrap">₹{(kpiData.general_expenses_today || 0).toLocaleString()}</h2>
-                            </div>
-                        )}
-                    </div>
-                )}
+                    );
+                })()}
 
                 {/* ---------------------------------------------------- */}
                 {/* VIEW A: OVERVIEW TAB */}
@@ -1397,111 +1519,9 @@ function AdminDashboardContent() {
                 {activeTab === 'crm' && <CrmTab />}
 
                 {/* ---------------------------------------------------- */}
-                {/* VIEW E: 🔒 END OF DAY SETTLEMENT TAB      */}
+                {/* VIEW E: 🌙 END OF DAY (EOD) SUMMARY TAB              */}
                 {/* ---------------------------------------------------- */}
-                {activeTab === 'eod' && (
-                    <div className="animate-[fadeIn_0.5s_ease-out] max-w-5xl mx-auto space-y-8">
-                        {!eodData ? (
-                            <div className="flex flex-col items-center justify-center py-20">
-                                <Activity className="w-10 h-10 text-[#01FFFF] animate-spin mb-4" />
-                                <p className="text-[#8E939B] font-bold tracking-widest text-sm uppercase">Loading EOD Data...</p>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="flex justify-between items-end mb-8 border-b border-white/10 pb-6">
-                                    <div>
-                                        <h3 className="font-syncopate font-bold tracking-widest text-2xl mb-2 flex items-center gap-3">
-                                            <Lock className={`w-6 h-6 ${eodData.is_locked ? 'text-emerald-400' : 'text-purple-500'}`} /> 
-                                            EOD SETTLEMENT AUDIT
-                                        </h3>
-                                <p className="text-xs text-[#8E939B] font-mono tracking-widest uppercase">
-                                    {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                                </p>
-                            </div>
-                            
-                            {/* HERE IS THE CLOSE REGISTER BUTTON */}
-                            {eodData.is_locked ? (
-                                <div className="bg-emerald-500/10 border border-emerald-500/30 px-6 py-3 rounded-xl flex items-center gap-2 text-emerald-400 font-bold uppercase text-xs tracking-widest">
-                                    <CheckCircle className="w-4 h-4" /> Register Locked
-                                </div>
-                            ) : (
-                                <button onClick={handleCloseRegister} className="bg-[#E52323] hover:bg-red-700 text-white border border-red-500 px-8 py-4 rounded-xl flex items-center gap-2 font-bold uppercase text-xs tracking-widest shadow-[0_0_30px_rgba(229,35,35,0.4)] transition-all">
-                                    <AlertTriangle className="w-4 h-4" /> Close Register & Lock Data
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Top Level Health Metrics */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                            <div className="bg-[#141518]/60 border border-white/5 p-8 rounded-3xl relative overflow-hidden group">
-                                <p className="text-[#8E939B] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Query 1: Gross Revenue</p>
-                                <h2 className="text-5xl font-syncopate font-bold text-white tracking-tighter">₹{eodData.gross_revenue?.toLocaleString()}</h2>
-                                <p className="text-xs text-gray-500 mt-4">Total value of all services completed today.</p>
-                            </div>
-                            <div className="bg-emerald-900/10 border border-emerald-500/30 p-8 rounded-3xl relative overflow-hidden">
-                                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2"><TrendingUp className="w-4 h-4"/> True Net Profit</p>
-                                <h2 className="text-5xl font-syncopate font-bold text-emerald-400 tracking-tighter">₹{(eodData.gross_revenue - eodData.total_expenses)?.toLocaleString()}</h2>
-                                <p className="text-xs text-emerald-400/60 mt-4">[Gross Revenue] - [Shop Expenses]</p>
-                            </div>
-                        </div>
-
-                        {/* Audits */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            
-                            {/* Left Column: Payment Split & Deductions */}
-                            <div className="space-y-8">
-                                <div className="bg-[#141518]/60 border border-white/5 rounded-3xl p-6">
-                                    <h4 className="font-bold text-sm uppercase tracking-widest text-[#8E939B] mb-6 border-b border-white/5 pb-4">Query 2: The Payment Split</h4>
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between items-center bg-black/40 p-4 rounded-xl border border-white/5">
-                                            <div className="flex items-center gap-3"><IndianRupee className="w-5 h-5 text-emerald-400"/><span className="font-bold">Physical Cash In</span></div>
-                                            <span className="font-mono text-emerald-400 font-bold tracking-widest">₹{(eodData.cash_in_hand || 0).toLocaleString()}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center bg-black/40 p-4 rounded-xl border border-white/5">
-                                            <div className="flex items-center gap-3"><Landmark className="w-5 h-5 text-blue-400"/><span className="font-bold">Digital / Unpaid</span></div>
-                                            <span className="font-mono text-blue-400 font-bold tracking-widest">₹{((eodData.gross_revenue || 0) - (eodData.cash_in_hand || 0)).toLocaleString()}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Right Column: The Cash Drawer Audit */}
-                            <div className="bg-[#141518]/60 border border-[#01FFFF]/20 rounded-3xl p-8 relative shadow-[0_0_40px_rgba(1,255,255,0.05)]">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-[#01FFFF]/5 rounded-full blur-[50px] pointer-events-none"></div>
-                                
-                                <h4 className="font-syncopate font-bold text-lg uppercase tracking-widest text-[#01FFFF] mb-6 flex items-center gap-2">
-                                    <IndianRupee className="w-5 h-5"/> Cash Drawer Audit
-                                </h4>
-                                <p className="text-xs text-[#8E939B] mb-8 leading-relaxed">
-                                    Verifies the physical paper cash in your register. Subtracts cash removed today from total cash collected.
-                                </p>
-
-                                <div className="space-y-4 mb-8 text-sm">
-                                    <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl border border-white/5">
-                                        <span className="text-gray-300">Total Cash Received</span>
-                                        <span className="font-mono font-bold text-white">₹{(eodData.cash_in_hand || 0).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center bg-[#E52323]/10 p-4 rounded-xl border border-[#E52323]/20">
-                                        <span className="text-[#E52323]">Minus: Shop Cash Expenses</span>
-                                        <span className="font-mono font-bold text-[#E52323]">- ₹{(eodData.total_expenses || 0).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center bg-[#E52323]/10 p-4 rounded-xl border border-[#E52323]/20">
-                                        <span className="text-[#E52323]">Minus: Staff Petty Cash</span>
-                                        <span className="font-mono font-bold text-[#E52323]">- ₹{(eodData.labor_payouts || 0).toLocaleString()}</span>
-                                    </div>
-                                </div>
-
-                                <div className="bg-black/50 border border-[#01FFFF]/30 p-6 rounded-2xl text-center">
-                                    <p className="text-[#01FFFF] text-[10px] font-bold uppercase tracking-[0.2em] mb-2">Expected Paper Cash in Till</p>
-                                    <h2 className="text-4xl font-syncopate font-bold text-white tracking-tighter">₹{(eodData.expected_cash_in_till || 0).toLocaleString()}</h2>
-                                </div>
-                            </div>
-
-                        </div>
-                            </>
-                        )}
-                    </div>
-                )}
+                {activeTab === 'eod' && <EODTab />}
 
                 {/* === SERVICE & PRICING MASTER TAB === */}
                 {activeTab === 'services' && (

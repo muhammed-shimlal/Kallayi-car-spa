@@ -5,13 +5,21 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authUser = await getAuthUserFromRequest(request);
+    if (!authUser) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Please log in to view invoice details.' },
+        { status: 401 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     const { id } = await context.params;
 
@@ -94,6 +102,29 @@ export async function GET(
     const customer = rawBooking?.customer;
     const vehicle = rawBooking?.vehicle;
     const pkg = rawBooking?.service_package;
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // STRICT DATA ISOLATION (PREVENT INVOICE LEAKS)
+    // ─────────────────────────────────────────────────────────────────────────────
+    const userRole = (authUser.user_metadata?.role || '').toUpperCase();
+    const isStaffOrAdmin = ['ADMIN', 'MANAGER', 'WASHER', 'TECHNICIAN', 'DRIVER'].includes(userRole);
+
+    if (!isStaffOrAdmin) {
+      const cleanAuthDigits = (authUser.phone || '').replace(/\D/g, '');
+      const cleanCustDigits = (customer?.phone_number || '').replace(/\D/g, '');
+
+      const isOwner = Boolean(
+        (customer?.user_id && customer.user_id === authUser.id) ||
+        (cleanAuthDigits && cleanCustDigits && cleanCustDigits.endsWith(cleanAuthDigits.slice(-10)))
+      );
+
+      if (!isOwner) {
+        return NextResponse.json(
+          { success: false, error: 'Forbidden. You do not have permission to view this invoice.' },
+          { status: 403 }
+        );
+      }
+    }
 
     // Resolve customer display name from customer record or Auth user metadata
     let customerName = ((customer as any)?.name && (customer as any)?.name !== 'Guest Customer') ? (customer as any).name : '';

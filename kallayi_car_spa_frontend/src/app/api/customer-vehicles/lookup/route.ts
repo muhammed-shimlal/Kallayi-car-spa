@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getPhoneVariants, extractTenDigitPhone } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -62,12 +63,15 @@ export async function GET(request: NextRequest) {
     const vehicleFilter = `plate_number.ilike.%${cleanPlate}%,registration_number.ilike.%${cleanPlate}%,make.ilike.%${rawQuery}%,model.ilike.%${rawQuery}%`;
 
     let custFilter = `name.ilike.%${rawQuery}%`;
-    if (pureTenDigit.length >= 3) {
-      custFilter += `,phone_number.ilike.%${pureTenDigit}%,phone_number.ilike.%${cleanDigits}%`;
-    } else if (cleanDigits.length >= 3) {
-      custFilter += `,phone_number.ilike.%${cleanDigits}%`;
+    const { variants: phoneVariants } = getPhoneVariants(rawQuery);
+    for (const pv of phoneVariants) {
+      if (pv && pv.length >= 3) {
+        custFilter += `,phone_number.ilike.%${pv}%`;
+      }
     }
-    custFilter += `,phone_number.ilike.%${rawQuery}%`;
+    if (pureTenDigit.length >= 3) {
+      custFilter += `,phone_number.ilike.%${pureTenDigit}%`;
+    }
 
     const [vehiclesResult, customersResult] = await Promise.all([
       supabase

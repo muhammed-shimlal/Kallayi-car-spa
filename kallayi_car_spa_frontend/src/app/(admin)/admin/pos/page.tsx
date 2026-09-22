@@ -5,7 +5,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, ArrowLeft, Search, User, Phone, Sparkles, AlertCircle, X, Check } from "lucide-react";
-import { isValidPhoneNumber } from "react-phone-number-input";
+import { isValidIndianMobile } from "@/lib/phone";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
@@ -75,8 +75,8 @@ export const VEHICLE_COLORS = ["White", "Black", "Silver", "Grey", "Red", "Blue"
 
 const posSchema = z.object({
   plate_number: z.string().min(1, "License plate is required"),
-  phone: z.string().min(1, { message: "Phone number is required" }).refine((val) => val && isValidPhoneNumber(val), {
-    message: "Invalid phone number",
+  phone: z.string().min(1, { message: "Phone number is required" }).refine((val) => isValidIndianMobile(val), {
+    message: "Valid 10-digit mobile number required",
   }),
   customer_name: z.string().optional(),
   package_id: z.number().refine((val) => val !== undefined, {
@@ -104,6 +104,10 @@ export default function AdminExpressPOSPage() {
 
   const [customerGarage, setCustomerGarage] = useState<any[]>([]);
   const [matchedVehicles, setMatchedVehicles] = useState<any[]>([]);
+
+  // Track pre-existing selected vehicle and customer IDs for seamless binding
+  const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
   // UNIFIED LIVE SEARCH STATE
   const [universalSearchQuery, setUniversalSearchQuery] = useState("");
@@ -179,6 +183,13 @@ export default function AdminExpressPOSPage() {
 
   const applyVehicleToForm = (data: any) => {
     if (!data) return;
+
+    if (data.id) {
+      setSelectedVehicleId(Number(data.id));
+    }
+    if (data.customer_id || data.customerId) {
+      setSelectedCustomerId(String(data.customer_id || data.customerId));
+    }
 
     const phoneVal = data.owner_phone || data.phone;
     if (phoneVal) {
@@ -292,6 +303,12 @@ export default function AdminExpressPOSPage() {
   const handleSelectSearchResult = (item: UnifiedSearchResult) => {
     if (item.plate_number) {
       setValue("plate_number", item.plate_number, { shouldValidate: true });
+    }
+    if (item.vehicle_id) {
+      setSelectedVehicleId(Number(item.vehicle_id));
+    }
+    if (item.customer_id) {
+      setSelectedCustomerId(String(item.customer_id));
     }
     if (item.phone_number) {
       const rawPhone = String(item.phone_number).trim();
@@ -437,11 +454,16 @@ export default function AdminExpressPOSPage() {
       const realType = data.vehicle_type === "Other" ? (customType || category) : (data.vehicle_type || category);
       const realColor = data.color === "Other" ? (customColor || "Other") : (data.color || "White");
 
+      const cleanPhone = (data.phone || "").trim();
+      const cleanPlate = (data.plate_number || "").toUpperCase().trim();
+
       const payload = {
-        name: data.customer_name || 'Guest Customer',
-        customer_name: data.customer_name || 'Guest Customer',
-        phone: data.phone,
-        plate_number: data.plate_number,
+        name: data.customer_name?.trim() || 'Guest Customer',
+        customer_name: data.customer_name?.trim() || 'Guest Customer',
+        customer_id: selectedCustomerId || undefined,
+        vehicle_id: selectedVehicleId || undefined,
+        phone: cleanPhone,
+        plate_number: cleanPlate,
         service_package_id: data.package_id,
         make: realMake,
         model: realModel,
@@ -463,8 +485,15 @@ export default function AdminExpressPOSPage() {
         throw new Error(resData.error || 'Failed to process walk-in intake');
       }
 
-      toast.success(`Vehicle ${data.plate_number} Added to Live Queue!`);
+      toast.success(`Vehicle ${cleanPlate} Added to Live Queue!`);
+      try {
+        window.dispatchEvent(new CustomEvent('queue:updated'));
+      } catch {
+        // Continue
+      }
       reset();
+      setSelectedVehicleId(null);
+      setSelectedCustomerId(null);
       setCustomMake("");
       setCustomModel("");
       setCustomType("");

@@ -1,11 +1,19 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Download, TrendingUp, Clock, PlusCircle, UserPlus, AlertCircle, FileText, Pencil, Trash2, Check, Tag, Calendar, Image as ImageIcon, X, BadgeDollarSign, Camera, Eye } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { 
+    Download, TrendingUp, TrendingDown, Clock, PlusCircle, UserPlus, AlertCircle, 
+    FileText, Pencil, Trash2, Check, Tag, Calendar, Image as ImageIcon, X, 
+    BadgeDollarSign, Camera, Eye, Landmark, ArrowUpRight, ArrowDownRight, 
+    RefreshCw, Upload, Search, Building2, WalletCards
+} from 'lucide-react';
 import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, Line } from 'recharts';
 import dynamic from 'next/dynamic';
 import { useDashboard } from '../context/DashboardContext';
 import { Skeleton } from '@/components/ui/Skeleton';
+
+import BankDepositTab from './BankDepositTab';
 
 const CameraCaptureModal = dynamic(() => import('@/components/ui/CameraCaptureModal').then(m => m.CameraCaptureModal), { ssr: false });
 
@@ -14,22 +22,27 @@ export default function FinanceTab() {
     const [manualKhataProofFile, setManualKhataProofFile] = useState<File | null>(null);
     const [manualKhataProofPreview, setManualKhataProofPreview] = useState<string | null>(null);
     const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+    const [lightboxTitle, setLightboxTitle] = useState<string>('Proof Photo');
+
     const { uiState, financeState } = useDashboard();
     const { 
         isLoading, financeSubTab, setFinanceSubTab, setIsManualKhataOpen,
         setIsKhataCustomerModalOpen, setIsKhataLedgerModalOpen, setIsKhataModalOpen,
-        isManualKhataOpen, isKhataModalOpen, isKhataCustomerModalOpen, isKhataLedgerModalOpen
+        isManualKhataOpen, isKhataModalOpen, isKhataCustomerModalOpen, isKhataLedgerModalOpen,
+        isBankDepositModalOpen, setIsBankDepositModalOpen, isBankWithdrawModalOpen, setIsBankWithdrawModalOpen,
+        isEODModalOpen, setIsEODModalOpen
     } = uiState;
     
     const { 
         chartData, expenses, expenseCategories, isSubmittingExpense, expenseForm,
-        receiptFile, receiptPreview, editingExpense, khataCustomers, khataLedger, selectedKhataCustomer,
+        receiptFile, receiptPreview, editingExpense, khataCustomers, khataLedger, khataRecentLedgers, selectedKhataCustomer,
         editingKhataCustomer, khataCustomerForm, khataPaymentAmount, eodData, manualKhataForm,
         customerCredits, invoiceList, totalOutstandingCredit, fileInputRef, setExpenseForm, setReceiptFile, setReceiptPreview, 
         setKhataCustomerForm, setKhataPaymentAmount, setManualKhataForm, handleFileChange, clearFile, 
         handleExpenseSubmit, startEditingExpense, cancelEditingExpense, deleteExpense, downloadTaxReport, 
         downloadInvoice, settleCredit, openKhataCustomerModal, saveKhataCustomer, deleteKhataCustomer, 
-        loadKhataLedger, handleKhataSettle, submitManualKhataCharge, setSelectedKhataCustomer, setEditingKhataCustomer
+        loadKhataLedger, handleKhataSettle, submitManualKhataCharge, setSelectedKhataCustomer, setEditingKhataCustomer,
+        bankSummary, bankTransactions, refetchBank, isBankLoading
     } = financeState;
 
     return (
@@ -39,16 +52,25 @@ export default function FinanceTab() {
                     <h3 className="font-syncopate font-bold tracking-widest text-lg sm:text-xl text-white">FINANCIAL LEDGER</h3>
                     <p className="text-xs text-neutral-400 font-mono tracking-wider">Revenue, Khata, Expenses & Invoicing</p>
                 </div>
-                <button onClick={downloadTaxReport} className="w-full sm:w-auto min-h-[48px] flex items-center justify-center gap-2 bg-[#0a0a0d] text-white border border-white/15 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:border-[#01FFFF] transition shadow-[4px_4px_10px_#020203,-4px_-4px_10px_#14151a] active:scale-95 touch-manipulation">
-                    <Download className="w-4 h-4 text-[#01FFFF]" /> Export Tax Report
-                </button>
+                <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                    <button 
+                        onClick={() => setIsEODModalOpen?.(true)} 
+                        className="w-full sm:w-auto min-h-[48px] flex items-center justify-center gap-2 bg-gradient-to-r from-purple-950/80 to-[#141518] hover:from-purple-900 hover:to-[#1a1b22] text-purple-200 border border-purple-500/40 hover:border-purple-400 px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest transition shadow-[0_0_20px_rgba(168,85,247,0.15)] active:scale-95 touch-manipulation whitespace-nowrap"
+                    >
+                        <span>🌙 Close Day Register (EOD Audit)</span>
+                    </button>
+                    <button onClick={downloadTaxReport} className="w-full sm:w-auto min-h-[48px] flex items-center justify-center gap-2 bg-[#0a0a0d] text-white border border-white/15 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:border-[#01FFFF] transition shadow-[4px_4px_10px_#020203,-4px_-4px_10px_#14151a] active:scale-95 touch-manipulation">
+                        <Download className="w-4 h-4 text-[#01FFFF]" /> Export Tax Report
+                    </button>
+                </div>
             </div>
 
             <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-6 scrollbar-none">
                 <button onClick={() => setFinanceSubTab('overview')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'overview' ? 'bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>Trend Analysis</button>
                 <button onClick={() => setFinanceSubTab('khata')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'khata' ? 'bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>Khata (Credit)</button>
                 <button onClick={() => setFinanceSubTab('expenses')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'expenses' ? 'bg-[#FF2A6D]/10 text-[#FF2A6D] border border-[#FF2A6D]/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>Expense Manager</button>
-                <button onClick={() => setFinanceSubTab('invoices')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'invoices' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>PDF Invoices</button>
+                <button onClick={() => setFinanceSubTab('bank')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'bank' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>Bank &amp; Cash</button>
+                <button onClick={() => setFinanceSubTab('invoices')} className={`min-h-[44px] px-4 py-2.5 font-bold text-xs uppercase tracking-widest rounded-xl transition-all whitespace-nowrap active:scale-95 touch-manipulation ${financeSubTab === 'invoices' ? 'bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30' : 'bg-[#0a0a0d] text-[#8E939B] border border-white/5 hover:text-white'}`}>PDF Invoices</button>
             </div>
 
                         {financeSubTab === 'overview' && (
@@ -147,71 +169,183 @@ export default function FinanceTab() {
             </div>
         </div>
 
-        {/* TABLE 1: MANUAL KHATA */}
-        <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF] mb-4 mt-8">DIGITAL KHATA ACCOUNTS (MANUAL CREDIT)</h4>
-        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-x-auto hide-scrollbar mb-8">
-            <table className="w-full text-left text-sm min-w-[540px]">
-                <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+        {/* UNIFIED DIGITAL KHATA TABLE */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 mt-8">
+            <div>
+                <h4 className="font-syncopate font-bold text-sm tracking-widest text-[#01FFFF]">DIGITAL KHATA &amp; CREDIT ACCOUNTS</h4>
+                <p className="text-xs text-neutral-400 font-mono">Consolidated credit ledgers, vehicle proof records &amp; quick settlements</p>
+            </div>
+            {khataCustomers && khataCustomers.length > 0 && (
+                <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-300 bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
+                        {khataCustomers.length} Active Accounts
+                    </span>
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 px-3 py-1.5 rounded-xl font-bold">
+                        ₹{(totalOutstandingCredit || 0).toLocaleString('en-IN')} Total Due
+                    </span>
+                </div>
+            )}
+        </div>
+
+        <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-x-auto hide-scrollbar mb-8 shadow-2xl">
+            <table className="w-full text-left text-sm min-w-[750px]">
+                <thead className="bg-black/40 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest border-b border-white/5">
                     <tr>
-                        <th className="p-4 pl-6">Customer Name</th>
-                        <th className="p-4">Phone Number</th>
-                        <th className="p-4">Vehicles</th>
-                        <th className="p-4">Outstanding Balance</th>
-                        <th className="p-4 text-right pr-6">Action</th>
+                        <th className="p-4 pl-6">Customer</th>
+                        <th className="p-4">Vehicles Involved</th>
+                        <th className="p-4">Total Due</th>
+                        <th className="p-4">Proof Photo</th>
+                        <th className="p-4 text-right pr-6">Quick Actions</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
                     {khataCustomers.length === 0 ? (
-                        <tr><td colSpan={5} className="p-8 text-center text-[#8E939B]">All Khata accounts are settled! No outstanding credit.</td></tr>
+                        <tr><td colSpan={5} className="p-10 text-center text-[#8E939B] font-mono">All Khata accounts are settled! No outstanding credit.</td></tr>
                     ) : (
-                        khataCustomers.map((khata: any) => (
-                            <tr key={khata.id} className="hover:bg-white/5 transition-colors">
-                                <td className="p-4 pl-6 font-bold text-white">{khata.name}</td>
-                                <td className="p-4 text-[#8E939B]">{khata.phone_number || 'N/A'}</td>
-                                <td className="p-4 font-mono font-bold text-[#01FFFF]">
-                                    {khata.vehicle_count ?? khata.vehicles_count ?? 1}
-                                </td>
-                                <td className="p-4 font-syncopate font-bold text-yellow-400 flex items-center gap-2">
-                                    ₹{khata.outstanding_balance}
-                                    {khata.outstanding_balance >= khata.credit_limit && <AlertCircle className="w-4 h-4 text-[#FF2A6D]" />}
-                                </td>
-                                <td className="p-4 text-right pr-6">
-                                    <div className="flex flex-wrap justify-end items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => loadKhataLedger(khata)}
-                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-2 rounded-lg bg-white/5 hover:bg-white/10 min-h-[36px] min-w-[36px] flex items-center justify-center active:scale-95 touch-manipulation"
-                                            title="View history"
-                                        >
-                                            <FileText className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => openKhataCustomerModal(khata)}
-                                            className="text-[#8E939B] hover:text-[#01FFFF] transition-colors p-2 rounded-lg bg-white/5 hover:bg-white/10 min-h-[36px] min-w-[36px] flex items-center justify-center active:scale-95 touch-manipulation"
-                                            title="Edit customer"
-                                        >
-                                            <Pencil className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => deleteKhataCustomer(khata.id)}
-                                            className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-2 rounded-lg bg-white/5 hover:bg-[#FF2A6D]/10 min-h-[36px] min-w-[36px] flex items-center justify-center active:scale-95 touch-manipulation"
-                                            title="Delete customer"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => { setSelectedKhataCustomer(khata); setIsKhataModalOpen(true); }}
-                                            className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-2 rounded-sm uppercase tracking-widest font-bold flex gap-1 items-center hover:bg-emerald-500 hover:text-black transition min-h-[36px] active:scale-95 touch-manipulation"
-                                        >
-                                            <Check className="w-3 h-3" /> Settle
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))
+                        khataCustomers.map((khata: any) => {
+                            // Find latest proof photo if not directly attached
+                            const proofImg = khata.latest_proof_photo || 
+                                (khataRecentLedgers?.find((l: any) => l.customer_id === khata.id && l.number_plate_image)?.number_plate_image) || null;
+                            const imgUrl = proofImg ? (proofImg.startsWith('http') ? proofImg : `http://127.0.0.1:8001${proofImg.startsWith('/') ? '' : '/'}${proofImg}`) : null;
+
+                            // Extract plates
+                            const plates: string[] = Array.isArray(khata.vehicle_plates) && khata.vehicle_plates.length > 0 
+                                ? khata.vehicle_plates 
+                                : Array.from(new Set(
+                                    (khataRecentLedgers || [])
+                                        .filter((l: any) => l.customer_id === khata.id)
+                                        .map((l: any) => l.booking?.vehicle?.plate_number || l.plate_number)
+                                        .filter(Boolean)
+                                  ));
+
+                            const vehicleCount = khata.vehicle_count ?? (plates.length > 0 ? plates.length : 1);
+                            const isExceeded = Number(khata.outstanding_balance || 0) >= Number(khata.credit_limit || 5000);
+
+                            return (
+                                <tr key={khata.id} className="hover:bg-white/[0.03] transition-colors group">
+                                    {/* 1. Customer: Name & Phone */}
+                                    <td className="p-4 pl-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-sm font-bold text-[#01FFFF] flex-shrink-0">
+                                                {khata.name ? khata.name.charAt(0).toUpperCase() : 'C'}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-white group-hover:text-[#01FFFF] transition-colors">{khata.name}</p>
+                                                <p className="text-xs text-[#8E939B] font-mono mt-0.5">{khata.phone_number || 'No Phone'}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    {/* 2. Vehicles Involved: Count & Plate Badges */}
+                                    <td className="p-4">
+                                        <div className="flex flex-col gap-1.5">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono text-xs font-bold text-neutral-300">
+                                                    {vehicleCount} Vehicle{vehicleCount > 1 ? 's' : ''}
+                                                </span>
+                                            </div>
+                                            {plates.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {plates.slice(0, 3).map((p: string, pIdx: number) => (
+                                                        <span key={pIdx} className="px-2 py-0.5 rounded-md bg-[#01FFFF]/10 border border-[#01FFFF]/25 font-mono text-[10px] text-[#01FFFF] font-bold">
+                                                            {p}
+                                                        </span>
+                                                    ))}
+                                                    {plates.length > 3 && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-white/5 text-[9px] text-neutral-400 font-mono">
+                                                            +{plates.length - 3} more
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-[11px] text-neutral-500 font-mono">Walk-in</span>
+                                            )}
+                                        </div>
+                                    </td>
+
+                                    {/* 3. Total Due: Outstanding Balance */}
+                                    <td className="p-4">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`font-syncopate font-bold text-base ${isExceeded ? 'text-[#FF2A6D]' : 'text-yellow-400'}`}>
+                                                ₹{Number(khata.outstanding_balance || 0).toLocaleString('en-IN')}
+                                            </span>
+                                            {isExceeded && (
+                                                <span title="Credit limit exceeded" className="flex items-center">
+                                                    <AlertCircle className="w-4 h-4 text-[#FF2A6D] animate-pulse" />
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[10px] text-neutral-500 font-mono mt-0.5">
+                                            Limit: ₹{Number(khata.credit_limit || 5000).toLocaleString('en-IN')}
+                                        </p>
+                                    </td>
+
+                                    {/* 4. Proof Photo Thumbnail */}
+                                    <td className="p-4">
+                                        {imgUrl ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setLightboxImage(imgUrl)}
+                                                className="w-12 h-12 rounded-xl overflow-hidden border border-[#01FFFF]/40 hover:border-[#01FFFF] hover:scale-105 transition-all block relative shadow-md group/img"
+                                                title="Click to view full-resolution proof photo"
+                                            >
+                                                <img 
+                                                    src={imgUrl} 
+                                                    alt="Proof" 
+                                                    className="w-full h-full object-cover" 
+                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                />
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center text-[#01FFFF]">
+                                                    <Eye className="w-4 h-4" />
+                                                </div>
+                                            </button>
+                                        ) : (
+                                            <span className="text-[10px] text-zinc-600 font-mono uppercase bg-white/5 px-2.5 py-1 rounded-lg border border-white/5">
+                                                No Proof
+                                            </span>
+                                        )}
+                                    </td>
+
+                                    {/* 5. Quick Actions */}
+                                    <td className="p-4 text-right pr-6">
+                                        <div className="flex flex-wrap justify-end items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => { setSelectedKhataCustomer(khata); setIsKhataModalOpen(true); }}
+                                                className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 hover:bg-emerald-500 hover:text-black transition-all active:scale-95 touch-manipulation"
+                                                title="Record settlement or payment"
+                                            >
+                                                <Check className="w-3.5 h-3.5" /> Settle
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => loadKhataLedger(khata)}
+                                                className="min-h-[36px] px-3 py-1.5 rounded-xl bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/30 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 hover:bg-[#01FFFF] hover:text-black transition-all active:scale-95 touch-manipulation"
+                                                title="View detailed transaction history"
+                                            >
+                                                <FileText className="w-3.5 h-3.5" /> History
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => openKhataCustomerModal(khata)}
+                                                className="text-[#8E939B] hover:text-white p-2 rounded-xl bg-white/5 hover:bg-white/10 min-h-[36px] min-w-[36px] flex items-center justify-center transition active:scale-95"
+                                                title="Edit customer"
+                                            >
+                                                <Pencil className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => deleteKhataCustomer(khata.id)}
+                                                className="text-[#8E939B] hover:text-[#FF2A6D] p-2 rounded-xl bg-white/5 hover:bg-[#FF2A6D]/10 min-h-[36px] min-w-[36px] flex items-center justify-center transition active:scale-95"
+                                                title="Delete customer"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })
                     )}
                 </tbody>
             </table>
@@ -252,8 +386,30 @@ export default function FinanceTab() {
                                                     {expenseCategories.map((cat: any) => (
                                                         <option key={cat.id} value={cat.id}>{cat.name}</option>
                                                     ))}
+                                                    {!expenseCategories.some((c: any) => String(c.id).toUpperCase() === 'OTHER' || c.name?.toLowerCase().includes('other')) && (
+                                                        <option value="OTHER">➕ Other (Custom Category)</option>
+                                                    )}
                                                 </select>
                                             </div>
+                                            {Boolean(
+                                                expenseForm.category === 'OTHER' || 
+                                                expenseForm.category === 'Other' || 
+                                                expenseCategories.find((c: any) => String(c.id) === String(expenseForm.category) && (c.name?.toLowerCase().includes('other') || String(c.id).toUpperCase() === 'OTHER'))
+                                            ) && (
+                                                <div className="mt-3 animate-[fadeIn_0.2s_ease-out]">
+                                                    <label className="text-[10px] text-[#FF2A6D] uppercase tracking-widest mb-1 block font-bold">
+                                                        Enter Custom Category Name
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={expenseForm.custom_category || ''}
+                                                        onChange={e => setExpenseForm({ ...expenseForm, custom_category: e.target.value })}
+                                                        placeholder="e.g. Generator Fuel, Water Motor Pump, Polish Compound"
+                                                        className="w-full bg-black/40 border border-[#FF2A6D]/40 focus:border-[#FF2A6D] rounded-xl py-3 px-4 text-white text-sm outline-none transition-all placeholder:text-neutral-500 shadow-[0_0_10px_rgba(255,42,109,0.15)]"
+                                                        required
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
@@ -424,8 +580,14 @@ export default function FinanceTab() {
                                     </div>
                                 </div>
                             </div>
-                            );
-                        })()}
+                        )})()}
+
+                        {/* BANK MANAGEMENT SUBTAB */}
+                        {financeSubTab === 'bank' && (
+                            <div className="animate-[fadeIn_0.3s_ease-out]">
+                                <BankDepositTab />
+                            </div>
+                        )}
 
                         {financeSubTab === 'invoices' && (
                             <div className="bg-[#141518]/60 border border-white/5 rounded-3xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
@@ -544,16 +706,43 @@ export default function FinanceTab() {
                                     {manualKhataProofPreview && (
                                         <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-[#01FFFF] group flex-shrink-0">
                                             <img src={manualKhataProofPreview} alt="Proof Preview" className="w-full h-full object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setManualKhataProofFile(null);
+                                                    setManualKhataProofPreview(null);
+                                                }}
+                                                className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-red-400 hover:text-red-300 transition-opacity"
+                                                title="Remove photo"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
                                         </div>
                                     )}
                                     <button
                                         type="button"
                                         onClick={() => setIsCameraModalOpen(true)}
-                                        className="flex-1 py-3 px-4 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 hover:text-white hover:bg-purple-900/40 transition-all text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95"
+                                        className="flex-1 py-3 px-3 rounded-xl bg-purple-950/40 border border-purple-500/30 text-purple-300 hover:text-white hover:bg-purple-900/40 transition-all text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-95"
                                     >
                                         <Camera className="w-4 h-4" />
-                                        {manualKhataProofPreview ? 'Update Photo' : 'Capture Photo'}
+                                        {manualKhataProofPreview ? 'Re-take' : 'Camera'}
                                     </button>
+                                    <label className="flex-1 py-3 px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-300 hover:text-white hover:bg-white/10 transition-all text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer active:scale-95">
+                                        <ImageIcon className="w-4 h-4 text-[#01FFFF]" />
+                                        Upload
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="sr-only"
+                                            onChange={(e) => {
+                                                if (e.target.files && e.target.files[0]) {
+                                                    const file = e.target.files[0];
+                                                    setManualKhataProofFile(file);
+                                                    setManualKhataProofPreview(URL.createObjectURL(file));
+                                                }
+                                            }}
+                                        />
+                                    </label>
                                 </div>
                             </div>
                         </div>
@@ -657,84 +846,155 @@ export default function FinanceTab() {
 
             {/* KHATA LEDGER HISTORY MODAL */}
             {isKhataLedgerModalOpen && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] px-4">
-                    <div className="bg-[#141518]/95 border border-white/10 p-8 rounded-[2.5rem] w-full max-w-3xl shadow-[0_0_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h3 className="font-syncopate font-bold tracking-widest text-[#01FFFF]">KHATA LEDGER HISTORY</h3>
-                                <p className="text-[#8E939B] text-sm">Showing transactions for <strong className="text-white">{selectedKhataCustomer?.name}</strong>.</p>
+                <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center animate-[fadeIn_0.2s_ease-out] p-4">
+                    <div className="bg-[#101115] border border-white/15 p-6 sm:p-8 rounded-[2rem] w-full max-w-4xl shadow-[0_0_80px_rgba(0,0,0,0.8)] backdrop-blur-2xl flex flex-col max-h-[85vh]">
+                        {/* Header Banner */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-5 mb-5 border-b border-white/10 flex-shrink-0">
+                            <div className="space-y-1.5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[10px] font-mono tracking-widest text-[#01FFFF] bg-[#01FFFF]/10 border border-[#01FFFF]/30 px-2.5 py-0.5 rounded-full uppercase font-bold">
+                                        Customer Credit Ledger
+                                    </span>
+                                    {selectedKhataCustomer?.id && (
+                                        <span className="text-[10px] font-mono text-neutral-400 bg-white/5 border border-white/10 px-2 py-0.5 rounded-md">
+                                            ID: #{String(selectedKhataCustomer.id).slice(0, 8)}
+                                        </span>
+                                    )}
+                                </div>
+                                <h3 className="font-syncopate font-bold text-xl sm:text-2xl text-white tracking-wide">
+                                    {selectedKhataCustomer?.name || 'Customer Ledger'}
+                                </h3>
+                                <div className="text-xs text-neutral-400 font-mono flex flex-wrap items-center gap-2 sm:gap-3">
+                                    <span className="text-neutral-300">
+                                        📞 {selectedKhataCustomer?.phone_number ? (selectedKhataCustomer.phone_number.startsWith('+') ? selectedKhataCustomer.phone_number : `+91 ${selectedKhataCustomer.phone_number.replace(/^91/, '')}`) : 'No phone recorded'}
+                                    </span>
+                                    <span className="text-neutral-600">•</span>
+                                    <span>
+                                        Limit: ₹{Number(selectedKhataCustomer?.credit_limit || 5000).toLocaleString('en-IN')}
+                                    </span>
+                                </div>
                             </div>
-                            <button onClick={() => setIsKhataLedgerModalOpen(false)} className="text-[#8E939B] hover:text-white transition-colors"><PlusCircle className="w-6 h-6 rotate-45" /></button>
+
+                            <div className="flex items-center gap-3 self-stretch sm:self-center justify-between sm:justify-end">
+                                <div className="bg-black/50 border border-yellow-500/30 px-4 py-2 rounded-2xl text-right">
+                                    <span className="text-[10px] uppercase font-mono tracking-wider text-neutral-400 block">Total Due</span>
+                                    <span className="font-syncopate font-bold text-base sm:text-lg text-yellow-400">
+                                        ₹{Number(selectedKhataCustomer?.outstanding_balance ?? selectedKhataCustomer?.balance ?? 0).toLocaleString('en-IN')}
+                                    </span>
+                                </div>
+                                <button 
+                                    onClick={() => setIsKhataLedgerModalOpen(false)} 
+                                    className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition-colors"
+                                    title="Close Ledger"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
-                        <div className="max-h-[60vh] overflow-auto rounded-3xl border border-white/10 bg-black/30">
+
+                        {/* Transaction Timeline Table */}
+                        <div className="flex-1 overflow-auto rounded-2xl border border-white/10 bg-black/40">
                             <table className="w-full text-left text-sm">
-                                <thead className="sticky top-0 bg-[#0b0c0f]/95 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest">
+                                <thead className="sticky top-0 bg-[#0b0c0f]/95 text-[#8E939B] font-grotesk text-[10px] uppercase tracking-widest border-b border-white/10 z-10">
                                     <tr>
-                                        <th className="p-4 pl-6">Date</th>
-                                        <th className="p-4">Description</th>
-                                        <th className="p-4">Vehicle Plate</th>
-                                        <th className="p-4">Proof</th>
-                                        <th className="p-4">Type</th>
-                                        <th className="p-4 text-right pr-6">Amount</th>
+                                        <th className="p-3.5 pl-5">Date</th>
+                                        <th className="p-3.5">Service / Description</th>
+                                        <th className="p-3.5">Vehicle Plate</th>
+                                        <th className="p-3.5">Proof</th>
+                                        <th className="p-3.5">Type & Method</th>
+                                        <th className="p-3.5 text-right pr-5">Amount</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-white/5">
+                                <tbody className="divide-y divide-white/5 font-sans">
                                     {(() => {
-                                        const safeKhataLedger = Array.isArray(khataLedger) ? khataLedger : (Array.isArray((khataLedger as any)?.results) ? (khataLedger as any).results : (Array.isArray((khataLedger as any)?.data) ? (khataLedger as any).data : []));
+                                        const safeKhataLedger = Array.isArray(khataLedger) ? khataLedger : (Array.isArray((khataLedger as any)?.results) ? (khataLedger as any).results : (Array.isArray((khataLedger as any)?.data) ? (khataLedger as any).data : (Array.isArray((khataLedger as any)?.history) ? (khataLedger as any).history : [])));
                                         
                                         if (safeKhataLedger.length === 0) {
                                             return (
                                                 <tr>
-                                                    <td colSpan={6} className="p-8 text-center text-[#8E939B]">No ledger history available for this customer.</td>
+                                                    <td colSpan={6} className="p-12 text-center">
+                                                        <div className="flex flex-col items-center justify-center gap-2">
+                                                            <Clock className="w-8 h-8 text-neutral-600" />
+                                                            <p className="text-neutral-400 font-mono text-xs">No ledger history available for this customer.</p>
+                                                        </div>
+                                                    </td>
                                                 </tr>
                                             );
                                         }
 
-                                        return safeKhataLedger.map((entry: any) => (
-                                            <tr key={entry.id} className="hover:bg-white/5 transition-colors">
-                                                <td className="p-4 pl-6 font-mono text-xs text-[#8E939B]">{entry.date}</td>
-                                                <td className="p-4 text-gray-300 max-w-[220px] truncate" title={entry.description}>{entry.description}</td>
-                                                <td className="p-4 font-mono text-xs font-bold text-[#01FFFF]">
-                                                    {entry.plate_number || entry.vehicle_plate || 'N/A'}
-                                                </td>
-                                                <td className="p-4">
-                                                     {(() => {
-                                                         const rawImg = entry.number_plate_image;
-                                                         const imgUrl = rawImg ? (rawImg.startsWith('http') ? rawImg : `http://127.0.0.1:8001${rawImg.startsWith('/') ? '' : '/'}${rawImg}`) : null;
-                                                         if (imgUrl) {
-                                                             console.log("Admin Ledger Image URL:", imgUrl);
-                                                         }
+                                        return safeKhataLedger.map((entry: any) => {
+                                            const isSettlement = entry.transaction_type === 'SETTLEMENT';
+                                            const rawImg = entry.number_plate_image;
+                                            const imgUrl = rawImg ? (rawImg.startsWith('http') ? rawImg : `http://127.0.0.1:8001${rawImg.startsWith('/') ? '' : '/'}${rawImg}`) : null;
+                                            const plate = entry.booking?.vehicle?.plate_number || entry.plate_number || entry.vehicle_plate || null;
+                                            const serviceName = entry.booking?.service_package?.name || entry.description || 'Car Spa Service';
+                                            const dateText = entry.created_at ? new Date(entry.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : (entry.date || 'N/A');
 
-                                                         return imgUrl ? (
-                                                             <button
-                                                                 type="button"
-                                                                 onClick={() => setLightboxImage(imgUrl)}
-                                                                 className="w-10 h-10 rounded-lg overflow-hidden border border-[#01FFFF]/40 hover:border-[#01FFFF] hover:scale-110 transition-all block relative shadow-md group"
-                                                                 title="View number plate photo proof"
-                                                             >
-                                                                 <img 
-                                                                     src={imgUrl} 
-                                                                     alt="Proof" 
-                                                                     className="w-full h-full object-cover" 
-                                                                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                                                 />
-                                                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[#01FFFF]">
-                                                                     <Eye className="w-4 h-4" />
-                                                                 </div>
-                                                             </button>
-                                                         ) : (
-                                                             <span className="text-[10px] text-zinc-600 font-mono uppercase">None</span>
-                                                         );
-                                                     })()}
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${entry.transaction_type === 'SETTLEMENT' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-[#FF2A6D]/10 text-[#FF2A6D]'}`}>
-                                                        {entry.transaction_type === 'SETTLEMENT' ? 'Payment' : 'Credit'}
-                                                    </span>
-                                                </td>
-                                                <td className={`p-4 text-right font-bold ${entry.transaction_type === 'SETTLEMENT' ? 'text-emerald-400' : 'text-[#FF2A6D]'}`}>₹{entry.amount}</td>
-                                            </tr>
-                                        ));
+                                            return (
+                                                <tr key={entry.id} className="hover:bg-white/5 transition-colors">
+                                                    <td className="p-3.5 pl-5 font-mono text-xs text-[#8E939B] whitespace-nowrap">
+                                                        {dateText}
+                                                    </td>
+                                                    <td className="p-3.5 text-gray-200 max-w-[220px]">
+                                                        <p className="font-semibold text-xs text-white truncate" title={serviceName}>
+                                                            {serviceName}
+                                                        </p>
+                                                        {entry.description && entry.description !== serviceName && (
+                                                            <p className="text-[11px] text-neutral-400 truncate" title={entry.description}>
+                                                                {entry.description}
+                                                            </p>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3.5">
+                                                        {plate ? (
+                                                            <span className="font-mono text-xs font-bold text-[#01FFFF] bg-[#01FFFF]/10 border border-[#01FFFF]/30 px-2 py-0.5 rounded-md inline-block whitespace-nowrap">
+                                                                {plate}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="font-mono text-xs text-neutral-500">N/A</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3.5">
+                                                        {imgUrl ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setLightboxImage(imgUrl)}
+                                                                className="w-10 h-10 rounded-lg overflow-hidden border border-[#01FFFF]/40 hover:border-[#01FFFF] hover:scale-110 transition-all block relative shadow-md group"
+                                                                title="View number plate photo proof"
+                                                            >
+                                                                <img 
+                                                                    src={imgUrl} 
+                                                                    alt="Proof" 
+                                                                    className="w-full h-full object-cover" 
+                                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                                />
+                                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[#01FFFF]">
+                                                                    <Eye className="w-4 h-4" />
+                                                                </div>
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-[10px] text-neutral-500 font-mono uppercase bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                                                                None
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3.5 whitespace-nowrap">
+                                                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                                            isSettlement 
+                                                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' 
+                                                                : 'bg-[#FF2A6D]/15 text-[#FF2A6D] border border-[#FF2A6D]/30'
+                                                        }`}>
+                                                            {isSettlement ? `Settlement (${entry.payment_method || 'Cash'})` : 'Credit Charge'}
+                                                        </span>
+                                                    </td>
+                                                    <td className={`p-3.5 text-right font-mono font-bold text-sm pr-5 whitespace-nowrap ${
+                                                        isSettlement ? 'text-emerald-400' : 'text-[#FF2A6D]'
+                                                    }`}>
+                                                        {isSettlement ? `-₹${Number(entry.amount || 0).toLocaleString('en-IN')}` : `+₹${Number(entry.amount || 0).toLocaleString('en-IN')}`}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        });
                                     })()}
                                 </tbody>
                             </table>
@@ -754,7 +1014,7 @@ export default function FinanceTab() {
                 title="Capture Back Number Plate Proof"
             />
 
-            {/* LIGHTBOX MODAL FOR FULL-RESOLUTION NUMBER PLATE PROOF */}
+            {/* LIGHTBOX MODAL FOR FULL-RESOLUTION PROOF PHOTO */}
             {lightboxImage && (
                 <div
                     className="fixed inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-4 animate-[fadeIn_0.2s_ease-out]"
@@ -763,7 +1023,7 @@ export default function FinanceTab() {
                     <div className="relative max-w-4xl w-full max-h-[90vh] bg-[#0d0e12] border border-white/10 rounded-3xl overflow-hidden p-4 shadow-[0_0_80px_rgba(1,255,255,0.2)] flex flex-col items-center">
                         <div className="w-full flex justify-between items-center pb-3 mb-3 border-b border-white/10">
                             <h4 className="font-syncopate font-bold text-xs text-[#01FFFF] tracking-widest uppercase">
-                                Number Plate Proof Photo
+                                {lightboxTitle || 'Proof Photo'}
                             </h4>
                             <button
                                 onClick={() => setLightboxImage(null)}

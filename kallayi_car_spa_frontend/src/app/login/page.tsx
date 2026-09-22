@@ -6,17 +6,18 @@ import { EyeOff, Eye, Lock, ShieldCheck, Loader2, ArrowLeft, ArrowRight, Sparkle
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { isValidPhoneNumber } from "react-phone-number-input";
+import { isValidIndianMobile } from "@/lib/phone";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import Link from "next/link";
+import Cookies from "js-cookie";
 import { motion, AnimatePresence } from "framer-motion";
 import api from '@/lib/api';
 
 const loginSchema = z.object({
   phone: z.string()
-    .min(1, "Phone number is required")
-    .refine((val) => val && isValidPhoneNumber(val), {
-      message: "Invalid phone number formatting",
+    .min(1, "Mobile number is required")
+    .refine((val) => isValidIndianMobile(val), {
+      message: "Please enter a valid 10-digit mobile number (e.g. 98765 43210)",
     }),
   password: z.string().min(1, "Access password is required"),
 });
@@ -55,35 +56,58 @@ export default function LoginPage() {
 
       const { token, user, redirect } = authRes.data;
 
-      // Save token to localStorage and cookie for authentication state
+      // Save token across all storage mediums and in-memory headers BEFORE navigating
       if (token) {
+        // 1. In-memory axios defaults so immediate requests have the token
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+        // 2. Cookie storage via js-cookie
+        Cookies.set('auth_token', token, { path: '/', expires: 30, sameSite: 'lax' });
+        Cookies.set('access_token', token, { path: '/', expires: 30, sameSite: 'lax' });
+        if (user?.role) {
+          Cookies.set('user_role', user.role, { path: '/', expires: 30, sameSite: 'lax' });
+        }
+
+        // 3. localStorage for persistent client state
         localStorage.setItem("auth_token", token);
-        document.cookie = `auth_token=${token}; path=/; max-age=2592000; SameSite=Lax;`;
+        localStorage.setItem("access_token", token);
+        localStorage.setItem("token", token);
+        if (user) {
+          localStorage.setItem("user", JSON.stringify(user));
+        }
+
+        // 4. sessionStorage fallback
+        sessionStorage.setItem("auth_token", token);
       }
 
-      if (redirect) {
-        router.push(redirect);
-      } else {
-        const isAdmin = Boolean(
-          user?.is_superuser ||
+      // Determine redirect path strictly by role
+      const userRole = (user?.role || user?.user_metadata?.role || '').toUpperCase();
+      const isAdmin = Boolean(
+        user?.is_superuser ||
+        userRole === 'ADMIN' ||
+        userRole === 'MANAGER'
+      );
+      const isStaff = Boolean(
+        !isAdmin && (
+          userRole === 'STAFF' ||
           user?.is_staff ||
           user?.is_staff_user ||
-          user?.role === "ADMIN" ||
-          user?.role === "MANAGER"
-        );
-        const isStaff = Boolean(
-          !isAdmin &&
-          ["WASHER", "DRIVER", "TECHNICIAN"].includes(user?.role)
-        );
+          ['WASHER', 'DRIVER', 'TECHNICIAN'].includes(userRole)
+        )
+      );
 
-        if (isAdmin) {
-          router.push("/admin/dashboard");
-        } else if (isStaff) {
-          router.push("/staff/dashboard");
-        } else {
-          router.push("/customer/dashboard");
-        }
+      let targetPath = '/customer/dashboard';
+      if (isAdmin) {
+        targetPath = '/admin/dashboard';
+      } else if (isStaff) {
+        targetPath = '/staff/queue';
+      } else if (redirect && !redirect.startsWith('/staff') && !redirect.startsWith('/admin')) {
+        targetPath = redirect;
       }
+
+      // Brief micro-pause to guarantee browser cookie & localStorage flush before layout mounts
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      router.replace(targetPath);
     } catch (err: any) {
       const errData = err.response?.data;
       if (err.response?.status === 404 || errData?.error === "user_not_found") {
@@ -164,14 +188,13 @@ export default function LoginPage() {
                     name="phone"
                     control={control}
                     render={({ field }) => (
-                      <div className="bg-[#08080a] shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),inset_-2px_-2px_5px_rgba(255,255,255,0.03)] border border-white/5 rounded-2xl p-1.5 focus-within:border-white/30 focus-within:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),0_0_14px_rgba(255,255,255,0.12)] transition-all">
-                        <CinematicPhoneInput
-                          value={field.value}
-                          onChange={field.onChange}
-                          error={errors.phone?.message}
-                          disabled={isLoading}
-                        />
-                      </div>
+                      <CinematicPhoneInput
+                        value={field.value}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                        error={errors.phone?.message}
+                        disabled={isLoading}
+                      />
                     )}
                   />
                 </div>

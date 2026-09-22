@@ -17,18 +17,26 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+export const CANONICAL_VEHICLE_TYPES = [
+  'HATCHBACK',
+  'SEDAN',
+  'COMPACT_SUV',
+  'SUV',
+  'MUV',
+  'LUXURY',
+  'BIKE',
+  'AUTO',
+  'VAN',
+] as const;
+
+export type CanonicalVehicleType = typeof CANONICAL_VEHICLE_TYPES[number];
+
 export type VehicleType =
+  | CanonicalVehicleType
   | 'ALL'
-  | 'HATCHBACK'
-  | 'SEDAN'
-  | 'COMPACT_SUV'
-  | 'SUV'
-  | 'MUV'
-  | 'BIKE'
-  | 'VAN'
-  | 'LUXURY'
+  | 'FULL_SUV'
+  | 'TWO_WHEELER'
   | 'CAR'
-  | 'AUTO'
   | 'TRUCK';
 
 export type StaffRole =
@@ -134,7 +142,9 @@ export type StaffProfileRow = {
   base_salary: number;
   commission_type: CommissionType;
   commission_rate: number;
+  commission_percentage?: number;
   commission_amount: number;
+  retained_balance?: number;
   joining_date: string;
   is_active: boolean;
   is_online: boolean;
@@ -190,7 +200,7 @@ export type MemberSubscriptionRow = {
 
 export type CustomerVehicleRow = {
   id: number;
-  user_id: string;
+  user_id: string | null;
   make: string;
   model: string;
   plate_number: string;
@@ -229,6 +239,9 @@ export type ServicePackageRow = {
   chemical_recipe: ChemicalRecipe;
   commission_rule_id: number | null;
   created_at: string;
+  updated_at?: string;
+  is_active?: boolean;
+  icon_url?: string | null;
   base_price?: number;
   final_price?: number;
   tiered_prices?: ServicePackagePriceRow[];
@@ -237,12 +250,18 @@ export type ServicePackageRow = {
   is_applicable?: boolean;
 };
 
+export type ServiceRow = ServicePackageRow;
+
 export type ServicePackagePriceRow = {
   id: number;
   package_id: number;
+  service_id?: number;
   vehicle_type: string;
   price: number;
+  estimated_time_minutes?: number | null;
 };
+
+export type ServiceTierPriceRow = ServicePackagePriceRow;
 
 export type SOPChecklistRow = {
   id: number;
@@ -374,6 +393,13 @@ export type PayrollEntryRow = {
   base_wage: number;
   commission_earned: number;
   tips_earned: number;
+  gross_earnings?: number;
+  commission_amount?: number;
+  advance_deducted?: number;
+  previous_retained_applied?: number;
+  net_payable?: number;
+  amount_paid?: number;
+  balance_retained?: number;
   is_settled: boolean;
   settled_at: string | null;
   created_at: string;
@@ -406,7 +432,30 @@ export type InvoiceRow = {
   split_cash: number;
   split_online: number;
   split_khata: number;
+  cash_collected_by_staff_id?: string | null;
   created_at: string;
+};
+
+export type StaffAdvanceRow = {
+  id: string;
+  staff_id: string;
+  amount: number;
+  date?: string;
+  purpose: string;
+  is_settled: boolean;
+  settled_at?: string | null;
+  payout_id?: number | null;
+  created_at?: string;
+};
+
+export type StaffCashHandoverRow = {
+  id: string;
+  staff_id: string;
+  amount: number;
+  notes?: string | null;
+  handover_date?: string;
+  received_by_user_id?: string | null;
+  created_at?: string;
 };
 
 export type KhataLedgerRow = {
@@ -430,6 +479,23 @@ export type DailyRegisterAuditRow = {
   total_expenses: number;
   is_locked: boolean;
   created_at: string;
+};
+
+export type BankTransactionType = 'DEPOSIT' | 'WITHDRAWAL';
+
+export type BankTransactionRow = {
+  id: number;
+  amount: number;
+  transaction_type: BankTransactionType;
+  bank_name: string;
+  purpose: string;
+  reference_number: string | null;
+  receipt_image: string | null;
+  recorded_by_id: string | null;
+  recorded_by_name: string | null;
+  transaction_date: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type CollectionBankRow = {
@@ -592,7 +658,7 @@ export type Database = {
       };
       customer_vehicles: {
         Row: CustomerVehicleRow;
-        Insert: Partial<CustomerVehicleRow> & { user_id: string; make: string; model: string; plate_number: string };
+        Insert: Partial<CustomerVehicleRow> & { user_id?: string | null; make: string; model: string; plate_number: string };
         Update: Partial<CustomerVehicleRow>;
         Relationships: [];
       };
@@ -820,6 +886,18 @@ export type Database = {
           }
         ];
       };
+      staff_advances: {
+        Row: StaffAdvanceRow;
+        Insert: Partial<StaffAdvanceRow> & { staff_id: string; amount: number; purpose: string };
+        Update: Partial<StaffAdvanceRow>;
+        Relationships: [];
+      };
+      staff_cash_handovers: {
+        Row: StaffCashHandoverRow;
+        Insert: Partial<StaffCashHandoverRow> & { staff_id: string; amount: number };
+        Update: Partial<StaffCashHandoverRow>;
+        Relationships: [];
+      };
       khata_ledgers: {
         Row: KhataLedgerRow;
         Insert: Partial<KhataLedgerRow> & { customer_id: string; amount: number; transaction_type: KhataTransactionType; description: string };
@@ -851,6 +929,12 @@ export type Database = {
         Row: CollectionBankRow;
         Insert: Partial<CollectionBankRow> & { amount: number };
         Update: Partial<CollectionBankRow>;
+        Relationships: [];
+      };
+      bank_transactions: {
+        Row: BankTransactionRow;
+        Insert: Partial<BankTransactionRow> & { amount: number; transaction_type: BankTransactionType };
+        Update: Partial<BankTransactionRow>;
         Relationships: [];
       };
       notification_logs: {

@@ -12,6 +12,8 @@ import {
 import api from '@/lib/api';
 import { GmailInput } from '@/components/ui/GmailInput';
 import { SmartVehicleSelector } from '@/components/ui/smart-vehicle-selector';
+import { CinematicPhoneInput } from '@/components/ui/phone-input';
+import { isValidIndianMobile } from '@/lib/phone';
 import { VehicleType } from '@/types/database';
 
 // Password Strength Calculation Helper
@@ -94,11 +96,13 @@ export default function SignupPage() {
 
     // Real-time Validation Checks
     const isNameValid = useMemo(() => name.trim().length >= 2, [name]);
-    const isPhoneValid = useMemo(() => {
-        const cleaned = phone.replace(/\D/g, '');
-        return cleaned.length >= 10 && cleaned.length <= 13;
-    }, [phone]);
-    const isEmailValid = useMemo(() => email.trim().toLowerCase().endsWith('@gmail.com'), [email]);
+    const isPhoneValid = useMemo(() => isValidIndianMobile(phone), [phone]);
+    // Email is completely optional for quick walk-in customer signup
+    const isEmailValid = useMemo(() => {
+        const trimmed = email.trim();
+        if (!trimmed) return true; // Optional!
+        return trimmed.includes('@') && trimmed.includes('.');
+    }, [email]);
     const isPasswordValid = useMemo(() => password.length >= 6, [password]);
     const isConfirmPasswordValid = useMemo(() => confirmPassword.length >= 6 && confirmPassword === password, [confirmPassword, password]);
     const isVehicleValid = useMemo(() => {
@@ -126,9 +130,9 @@ export default function SignupPage() {
                 vehiclePlate: true
             });
             if (!isEmailValid) {
-                setError('Please provide a valid Gmail address (@gmail.com). Temp mails are not allowed.');
+                setError('Please provide a valid email address (or leave it blank).');
             } else {
-                setError('Please complete all required fields correctly.');
+                setError('Please complete all required fields (Name, Phone number, and Password).');
             }
             return;
         }
@@ -160,15 +164,41 @@ export default function SignupPage() {
                 throw new Error('Server returned invalid authentication payload.');
             }
 
-            // Save authentication token to persistent storage
+            // Save authentication token and user profile to persistent storage
             localStorage.setItem('auth_token', token);
+            localStorage.setItem('access_token', token);
+            localStorage.setItem('token', token);
             Cookies.set('auth_token', token, { expires: 30, path: '/' });
+            Cookies.set('access_token', token, { expires: 30, path: '/' });
 
-            // Smooth redirect to customer portal
-            router.push('/customer/dashboard');
+            const returnedUser = res.data?.user;
+            if (returnedUser) {
+                localStorage.setItem('user', JSON.stringify(returnedUser));
+                if (returnedUser.role) {
+                    Cookies.set('user_role', returnedUser.role, { expires: 30, path: '/' });
+                }
+            }
+
+            // Strict role-based redirect
+            const userRole = (returnedUser?.role || '').toUpperCase();
+            const isAdmin = userRole === 'ADMIN' || userRole === 'MANAGER' || returnedUser?.is_superuser;
+            const isStaff = !isAdmin && (
+                userRole === 'STAFF' || 
+                returnedUser?.is_staff || 
+                ['WASHER', 'DRIVER', 'TECHNICIAN'].includes(userRole)
+            );
+
+            if (isAdmin) {
+                router.replace('/admin/dashboard');
+            } else if (isStaff) {
+                router.replace('/staff/queue');
+            } else {
+                router.replace(res.data?.redirect || '/customer/dashboard');
+            }
         } catch (err: any) {
             console.error('Registration failed:', err);
-            const apiError = err.response?.data?.error || err.response?.data?.detail || err.message || 'Registration failed. Please check your credentials.';
+            const errorData = err.response?.data;
+            const apiError = errorData?.message || errorData?.error || errorData?.detail || err.message || 'Registration failed. Please check your credentials.';
             setError(apiError);
         } finally {
             setIsLoading(false);
@@ -259,42 +289,31 @@ export default function SignupPage() {
                                 {touched.phone && (
                                     <span className="text-[10px]">
                                         {isPhoneValid ? (
-                                            <span className="text-[#01FFFF] flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Valid</span>
+                                            <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Valid Indian Mobile</span>
                                         ) : (
-                                            <span className="text-[#E52323] flex items-center gap-1"><AlertCircle className="w-3 h-3" /> 10-13 digits required</span>
+                                            <span className="text-[#E52323] flex items-center gap-1"><AlertCircle className="w-3 h-3" /> 10-digit number required</span>
                                         )}
                                     </span>
                                 )}
                             </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-neutral-500 group-focus-within:text-[#01FFFF] transition-colors">
-                                    <Phone className="w-5 h-5" />
-                                </div>
-                                <input
-                                    type="tel"
-                                    value={phone}
-                                    onChange={(e) => setPhone(e.target.value)}
-                                    onBlur={() => handleBlur('phone')}
-                                    disabled={isLoading}
-                                    placeholder="+91 98765 43210"
-                                    className={`w-full bg-[#050507] text-white placeholder-neutral-600 py-3.5 pl-11 pr-10 rounded-2xl text-sm font-medium tracking-wider transition-all duration-200 outline-none border touch-manipulation ${
-                                        touched.phone
-                                            ? isPhoneValid
-                                                ? 'border-[#01FFFF]/60 shadow-[0_0_15px_rgba(1,255,255,0.2)]'
-                                                : 'border-[#E52323]/60 shadow-[0_0_15px_rgba(229,35,35,0.2)]'
-                                            : 'border-white/10 focus:border-[#01FFFF]'
-                                    }`}
-                                />
-                            </div>
+                            <CinematicPhoneInput
+                                value={phone}
+                                onChange={setPhone}
+                                onBlur={() => handleBlur('phone')}
+                                disabled={isLoading}
+                                placeholder="98765 43210"
+                                error={touched.phone && !isPhoneValid ? 'Please enter a valid 10-digit Indian mobile number' : undefined}
+                            />
                         </div>
 
-                        {/* 3. Gmail Address Input */}
+                        {/* 3. Email Address Input (Optional) */}
                         <GmailInput
                             value={email}
                             onChange={setEmail}
                             disabled={isLoading}
-                            label="Gmail Address *"
-                            placeholder="yourname@gmail.com"
+                            required={false}
+                            label="Email Address (Optional)"
+                            placeholder="yourname@gmail.com (optional)"
                         />
 
                         {/* 4. Password Input */}
@@ -447,10 +466,20 @@ export default function SignupPage() {
                             <motion.div
                                 initial={{ opacity: 0, y: -5 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="p-3.5 rounded-xl bg-[#E52323]/10 border border-[#E52323]/40 text-[#E52323] text-xs flex items-center gap-2"
+                                className="p-3.5 rounded-xl bg-[#E52323]/10 border border-[#E52323]/40 text-[#E52323] text-xs flex flex-col gap-2"
                             >
-                                <AlertCircle className="w-4 h-4 shrink-0" />
-                                <span>{error}</span>
+                                <div className="flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4 shrink-0" />
+                                    <span>{error}</span>
+                                </div>
+                                {(error.toLowerCase().includes('already') || error.toLowerCase().includes('log in')) && (
+                                    <Link
+                                        href="/login"
+                                        className="mt-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#01FFFF]/20 border border-[#01FFFF]/40 text-[#01FFFF] font-bold text-[11px] hover:bg-[#01FFFF]/30 transition-colors w-fit"
+                                    >
+                                        Go to Login Page <ArrowRight className="w-3.5 h-3.5" />
+                                    </Link>
+                                )}
                             </motion.div>
                         )}
 

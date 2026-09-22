@@ -178,16 +178,34 @@ export default function QueueBoard() {
         if (!silent) setIsLoading(true);
 
         try {
-            const res = await api.get('/bookings/live-queue/', { params: { date: selectedDate } });
-            const data: BookingCard[] = res.data;
+            const res = await api.get('/bookings/queue', { params: { date: selectedDate, _t: Date.now() } });
+            const data: BookingCard[] = Array.isArray(res.data) ? res.data : (res.data?.data || []);
             
             // Distribute into columns
             const newCols: Record<string, BookingCard[]> = {
                 WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
             };
             data.forEach(card => {
-                const colKey = newCols[card.status] !== undefined ? card.status : 'WAITING';
-                newCols[colKey].push(card);
+                const rawStatus = String(card.status || '').toUpperCase().trim();
+                // Strictly exclude finished and cancelled bookings from active queue columns
+                if (rawStatus === 'COMPLETED' || rawStatus === 'CANCELLED' || rawStatus === 'PAID') {
+                    return;
+                }
+
+                let targetCol: string | null = null;
+                if (rawStatus === 'IN_PROGRESS' || rawStatus === 'DETAILING') {
+                    targetCol = card.bay_assignment === 'Bay 2' ? 'IN_BAY_2' : 'IN_BAY_1';
+                } else if (rawStatus === 'IN_BAY_1' || rawStatus === 'IN_BAY_2') {
+                    targetCol = rawStatus;
+                } else if (rawStatus === 'READY') {
+                    targetCol = 'READY';
+                } else if (rawStatus === 'WAITING' || rawStatus === 'PENDING' || rawStatus === 'CONFIRMED') {
+                    targetCol = 'WAITING';
+                }
+
+                if (targetCol && newCols[targetCol]) {
+                    newCols[targetCol].push(card);
+                }
             });
             
             setColumns(newCols);
@@ -204,6 +222,10 @@ export default function QueueBoard() {
     useEffect(() => {
         fetchQueue();
         
+        const handleQueueUpdated = () => fetchQueue(true);
+        window.addEventListener('queue:updated', handleQueueUpdated);
+        window.addEventListener('booking:completed', handleQueueUpdated);
+
         let ws: WebSocket | null = null;
         if (process.env.NEXT_PUBLIC_ENABLE_WS === 'true') {
             try {
@@ -228,9 +250,24 @@ export default function QueueBoard() {
                                     newCols[colId] = newCols[colId].filter(card => card.id !== updatedBooking.id);
                                 });
                                 
-                                // 2. Add booking to new column
-                                const destCol = newCols[updatedBooking.status] !== undefined ? updatedBooking.status : 'WAITING';
-                                newCols[destCol] = [...newCols[destCol], updatedBooking];
+                                // 2. Add booking to new column only if still active
+                                const rawStatus = String(updatedBooking.status || '').toUpperCase().trim();
+                                if (rawStatus !== 'COMPLETED' && rawStatus !== 'CANCELLED' && rawStatus !== 'PAID') {
+                                    let destCol: string | null = null;
+                                    if (rawStatus === 'IN_PROGRESS' || rawStatus === 'DETAILING') {
+                                        destCol = updatedBooking.bay_assignment === 'Bay 2' ? 'IN_BAY_2' : 'IN_BAY_1';
+                                    } else if (rawStatus === 'IN_BAY_1' || rawStatus === 'IN_BAY_2') {
+                                        destCol = rawStatus;
+                                    } else if (rawStatus === 'READY') {
+                                        destCol = 'READY';
+                                    } else if (rawStatus === 'WAITING' || rawStatus === 'PENDING' || rawStatus === 'CONFIRMED') {
+                                        destCol = 'WAITING';
+                                    }
+
+                                    if (destCol && newCols[destCol]) {
+                                        newCols[destCol] = [...newCols[destCol], updatedBooking];
+                                    }
+                                }
                                 
                                 return newCols;
                             });
@@ -256,12 +293,12 @@ export default function QueueBoard() {
 
         // Active polling (every 30s)
         const interval = setInterval(() => fetchQueue(true), 30000);
-        
+
         return () => {
             clearInterval(interval);
-            if (ws) {
-                ws.close();
-            }
+            window.removeEventListener('queue:updated', handleQueueUpdated);
+            window.removeEventListener('booking:completed', handleQueueUpdated);
+            if (ws) ws.close();
         };
     }, [fetchQueue]);
 

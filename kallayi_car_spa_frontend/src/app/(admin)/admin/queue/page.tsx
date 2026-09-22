@@ -7,7 +7,7 @@ import {
     Activity, Car, Clock, RefreshCw, 
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
     AlertCircle, User, Wifi, WifiOff, LayoutDashboard,
-    Pencil, Trash2, X, LayoutGrid, Kanban, Filter, BookOpen, Phone, Search, Calendar, Camera, Image as ImageIcon, QrCode
+    Pencil, Trash2, X, LayoutGrid, Kanban, Filter, BookOpen, Phone, Search, Calendar, Camera, Image as ImageIcon, QrCode, FileText
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
@@ -341,7 +341,8 @@ export default function AdminQueueBoard() {
     const router = useRouter();
     const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
     const [selectedDate, setSelectedDate] = useState<string>(todayStr);
-    const [viewFilter, setViewFilter] = useState<'date' | 'upcoming'>('date');
+    const [viewFilter, setViewFilter] = useState<'date' | 'upcoming' | 'completed'>('date');
+    const [completedBookings, setCompletedBookings] = useState<any[]>([]);
     const [columns, setColumns] = useState<Record<string, BookingCardData[]>>({
         WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [],
     });
@@ -371,7 +372,8 @@ export default function AdminQueueBoard() {
         vehicleModel: '',
         plateNumber: '',
         isSplit: false,
-        method: 'CASH' as 'CASH' | 'UPI' | 'KHATA'
+        method: 'CASH' as 'CASH' | 'UPI' | 'KHATA',
+        cashCollectedByStaffId: '',
     });
 
     const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
@@ -433,14 +435,30 @@ export default function AdminQueueBoard() {
         if (!silent) setIsLoading(true);
 
         try {
+            if (viewFilter === 'completed') {
+                const queryDate = selectedDate ? `?date=${encodeURIComponent(selectedDate)}` : '';
+                const res = await fetch(`/api/bookings/completed${queryDate}`);
+                if (res.ok) {
+                    const compJson = await res.json();
+                    const list = Array.isArray(compJson) ? compJson : (compJson.data || compJson.results || []);
+                    setCompletedBookings(list);
+                }
+                setColumns({ WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [] });
+                setIsConnected(true);
+                setLastUpdated(new Date());
+                return;
+            }
+
             const queryParams = new URLSearchParams();
             if (viewFilter === 'upcoming') {
                 // upcoming view
             } else if (selectedDate) {
                 queryParams.append('date', selectedDate);
             }
+            queryParams.append('queue', 'true');
+            queryParams.append('_t', Date.now().toString());
 
-            const res = await fetch(`/api/bookings?${queryParams.toString()}`);
+            const res = await fetch(`/api/bookings?${queryParams.toString()}`, { cache: 'no-store' });
             if (!res.ok) throw new Error('API error');
 
             const json = await res.json();
@@ -448,6 +466,12 @@ export default function AdminQueueBoard() {
 
             const newCols: Record<string, BookingCardData[]> = { WAITING: [], IN_BAY_1: [], IN_BAY_2: [], READY: [] };
             data.forEach((card: any) => {
+                const rawStatus = String(card.status || '').toUpperCase().trim();
+                // Strictly exclude finished and cancelled bookings from active queue columns
+                if (rawStatus === 'COMPLETED' || rawStatus === 'CANCELLED' || rawStatus === 'PAID') {
+                    return;
+                }
+
                 const mappedCard: BookingCardData = {
                     id: card.id,
                     status: card.status,
@@ -467,13 +491,21 @@ export default function AdminQueueBoard() {
                     bay_assignment: card.bay_assignment,
                 };
 
-                let targetCol = card.status;
-                if (card.status === 'IN_PROGRESS') {
-                    if (card.bay_assignment === 'Bay 2') targetCol = 'IN_BAY_2';
+                let targetCol: string | null = null;
+                if (rawStatus === 'IN_PROGRESS' || rawStatus === 'DETAILING') {
+                    if (card.bay_assignment === 'Bay 2' || card.bay_assignment === 'IN_BAY_2') targetCol = 'IN_BAY_2';
                     else targetCol = 'IN_BAY_1';
+                } else if (rawStatus === 'IN_BAY_1' || rawStatus === 'IN_BAY_2') {
+                    targetCol = rawStatus;
+                } else if (rawStatus === 'READY') {
+                    targetCol = 'READY';
+                } else if (rawStatus === 'WAITING' || rawStatus === 'PENDING' || rawStatus === 'CONFIRMED') {
+                    targetCol = 'WAITING';
                 }
-                const colKey = newCols[targetCol] !== undefined ? targetCol : 'WAITING';
-                newCols[colKey].push(mappedCard);
+
+                if (targetCol && newCols[targetCol]) {
+                    newCols[targetCol].push(mappedCard);
+                }
             });
             setColumns(newCols);
             setIsConnected(true);
@@ -509,7 +541,16 @@ export default function AdminQueueBoard() {
     useEffect(() => {
         fetchQueue();
         const interval = setInterval(() => fetchQueue(true), 30000);
-        return () => clearInterval(interval);
+
+        const handleQueueUpdated = () => fetchQueue(true);
+        window.addEventListener('queue:updated', handleQueueUpdated);
+        window.addEventListener('booking:completed', handleQueueUpdated);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('queue:updated', handleQueueUpdated);
+            window.removeEventListener('booking:completed', handleQueueUpdated);
+        };
     }, [fetchQueue]);
 
     // Debounced Async Khata Customer Search
@@ -689,6 +730,12 @@ export default function AdminQueueBoard() {
         let initialCustName = foundCard.customer_name || '';
         let initialCustId = foundCard.customer_id || null;
 
+        // Pre-select staff member for cash custody (assigned technician, or first active staff member)
+        let defaultStaffId = String((foundCard as any).technician_id || '');
+        if (!defaultStaffId && staffMembers.length > 0) {
+            defaultStaffId = String(staffMembers[0].id);
+        }
+
         setCheckoutModal({ 
             isOpen: true, 
             bookingId, 
@@ -702,7 +749,8 @@ export default function AdminQueueBoard() {
             vehicleModel: foundCard.vehicle_model || '',
             plateNumber: foundCard.plate_number || '',
             isSplit: false,
-            method: 'CASH'
+            method: 'CASH',
+            cashCollectedByStaffId: defaultStaffId,
         });
     };
 
@@ -730,38 +778,102 @@ export default function AdminQueueBoard() {
             return;
         }
 
-        const totalTendered = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + totalKhata;
-        let finalCashAmount = checkoutModal.cash || 0;
-        if (totalTendered > checkoutModal.totalAmount) {
-            const changeToGiveBack = totalTendered - checkoutModal.totalAmount;
-            finalCashAmount = finalCashAmount - changeToGiveBack; 
-        }
+        const baseCashAmount = (!checkoutModal.isSplit && checkoutModal.method === 'CASH')
+            ? checkoutModal.totalAmount
+            : (checkoutModal.cash || 0);
 
         const upiAmount = checkoutModal.method === 'UPI' && !checkoutModal.isSplit
             ? checkoutModal.totalAmount
             : (checkoutModal.upi || 0);
 
-        try {
-            const payload = {
-                booking_id: checkoutModal.bookingId!,
-                split_cash: finalCashAmount,
-                split_online: upiAmount,
-                split_khata: totalKhata,
-                payment_method: checkoutModal.isSplit ? 'SPLIT' : checkoutModal.method,
-            };
+        const totalTendered = baseCashAmount + upiAmount + totalKhata;
+        let finalCashAmount = baseCashAmount;
+        if (checkoutModal.isSplit && totalTendered > checkoutModal.totalAmount) {
+            const changeToGiveBack = totalTendered - checkoutModal.totalAmount;
+            finalCashAmount = Math.max(0, finalCashAmount - changeToGiveBack); 
+        }
 
-            const res = await fetch('/api/pos/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
+        const isCashRequired = (!checkoutModal.isSplit && checkoutModal.method === 'CASH') || (checkoutModal.isSplit && finalCashAmount > 0);
+        let staffCustodyId = checkoutModal.cashCollectedByStaffId || '';
+        if (isCashRequired && !staffCustodyId && staffMembers.length > 0) {
+            staffCustodyId = String(staffMembers[0].id);
+        }
+
+        try {
+            let res: Response;
+
+            if (activePhotoFile) {
+                const formData = new FormData();
+                formData.append('booking_id', String(checkoutModal.bookingId!));
+                formData.append('split_cash', String(finalCashAmount));
+                formData.append('split_online', String(upiAmount));
+                formData.append('split_khata', String(totalKhata));
+                formData.append('payment_method', checkoutModal.isSplit ? 'SPLIT' : checkoutModal.method);
+                if (staffCustodyId) formData.append('cash_collected_by_staff_id', staffCustodyId);
+                if (checkoutModal.customerId) formData.append('customer_id', String(checkoutModal.customerId));
+                if (checkoutModal.customerName) formData.append('customer_name', checkoutModal.customerName);
+                if (checkoutModal.phoneNumber) formData.append('customer_phone', checkoutModal.phoneNumber);
+                if (checkoutModal.plateNumber) formData.append('plate_number', checkoutModal.plateNumber);
+                if (checkoutModal.vehicleModel) formData.append('vehicle_model', checkoutModal.vehicleModel);
+                formData.append('number_plate_image', activePhotoFile);
+
+                res = await fetch('/api/pos/checkout', {
+                    method: 'POST',
+                    body: formData,
+                });
+            } else {
+                const payload = {
+                    booking_id: Number(checkoutModal.bookingId!),
+                    split_cash: finalCashAmount,
+                    split_online: upiAmount,
+                    split_khata: totalKhata,
+                    payment_method: checkoutModal.isSplit ? 'SPLIT' : checkoutModal.method,
+                    cash_collected_by_staff_id: staffCustodyId || null,
+                    customer_id: checkoutModal.customerId,
+                    customer_name: checkoutModal.customerName,
+                    customer_phone: checkoutModal.phoneNumber,
+                    plate_number: checkoutModal.plateNumber,
+                    vehicle_model: checkoutModal.vehicleModel,
+                };
+
+                res = await fetch('/api/pos/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+            }
 
             const data = await res.json();
             if (!res.ok || !data.success) {
                 throw new Error(data.error || 'Checkout failed.');
             }
 
+            setKhataProofFile(null);
+            setKhataProofPreview(null);
+            setCheckoutModal(prev => ({ ...prev, isOpen: false }));
+
             const invoiceId = data.data?.invoice?.id;
+            const settledBookingId = checkoutModal.bookingId;
+
+            // OPTIMISTIC REMOVAL: Instantly remove settled card from all active queue columns
+            if (settledBookingId) {
+                setColumns(prev => {
+                    const next = { ...prev };
+                    for (const colKey of Object.keys(next)) {
+                        next[colKey] = next[colKey].filter(c => c.id !== settledBookingId);
+                    }
+                    return next;
+                });
+            }
+
+            // Real-time synchronization events
+            try {
+                window.dispatchEvent(new CustomEvent('booking:completed', { detail: { bookingId: settledBookingId } }));
+                window.dispatchEvent(new CustomEvent('queue:updated'));
+                window.dispatchEvent(new CustomEvent('khata:updated'));
+            } catch {
+                // Ignore in non-window environments
+            }
 
             toast.dismiss();
             toast((t) => (
@@ -806,11 +918,12 @@ export default function AdminQueueBoard() {
                 khata: 0, 
                 customerName: '', 
                 customerId: null, 
-                phoneNumber: '',
-                vehicleModel: '',
-                plateNumber: '',
+                phoneNumber: '', 
+                vehicleModel: '', 
+                plateNumber: '', 
                 isSplit: false, 
-                method: 'CASH' 
+                method: 'CASH',
+                cashCollectedByStaffId: '',
             });
             fetchQueue(true);
         } catch (err: any) {
@@ -930,7 +1043,7 @@ export default function AdminQueueBoard() {
                                 }`}
                             >
                                 <Calendar className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">By Date</span>
+                                <span className="hidden sm:inline">Active Queue</span>
                             </button>
                             <button
                                 onClick={() => setViewFilter('upcoming')}
@@ -943,9 +1056,20 @@ export default function AdminQueueBoard() {
                                 <Sparkles className="w-3.5 h-3.5" />
                                 <span>Upcoming</span>
                             </button>
+                            <button
+                                onClick={() => setViewFilter('completed')}
+                                className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                    viewFilter === 'completed'
+                                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                        : 'text-[#8E939B] hover:text-white'
+                                }`}
+                            >
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                <span>Completed</span>
+                            </button>
                         </div>
 
-                        {viewFilter === 'date' && (
+                        {(viewFilter === 'date' || viewFilter === 'completed') && (
                             <div className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-full flex items-center gap-2 animate-[fadeIn_0.2s]">
                                 <Calendar className="w-3.5 h-3.5 text-[#01FFFF]" />
                                 <input 
@@ -1023,6 +1147,101 @@ export default function AdminQueueBoard() {
                                 <Skeleton className="h-10 w-full rounded-xl" />
                             </div>
                         ))}
+                    </div>
+                ) : viewFilter === 'completed' ? (
+                    /* ── COMPLETED & PICKED UP VEHICLES VIEW ───────────────────── */
+                    <div className="space-y-6 animate-in fade-in">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                            <div>
+                                <h2 className="font-syncopate font-bold text-base sm:text-lg text-white tracking-widest flex items-center gap-2">
+                                    <CheckCircle className="w-5 h-5 text-emerald-400" />
+                                    COMPLETED &amp; PICKED UP VEHICLES
+                                </h2>
+                                <p className="text-xs text-[#8E939B] mt-1">
+                                    Showing settled orders for {selectedDate || 'today'}.
+                                </p>
+                            </div>
+                            <span className="px-3 py-1 rounded-full text-xs font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                {completedBookings.length} Vehicles
+                            </span>
+                        </div>
+
+                        {completedBookings.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-16 text-center bg-[#141518]/50 border border-white/5 rounded-3xl p-8">
+                                <CheckCircle className="w-12 h-12 text-emerald-400/30 mb-3" />
+                                <h3 className="font-syncopate font-bold text-base text-white tracking-widest">
+                                    NO COMPLETED VEHICLES FOR THIS DATE
+                                </h3>
+                                <p className="text-xs text-[#8E939B] mt-1 max-w-xs">
+                                    Vehicles that complete payment and pickup will appear here.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                                {completedBookings.map((b: any) => {
+                                    const plate = b.vehicle?.plate_number || b.plate_number || 'KL-XX-0000';
+                                    const vModel = `${b.vehicle?.make || ''} ${b.vehicle?.model || ''}`.trim() || b.vehicle?.model || 'Vehicle';
+                                    const sName = b.service_package?.name || b.service_name || 'Car Spa Wash';
+                                    const cName = b.customer?.name || b.customer_name || 'Customer';
+                                    const cPhone = b.customer?.phone_number || b.customer_phone || '';
+                                    const invId = b.invoice?.id || b.invoice_id;
+                                    const pMethod = b.invoice?.payment_method || 'PAID';
+                                    const finalAmount = Number(b.final_price || b.price || b.base_price || 0);
+
+                                    return (
+                                        <div
+                                            key={b.id}
+                                            className="bg-[#141518] border border-emerald-500/30 rounded-2xl p-5 space-y-4 shadow-[0_0_20px_rgba(16,185,129,0.05)] relative group hover:border-emerald-500/60 transition-all"
+                                        >
+                                            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                                                <div className="font-syncopate font-black text-2xl tracking-[0.15em] text-emerald-400">
+                                                    {plate}
+                                                </div>
+                                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                                    <CheckCircle className="w-3 h-3" />
+                                                    Picked Up
+                                                </span>
+                                            </div>
+
+                                            <div className="space-y-1.5 text-xs">
+                                                <div className="flex items-center gap-2 text-white font-bold truncate">
+                                                    <Car className="w-3.5 h-3.5 text-[#8E939B]" />
+                                                    <span>{vModel}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[#8E939B] truncate">
+                                                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                                                    <span>{sName}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[#8E939B] truncate">
+                                                    <User className="w-3.5 h-3.5 text-[#8E939B]" />
+                                                    <span>{cName} {cPhone ? `(${cPhone})` : ''}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between pt-3 border-t border-white/5">
+                                                <div>
+                                                    <div className="text-[10px] font-bold text-[#8E939B] uppercase tracking-wider">Settled</div>
+                                                    <div className="text-base font-black font-mono text-emerald-400">₹{finalAmount}</div>
+                                                </div>
+                                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-white/5 text-white/80 border border-white/10">
+                                                    {pMethod}
+                                                </span>
+                                            </div>
+
+                                            {invId && (
+                                                <button
+                                                    onClick={() => window.open(`/invoice-preview?id=${invId}`, '_blank')}
+                                                    className="w-full py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 uppercase tracking-wider active:scale-95"
+                                                >
+                                                    <FileText className="w-3.5 h-3.5" />
+                                                    View Receipt #INV-{invId}
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 ) : viewMode === 'cards' || (typeof window !== 'undefined' && window.innerWidth < 1024) ? (
                     /* ── STACKED CARD GRID VIEW (MOBILE FIRST) ────────────────── */
@@ -1253,6 +1472,36 @@ export default function AdminQueueBoard() {
                                             />
                                         </div>
                                     </div>
+                                </div>
+                            )}
+
+                            {/* ── CASH CUSTODY SELECTOR (WHEN PAYMENT INCLUDES CASH) ───────────────── */}
+                            {((!checkoutModal.isSplit && checkoutModal.method === 'CASH') || (checkoutModal.isSplit && (checkoutModal.cash || 0) > 0)) && (
+                                <div className="bg-emerald-950/20 border border-emerald-500/30 p-3.5 sm:p-4 rounded-2xl space-y-2 animate-in fade-in slide-in-from-top-2 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] text-emerald-400 uppercase font-bold tracking-[0.2em] flex items-center gap-1.5">
+                                            <span>💵 Cash Collected By (Staff Member) *</span>
+                                        </label>
+                                        <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider">
+                                            Custody
+                                        </span>
+                                    </div>
+                                    <select
+                                        required
+                                        value={checkoutModal.cashCollectedByStaffId || ''}
+                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, cashCollectedByStaffId: e.target.value }))}
+                                        className="w-full bg-[#141518] border border-emerald-500/40 py-3 px-4 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 cursor-pointer"
+                                    >
+                                        <option value="" className="bg-[#141518] text-[#8E939B]">-- Select Staff Member Who Took Cash --</option>
+                                        {staffMembers.map((s: any) => (
+                                            <option key={String(s.id)} value={String(s.id)} className="bg-[#141518] text-white">
+                                                {s.first_name || s.name || s.username || `Staff #${s.id}`} ({s.role || 'Staff'})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-neutral-400 italic">
+                                        This cash amount will be linked to the selected staff member's cash-in-hand custody until handed over to admin.
+                                    </p>
                                 </div>
                             )}
 

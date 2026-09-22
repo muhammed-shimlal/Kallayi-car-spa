@@ -35,9 +35,10 @@ export async function GET(request: NextRequest) {
         base_price,
         bay_assignment,
         technician_id,
-        customer:customers(id, phone_number, name),
+        customer:customers(id, phone_number, name, outstanding_balance),
         vehicle:customer_vehicles(make, model, plate_number, vehicle_type),
-        service_package:service_packages(name)
+        service_package:service_packages(name),
+        invoice:invoices(id, amount, payment_method, split_cash, split_online, split_khata, is_paid)
       `)
       .eq('status', 'COMPLETED')
       .or(`time_slot.gte.${startOfDay},created_at.gte.${startOfDay}`)
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
       const customer = b.customer;
       const vehicle = b.vehicle;
       const pkg = b.service_package;
+      const inv = Array.isArray(b.invoice) ? b.invoice[0] : (b.invoice || null);
 
       const dateObj = new Date(b.time_slot || b.created_at);
       const timeFormatted = isNaN(dateObj.getTime())
@@ -68,6 +70,27 @@ export async function GET(request: NextRequest) {
             : dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }));
 
       const effectivePrice = Number(b.final_price || b.base_price || 0);
+      const splitCash = Number(inv?.split_cash || 0);
+      const splitOnline = Number(inv?.split_online || 0);
+      const splitKhata = Number(inv?.split_khata || 0);
+      const totalAmount = Number(inv?.amount ?? effectivePrice);
+
+      const rawMethod = String(inv?.payment_method || '').toUpperCase().trim();
+      let paymentMethod = 'CASH';
+
+      if (splitKhata > 0 && splitCash === 0 && splitOnline === 0) {
+        paymentMethod = 'CREDIT';
+      } else if (splitKhata > 0) {
+        paymentMethod = 'SPLIT';
+      } else if (rawMethod === 'ONLINE' || rawMethod === 'UPI' || (splitOnline > 0 && splitCash === 0)) {
+        paymentMethod = 'UPI';
+      } else if (rawMethod === 'SPLIT' || (splitCash > 0 && splitOnline > 0)) {
+        paymentMethod = 'SPLIT';
+      } else if (rawMethod === 'CARD') {
+        paymentMethod = 'UPI';
+      } else {
+        paymentMethod = 'CASH';
+      }
 
       return {
         id: b.id,
@@ -78,10 +101,16 @@ export async function GET(request: NextRequest) {
         vehicle_model: vehicle ? `${vehicle.make || ''} ${vehicle.model || ''} (${vehicle.vehicle_type || 'CAR'})`.trim() : 'Standard Vehicle',
         customer_name: customer?.name || 'Walk-In Customer',
         customer_phone: customer?.phone_number || '',
+        customer_outstanding_balance: Number(customer?.outstanding_balance || 0),
         service_package_name: pkg?.name || 'Wash Service',
         technician_name: 'Spa Technician',
         price: effectivePrice,
         status: b.status,
+        payment_method: paymentMethod,
+        split_cash: splitCash,
+        split_online: splitOnline,
+        split_khata: splitKhata,
+        total_amount: totalAmount,
       };
     });
 

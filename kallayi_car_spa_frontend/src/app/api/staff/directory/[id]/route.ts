@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { normalizePhone } from '@/lib/phone';
 import { StaffProfileRow, StaffRole, SalaryType } from '@/types/database';
 
 export const dynamic = 'force-dynamic';
@@ -60,8 +61,10 @@ export async function GET(
       salary_amount: Number(staff.salary_amount || 0),
       hourly_rate: Number(staff.hourly_rate || 0),
       base_salary: Number(staff.base_salary || 0),
-      commission_rate: Number(staff.commission_rate || 0),
+      commission_percentage: Number(staff.commission_percentage ?? staff.commission_rate ?? 40),
+      commission_rate: Number(staff.commission_percentage ?? staff.commission_rate ?? 40),
       commission_amount: Number(staff.commission_amount || 0),
+      retained_balance: Number(staff.retained_balance || 0),
       is_active: staff.is_active,
       is_online: staff.is_online,
       joining_date: staff.joining_date,
@@ -111,8 +114,10 @@ async function handleUpdateStaff(
       salary_amount,
       base_salary,
       hourly_rate,
+      commission_percentage,
       commission_rate,
       commission_amount,
+      retained_balance,
       is_active,
       is_online,
       joining_date,
@@ -128,19 +133,45 @@ async function handleUpdateStaff(
       updates.base_salary = salVal;
     }
     if (hourly_rate !== undefined) updates.hourly_rate = parseFloat(String(hourly_rate)) || 0;
-    if (commission_rate !== undefined) updates.commission_rate = parseFloat(String(commission_rate)) || 0;
+    if (commission_percentage !== undefined || commission_rate !== undefined) {
+      const commVal = parseFloat(String(commission_percentage ?? commission_rate)) || 0;
+      updates.commission_rate = commVal;
+      (updates as any).commission_percentage = commVal;
+    }
     if (commission_amount !== undefined) updates.commission_amount = parseFloat(String(commission_amount)) || 0;
-    if (phone_number !== undefined || phone !== undefined) updates.phone_number = String(phone_number || phone).trim();
+    if (retained_balance !== undefined) {
+      (updates as any).retained_balance = parseFloat(String(retained_balance)) || 0;
+    }
+    if (phone_number !== undefined || phone !== undefined) {
+      updates.phone_number = normalizePhone(String(phone_number || phone));
+    }
     if (is_active !== undefined) updates.is_active = is_active;
     if (is_online !== undefined) updates.is_online = is_online;
     if (joining_date !== undefined) updates.joining_date = joining_date;
 
-    const { data: updated, error: updateErr } = await supabase
+    let { data: updated, error: updateErr } = await supabase
       .from('staff_profiles')
       .update(updates)
       .or(`id.eq.${cleanId},user_id.eq.${cleanId}`)
       .select('*')
       .single();
+
+    if (updateErr) {
+      // Fallback: If new columns are not yet in the DB table, retry with base columns
+      const safeUpdates = { ...updates };
+      delete (safeUpdates as any).commission_percentage;
+      delete (safeUpdates as any).retained_balance;
+      const retry = await supabase
+        .from('staff_profiles')
+        .update(safeUpdates)
+        .or(`id.eq.${cleanId},user_id.eq.${cleanId}`)
+        .select('*')
+        .single();
+      if (!retry.error && retry.data) {
+        updated = retry.data;
+        updateErr = null;
+      }
+    }
 
     if (updateErr || !updated) {
       return NextResponse.json(

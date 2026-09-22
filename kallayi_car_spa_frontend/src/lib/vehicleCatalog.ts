@@ -4,7 +4,7 @@
  * with auto body-type resolution matching database VehicleType enum.
  */
 
-import { VehicleType } from '@/types/database';
+import type { VehicleType } from '../types/database';
 
 export type DjangoVehicleType = VehicleType;
 
@@ -15,17 +15,31 @@ export interface VehicleCatalogItem {
   body_type: VehicleType;
 }
 
-export const BODY_TYPE_OPTIONS: { label: string; value: VehicleType; icon: string }[] = [
-  { label: "Hatchback", value: "HATCHBACK", icon: "🚗" },
-  { label: "Sedan", value: "SEDAN", icon: "🚘" },
-  { label: "Compact SUV", value: "COMPACT_SUV", icon: "🚙" },
-  { label: "Full SUV / Off-road", value: "SUV", icon: "🏔️" },
-  { label: "MUV / Multi-Utility", value: "MUV", icon: "🚐" },
-  { label: "Van / Commercial Van", value: "VAN", icon: "🚐" },
-  { label: "Luxury / Premium", value: "LUXURY", icon: "✨" },
-  { label: "Two-Wheeler (Bike / Scooter)", value: "BIKE", icon: "🏍️" },
-  { label: "Auto Rickshaw (3-Wheeler)", value: "AUTO", icon: "🛺" },
-  { label: "Truck / Commercial Heavy", value: "TRUCK", icon: "🚚" },
+export const CANONICAL_VEHICLE_TYPES = [
+  'HATCHBACK',
+  'SEDAN',
+  'COMPACT_SUV',
+  'SUV',
+  'MUV',
+  'LUXURY',
+  'BIKE',
+  'AUTO',
+  'VAN',
+] as const;
+
+export type CanonicalVehicleType = typeof CANONICAL_VEHICLE_TYPES[number];
+
+export const BODY_TYPE_OPTIONS: { label: string; value: VehicleType; icon: string; description?: string }[] = [
+  { label: "Hatchback", value: "HATCHBACK", icon: "🚗", description: "Alto, Swift, i10, Tiago, etc." },
+  { label: "Sedan", value: "SEDAN", icon: "🚘", description: "Dzire, City, Verna, Virtus, etc." },
+  { label: "Compact SUV", value: "COMPACT_SUV", icon: "🚙", description: "Brezza, Venue, Nexon, Sonet, etc." },
+  { label: "SUV / Full SUV", value: "SUV", icon: "🏔️", description: "Scorpio, Fortuner, XUV700, Harrier, etc." },
+  { label: "MUV", value: "MUV", icon: "🚐", description: "Innova, Ertiga, Carens, Triber, etc." },
+  { label: "Luxury", value: "LUXURY", icon: "✨", description: "BMW, Mercedes, Audi, Jaguar, etc." },
+  { label: "Two-Wheeler / Bike", value: "BIKE", icon: "🏍️", description: "Motorcycles, Scooters, Activa, etc." },
+  { label: "Auto-rickshaw (AUTO)", value: "AUTO", icon: "🛺", description: "Bajaj RE, Ape, Alfa, 3-Wheelers" },
+  { label: "Van / Commercial", value: "VAN", icon: "🚐", description: "Omni, Eeco, Tempo Traveler, etc." },
+  { label: "Commercial Truck", value: "TRUCK", icon: "🚚", description: "Dost, Pickup, Super Carry, etc." },
 ];
 
 export const VEHICLE_CATALOG: VehicleCatalogItem[] = [
@@ -357,9 +371,67 @@ export const VEHICLE_CATALOG: VehicleCatalogItem[] = [
   { brand: "Ashok Leyland", model: "Dost Plus / Strong", category: "Pickup Commercial Truck", body_type: "TRUCK" },
   { brand: "Ashok Leyland", model: "Bada Dost", category: "Commercial Mini Truck", body_type: "TRUCK" },
   { brand: "Ashok Leyland", model: "Partner / MiTR", category: "Light Commercial Truck", body_type: "TRUCK" },
+
+  // Auto Rickshaws (3-Wheelers)
+  { brand: "Bajaj", model: "RE Compact", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
+  { brand: "Bajaj", model: "RE Optima", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
+  { brand: "Bajaj", model: "RE Maxima", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
+  { brand: "Bajaj", model: "Maxima Z", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
+  { brand: "Bajaj", model: "Maxima C", category: "Cargo 3-Wheeler", body_type: "AUTO" },
+  { brand: "Bajaj", model: "Compact E-TEC", category: "Electric Auto Rickshaw", body_type: "AUTO" },
+  { brand: "Piaggio", model: "Ape City Plus", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
   { brand: "Piaggio", model: "Ape Auto DX", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
   { brand: "Piaggio", model: "Ape Xtra LDX", category: "Cargo Goods 3-Wheeler", body_type: "AUTO" },
   { brand: "Piaggio", model: "Ape E-City / E-Xtra", category: "Electric Auto Rickshaw", body_type: "AUTO" },
+  { brand: "Mahindra", model: "Alfa DX / Comfy", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
+  { brand: "Mahindra", model: "Alfa Plus", category: "Cargo 3-Wheeler", body_type: "AUTO" },
+  { brand: "Mahindra", model: "Treo", category: "Electric Auto Rickshaw", body_type: "AUTO" },
+  { brand: "Mahindra", model: "Treo Zor", category: "Electric Cargo 3-Wheeler", body_type: "AUTO" },
+  { brand: "TVS", model: "King Deluxe", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
+  { brand: "TVS", model: "King Duramax", category: "Passenger Auto Rickshaw", body_type: "AUTO" },
+  { brand: "TVS", model: "King Kargo", category: "Cargo 3-Wheeler", body_type: "AUTO" },
+  { brand: "Atul", model: "Gem / Elite / RIK", category: "Auto Rickshaw", body_type: "AUTO" },
+
+  // Two-Wheelers (Bikes & Scooters)
+  { brand: "Honda", model: "Activa 6G / 125", category: "Family Scooter", body_type: "BIKE" },
+  { brand: "Honda", model: "Dio 110 / 125", category: "Sporty Scooter", body_type: "BIKE" },
+  { brand: "Honda", model: "Shine 100 / 125", category: "Commuter Bike", body_type: "BIKE" },
+  { brand: "Honda", model: "SP 125 / 160", category: "Premium Commuter Bike", body_type: "BIKE" },
+  { brand: "Honda", model: "Unicorn", category: "Commuter Motorcycle", body_type: "BIKE" },
+  { brand: "Honda", model: "H'ness CB350 / CB350RS", category: "Modern Classic Motorcycle", body_type: "BIKE" },
+  { brand: "Hero", model: "Splendor Plus / XTEC", category: "Commuter Bike", body_type: "BIKE" },
+  { brand: "Hero", model: "HF Deluxe", category: "Commuter Bike", body_type: "BIKE" },
+  { brand: "Hero", model: "Passion Plus / XTEC", category: "Commuter Bike", body_type: "BIKE" },
+  { brand: "Hero", model: "Glamour / XTEC", category: "125cc Commuter Bike", body_type: "BIKE" },
+  { brand: "Hero", model: "Xtreme 125R / 160R", category: "Street Sports Bike", body_type: "BIKE" },
+  { brand: "Hero", model: "XPulse 200 4V", category: "Dual-Sport Adventure Bike", body_type: "BIKE" },
+  { brand: "Hero", model: "Destini 125", category: "Family Scooter", body_type: "BIKE" },
+  { brand: "Hero", model: "Pleasure Plus / Xoom", category: "Scooter", body_type: "BIKE" },
+  { brand: "Bajaj", model: "Pulsar 125 / 150 / 220F", category: "Sports Commuter Bike", body_type: "BIKE" },
+  { brand: "Bajaj", model: "Pulsar NS200 / RS200 / N250", category: "Street Sports Bike", body_type: "BIKE" },
+  { brand: "Bajaj", model: "Platina 100 / 110", category: "Mileage Commuter Bike", body_type: "BIKE" },
+  { brand: "Bajaj", model: "Avenger Street / Cruise", category: "Cruiser Motorcycle", body_type: "BIKE" },
+  { brand: "Bajaj", model: "Dominar 250 / 400", category: "Sports Tourer Bike", body_type: "BIKE" },
+  { brand: "Bajaj", model: "Chetak EV", category: "Electric Scooter", body_type: "BIKE" },
+  { brand: "TVS", model: "Jupiter 110 / 125", category: "Family Scooter", body_type: "BIKE" },
+  { brand: "TVS", model: "NTorq 125", category: "Sporty Scooter", body_type: "BIKE" },
+  { brand: "TVS", model: "Apache RTR 160 / 180 / 200", category: "Performance Street Bike", body_type: "BIKE" },
+  { brand: "TVS", model: "Raider 125", category: "Commuter Sport Bike", body_type: "BIKE" },
+  { brand: "TVS", model: "Ronin", category: "Modern Retro Bike", body_type: "BIKE" },
+  { brand: "TVS", model: "iQube EV", category: "Electric Scooter", body_type: "BIKE" },
+  { brand: "TVS", model: "XL100 Heavy Duty", category: "Moped", body_type: "BIKE" },
+  { brand: "Royal Enfield", model: "Classic 350", category: "Retro Cruiser Motorcycle", body_type: "BIKE" },
+  { brand: "Royal Enfield", model: "Bullet 350", category: "Standard Classic Motorcycle", body_type: "BIKE" },
+  { brand: "Royal Enfield", model: "Hunter 350", category: "Roadster Motorcycle", body_type: "BIKE" },
+  { brand: "Royal Enfield", model: "Meteor 350", category: "Cruiser Motorcycle", body_type: "BIKE" },
+  { brand: "Royal Enfield", model: "Himalayan 450", category: "Adventure Tourer", body_type: "BIKE" },
+  { brand: "Royal Enfield", model: "Continental GT 650", category: "Cafe Racer", body_type: "BIKE" },
+  { brand: "Royal Enfield", model: "Interceptor 650", category: "Classic Twin", body_type: "BIKE" },
+
+  // Additional MUVs & Vans
+  { brand: "Maruti Suzuki", model: "Omni", category: "Microvan", body_type: "VAN" },
+  { brand: "Renault", model: "Triber", category: "Compact MUV", body_type: "MUV" },
+  { brand: "Renault", model: "Lodgy", category: "MUV", body_type: "MUV" },
 ];
 
 export const CATALOG_BRANDS: string[] = Array.from(
@@ -410,24 +482,34 @@ export function resolveVehicleBodyType(brandName: string, modelName: string): Ve
     }
   }
 
-  // 3. Keyword Heuristic Matching on Model Name
+  // 3. Keyword Heuristic Matching on Model Name & Brand
   const m = cleanModel.toUpperCase();
   const b = cleanBrand.toUpperCase();
 
-  // Two-Wheelers
+  // Auto Rickshaws (3-Wheelers) - Evaluated first to ensure Bajaj/Mahindra/Piaggio autos are never misclassified
   if (
-    ["BIKE", "SCOOTER", "ACTIVA", "DIO", "SHINE", "UNICORN", "PULSAR", "APACHE", "R15", "MT-15", "FZ", "METEOR", "BULLET", "CLASSIC 350", "HUNTER", "HIMALAYAN", "SPLENDOR", "DELUXE", "PASSION", "GLAMOUR", "XTREME", "XPULSE", "ACCESS", "BURGMAN", "AVENIS", "GIXXER", "DUKE", "RC 390", "ATHER", "RIZTA", "S1 PRO", "S1 AIR", "CHETAK", "JUPITER", "NTORQ", "IQUBE", "XL100", "DOMINAR", "AVENGER", "PLATINA", "MOPED", "TWOWHEELER"].some(k => m.includes(k)) ||
-    ["ROYAL ENFIELD", "HERO", "TVS", "YAMAHA", "KTM", "ATHER", "OLA ELECTRIC"].includes(b)
+    ["AUTO", "RICKSHAW", "TUKTUK", "APE", "TREO", "MAXIMA", "ALFA", "PIAGGIO", "E-RICKSHAW", "3-WHEELER", "THREE-WHEELER", "THREE WHEELER", "ATUL"].some(k => m.includes(k) || b.includes(k)) ||
+    (b.includes("BAJAJ") && (m === "" || m === "BAJAJ" || ["RE", "COMPACT", "MAXIMA", "OPTIMA", "CARGO", "AUTO", "RICKSHAW"].some(k => m.includes(k)))) ||
+    m === "RE" || m.startsWith("RE ") || m.endsWith(" RE") || m.includes("RE COMPACT") || m.includes("RE OPTIMA") ||
+    m === "ALFA" || m.startsWith("ALFA ") ||
+    m === "APE" || m.startsWith("APE ") ||
+    m === "TREO" || m.startsWith("TREO ") ||
+    m === "BAJAJ" || b === "PIAGGIO" || b === "ATUL" ||
+    cleanModel === "auto" || cleanModel.includes("auto-rickshaw") || cleanModel.includes("auto rickshaw") || cleanModel === "rickshaw"
   ) {
-    if (["AUTO", "RICKSHAW", "KING", "MAXIMA", "TREO", "APE"].some(k => m.includes(k))) {
+    if (!["PULSAR", "PLATINA", "AVENGER", "DOMINAR", "CHETAK", "DISCOVER", "BOXER", "CT100", "CT 100"].some(k => m.includes(k))) {
       return "AUTO";
     }
-    return "BIKE";
   }
 
-  // Auto Rickshaws
-  if (["AUTO", "RICKSHAW", "TUKTUK", "APE", "TREO", "MAXIMA", "RE COMPACT", "3-WHEELER", "THREE WHEELER", "E-RICKSHAW"].some(k => m.includes(k) || b.includes(k))) {
-    return "AUTO";
+  // Two-Wheelers / Motorcycles / Scooters
+  if (
+    ["BIKE", "SCOOTER", "ACTIVA", "DIO", "SHINE", "UNICORN", "PULSAR", "APACHE", "R15", "MT-15", "FZ", "METEOR", "BULLET", "CLASSIC 350", "CLASSIC", "HUNTER", "HIMALAYAN", "SPLENDOR", "DELUXE", "PASSION", "GLAMOUR", "XTREME", "XPULSE", "ACCESS", "BURGMAN", "AVENIS", "GIXXER", "DUKE", "RC 390", "ATHER", "RIZTA", "S1 PRO", "S1 AIR", "S1 X", "CHETAK", "JUPITER", "NTORQ", "IQUBE", "XL100", "DOMINAR", "AVENGER", "PLATINA", "RONIN", "RAIDER", "MOPED", "TWOWHEELER", "TWO WHEELER", "TWO-WHEELER", "2-WHEELER"].some(k => m.includes(k)) ||
+    ["ROYAL ENFIELD", "HERO", "HERO MOTOCORP", "TVS", "YAMAHA", "KTM", "ATHER", "OLA ELECTRIC", "JAWA", "YEZDI"].includes(b) ||
+    (b === "BAJAJ" && ["PULSAR", "PLATINA", "AVENGER", "DOMINAR", "CHETAK", "DISCOVER", "BOXER", "CT100", "CT 100"].some(k => m.includes(k))) ||
+    (b === "HONDA" && ["ACTIVA", "DIO", "SHINE", "UNICORN", "SP", "HORNET", "CB", "LIVO", "DREAM"].some(k => m.includes(k)))
+  ) {
+    return "BIKE";
   }
 
   // Luxury Brands
@@ -438,16 +520,13 @@ export function resolveVehicleBodyType(brandName: string, modelName: string): Ve
     return "LUXURY";
   }
 
-  // Heavy Commercial / Trucks
-  if (["TRUCK", "DOST", "BADA DOST", "ACE", "YODHA", "SUPER CARRY", "JEETO", "PICKUP", "TIPPER", "CAMPER", "ASHOK LEYLAND", "BHARATBENZ", "EICHER"].some(k => m.includes(k) || b.includes(k))) {
-    return "TRUCK";
-  }
-
-  // Vans & MUVs
-  if (["TRAVELLER", "URBANIA", "EECO", "VAN", "MINIVAN", "WINGER", "SUPRO", "MAGIC"].some(k => m.includes(k))) {
+  // Vans
+  if (["OMNI", "EECO", "TRAVELLER", "URBANIA", "VAN", "MINIVAN", "WINGER", "SUPRO", "MAGIC", "VERSA"].some(k => m.includes(k))) {
     return "VAN";
   }
-  if (["ERTIGA", "XL6", "INNOVA", "CRYSTA", "RUMION", "CARENS", "TRIBER", "MARAZZO", "BOLERO", "HEXA", "SUMO", "MUV", "MULTI-UTILITY"].some(k => m.includes(k))) {
+
+  // MUVs
+  if (["ERTIGA", "XL6", "INNOVA", "CRYSTA", "HYCROSS", "RUMION", "CARENS", "TRIBER", "LODGY", "MARAZZO", "BOLERO", "HEXA", "SUMO", "TAVERA", "MOBILIO", "MUV", "MULTI-UTILITY"].some(k => m.includes(k))) {
     return "MUV";
   }
 
@@ -466,10 +545,215 @@ export function resolveVehicleBodyType(brandName: string, modelName: string): Ve
     return "SEDAN";
   }
 
+  // Heavy Commercial / Trucks
+  if (["TRUCK", "DOST", "BADA DOST", "ACE", "YODHA", "SUPER CARRY", "JEETO", "PICKUP", "TIPPER", "CAMPER", "ASHOK LEYLAND", "BHARATBENZ", "EICHER"].some(k => m.includes(k) || b.includes(k))) {
+    return "TRUCK";
+  }
+
   // Hatchbacks
   if (["ALTO", "WAGONR", "SWIFT", "BALENO", "CELERIO", "IGNIS", "S-PRESSO", "I10", "I20", "SANTRO", "EON", "TIAGO", "ALTROZ", "GLANZA", "POLO", "FABIA", "COMET", "KWID", "MICRA", "JAZZ", "HATCHBACK"].some(k => m.includes(k))) {
     return "HATCHBACK";
   }
 
   return "HATCHBACK";
+}
+
+/**
+ * Normalizes vehicle body-type aliases to canonical database VehicleType keys.
+ * (e.g. FULL_SUV -> SUV, TWO_WHEELER -> BIKE, Auto-rickshaw -> AUTO)
+ */
+export function normalizeVehicleType(type?: string | null): VehicleType {
+  if (!type) return 'HATCHBACK';
+  const clean = String(type).trim().toUpperCase();
+  const stripped = clean.replace(/[\s\-_()]+/g, '');
+
+  if (
+    stripped.includes('AUTO') ||
+    stripped.includes('RICKSHAW') ||
+    stripped.includes('3WHEEL') ||
+    stripped.includes('THREEWHEEL') ||
+    stripped === 'TUKTUK' ||
+    stripped === 'APE' ||
+    stripped === 'TREO' ||
+    stripped === 'ALFA'
+  ) {
+    return 'AUTO';
+  }
+
+  if (
+    stripped.includes('BIKE') ||
+    stripped.includes('SCOOTER') ||
+    stripped.includes('MOTORCYCLE') ||
+    stripped.includes('2WHEEL') ||
+    stripped.includes('TWOWHEEL') ||
+    stripped === 'MOPED' ||
+    stripped === 'TWO_WHEELER'
+  ) {
+    return 'BIKE';
+  }
+
+  if (
+    stripped.includes('COMPACTSUV') ||
+    stripped.includes('MICROSUV') ||
+    stripped.includes('SUBCOMPACT') ||
+    stripped === 'CROSSOVER'
+  ) {
+    return 'COMPACT_SUV';
+  }
+
+  if (
+    stripped.includes('FULLSUV') ||
+    stripped.includes('MIDSUV') ||
+    stripped === 'SUV' ||
+    stripped.includes('OFFROAD')
+  ) {
+    return 'SUV';
+  }
+
+  if (
+    stripped.includes('MUV') ||
+    stripped.includes('MPV') ||
+    stripped.includes('MULTIUTILITY')
+  ) {
+    return 'MUV';
+  }
+
+  if (
+    stripped.includes('VAN') ||
+    stripped.includes('MINIVAN')
+  ) {
+    return 'VAN';
+  }
+
+  if (
+    stripped.includes('LUXURY') ||
+    stripped.includes('PREMIUM')
+  ) {
+    return 'LUXURY';
+  }
+
+  if (stripped.includes('SEDAN')) {
+    return 'SEDAN';
+  }
+
+  if (
+    stripped.includes('TRUCK') ||
+    stripped.includes('PICKUP') ||
+    stripped.includes('COMMERCIAL')
+  ) {
+    return 'TRUCK';
+  }
+
+  if (stripped.includes('HATCH')) {
+    return 'HATCHBACK';
+  }
+
+  if (stripped === 'CAR') {
+    return 'SEDAN';
+  }
+
+  if (stripped === 'ALL') {
+    return 'ALL';
+  }
+
+  return 'HATCHBACK';
+}
+
+/**
+ * Single-input auto-categorization helper for popular Indian vehicle models.
+ * Can be called with either model name alone ("Swift", "Creta", "Innova", "Fortuner", "Ape", "RE")
+ * or combined brand + model ("Maruti Swift", "Bajaj RE", "Mahindra Alfa", "Honda Activa").
+ */
+export function getVehicleBodyType(query: string): VehicleType {
+  if (!query || typeof query !== 'string') return 'HATCHBACK';
+  const trimmed = query.trim();
+  if (!trimmed) return 'HATCHBACK';
+
+  // Check direct alias normalization first
+  const trimmedUpper = trimmed.toUpperCase();
+  const cleanStripped = trimmedUpper.replace(/[\s\-_()]+/g, '');
+
+  // 1. Check if bike keywords appear (e.g. Pulsar, Platina, Splendor, Activa, etc.)
+  if (
+    cleanStripped.includes('BIKE') ||
+    cleanStripped.includes('SCOOTER') ||
+    cleanStripped.includes('MOTORCYCLE') ||
+    cleanStripped.includes('2WHEEL') ||
+    cleanStripped.includes('TWOWHEEL') ||
+    cleanStripped === 'MOPED' ||
+    ['PULSAR', 'PLATINA', 'AVENGER', 'DOMINAR', 'CHETAK', 'ACTIVA', 'DIO', 'SHINE', 'UNICORN', 'SPLENDOR', 'PASSION', 'JUPITER', 'NTORQ', 'ACCESS', 'BULLET', 'CLASSIC350', 'HUNTER', 'HIMALAYAN'].some(k => cleanStripped.includes(k))
+  ) {
+    return 'BIKE';
+  }
+
+  // 2. Auto-rickshaw (3-Wheelers) check
+  if (
+    cleanStripped.includes('AUTO') ||
+    cleanStripped.includes('RICKSHAW') ||
+    cleanStripped.includes('3WHEEL') ||
+    cleanStripped.includes('THREEWHEEL') ||
+    cleanStripped.includes('TUKTUK') ||
+    cleanStripped === 'APE' ||
+    cleanStripped.startsWith('APECITY') ||
+    cleanStripped.startsWith('APEDX') ||
+    trimmedUpper.startsWith('APE ') ||
+    cleanStripped === 'ALFA' ||
+    cleanStripped.startsWith('ALFADX') ||
+    cleanStripped.startsWith('ALFAPLUS') ||
+    trimmedUpper.startsWith('ALFA ') ||
+    cleanStripped === 'TREO' ||
+    cleanStripped.startsWith('TREOZOR') ||
+    trimmedUpper.startsWith('TREO ') ||
+    cleanStripped === 'RE' ||
+    cleanStripped.startsWith('RECOMPACT') ||
+    cleanStripped.startsWith('REOPTIMA') ||
+    cleanStripped.startsWith('REMAXIMA') ||
+    trimmedUpper.startsWith('RE ') ||
+    trimmedUpper.endsWith(' RE') ||
+    cleanStripped === 'BAJAJ' ||
+    cleanStripped === 'BAJAJAUTO' ||
+    cleanStripped === 'PIAGGIO' ||
+    cleanStripped === 'ATUL'
+  ) {
+    return 'AUTO';
+  }
+
+  // Check if query starts with a known catalog brand
+  const matchedBrand = CATALOG_BRANDS.find((b) =>
+    trimmed.toLowerCase().startsWith(b.toLowerCase())
+  );
+
+  if (matchedBrand) {
+    const remainingModel = trimmed.slice(matchedBrand.length).trim();
+    return resolveVehicleBodyType(matchedBrand, remainingModel || trimmed);
+  }
+
+  // Otherwise, evaluate as model name across all catalog brands & heuristics
+  return resolveVehicleBodyType('', trimmed);
+}
+
+/**
+ * Human-readable badge metadata helper for any VehicleType
+ */
+export function getVehicleTypeLabel(type?: string | null): {
+  label: string;
+  icon: string;
+  category: string;
+} {
+  const normalized = normalizeVehicleType(type);
+  const found = BODY_TYPE_OPTIONS.find((b) => b.value === normalized);
+
+  if (found) {
+    return {
+      label: found.label,
+      icon: found.icon,
+      category: found.label.split('/')[0].trim(),
+    };
+  }
+
+  return {
+    label: 'Hatchback',
+    icon: '🚗',
+    category: 'Hatchback',
+  };
 }

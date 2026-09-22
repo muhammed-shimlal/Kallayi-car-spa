@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
 import { ServicePackageRow, VehicleType } from '@/types/database';
 import { resolvePackagePriceForVehicle } from '@/lib/logic/booking';
+import { normalizeVehicleType } from '@/lib/vehicleCatalog';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -34,7 +35,9 @@ export async function GET(
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const vehicleTypeParam = searchParams.get('vehicle_type') || searchParams.get('type') || '';
-    const cleanVType = vehicleTypeParam.trim().toUpperCase() as VehicleType | '';
+    const cleanVType = vehicleTypeParam
+      ? (normalizeVehicleType(vehicleTypeParam) as VehicleType)
+      : ('' as VehicleType | '');
 
     if (isNaN(pkgId)) {
       return NextResponse.json({ success: false, error: 'Invalid service package ID.' }, { status: 400 });
@@ -59,27 +62,58 @@ export async function GET(
       .eq('package_id', pkgId);
 
     const basePriceNum = Number(pkg.price || 0);
-    const tierMap: Record<string, number> = {};
-
-    STANDARD_TIERS.forEach((vType) => {
-      tierMap[vType] = basePriceNum;
-    });
+    const tierMap: Partial<Record<string, number>> = {};
 
     const tierRows = tierPrices || [];
     tierRows.forEach((t: any) => {
-      if (t.vehicle_type) {
-        tierMap[String(t.vehicle_type).toUpperCase()] = Number(t.price);
+      if (t.vehicle_type && t.price != null && !isNaN(Number(t.price))) {
+        tierMap[normalizeVehicleType(t.vehicle_type)] = Number(t.price);
       }
     });
 
-    const dynamicPrice = resolvePackagePriceForVehicle(basePriceNum, tierRows, cleanVType);
-    const effectivePrice = cleanVType ? dynamicPrice : basePriceNum;
+    let resolvedPrice: number | null = null;
+    let hasConfiguredTier = false;
+
+    if (cleanVType) {
+      if (tierMap[cleanVType] !== undefined && tierMap[cleanVType] !== null) {
+        resolvedPrice = tierMap[cleanVType]!;
+        hasConfiguredTier = true;
+      } else {
+        let fallbackPrice: number | undefined;
+        if (cleanVType === 'COMPACT_SUV') fallbackPrice = tierMap.SUV;
+        else if (cleanVType === 'SUV') fallbackPrice = tierMap.COMPACT_SUV;
+        else if (cleanVType === 'VAN') fallbackPrice = tierMap.MUV;
+        else if (cleanVType === 'MUV') fallbackPrice = tierMap.VAN;
+
+        if (fallbackPrice !== undefined && fallbackPrice !== null) {
+          resolvedPrice = fallbackPrice;
+          hasConfiguredTier = true;
+        } else {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Pricing tier is not configured for vehicle type: ${cleanVType}. Please configure in Admin.`,
+              tier_configured: false,
+            },
+            { status: 400 }
+          );
+        }
+      }
+    } else {
+      resolvedPrice = basePriceNum;
+      hasConfiguredTier = true;
+    }
+
+    const effectivePrice = resolvedPrice !== null ? resolvedPrice : basePriceNum;
 
     return NextResponse.json({
       ...pkg,
       base_price: basePriceNum,
       price: effectivePrice,
       final_price: effectivePrice,
+      resolved_price: resolvedPrice,
+      tier_configured: hasConfiguredTier,
+      resolved_vehicle_type: cleanVType || null,
       tiered_prices: tierRows,
       service_package_prices: tierRows,
       tier_prices: tierMap,

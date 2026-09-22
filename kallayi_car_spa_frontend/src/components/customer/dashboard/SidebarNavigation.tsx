@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Car, Star, LogOut, Wallet } from 'lucide-react';
+import { Activity, Car, Star, LogOut, Wallet, Sparkles } from 'lucide-react';
 
 interface SidebarNavigationProps {
     activeTab: string;
@@ -10,8 +10,9 @@ interface SidebarNavigationProps {
 export function SidebarNavigation({ activeTab, setActiveTab, handleLogout }: SidebarNavigationProps) {
     const navItems = [
         { id: 'overview', icon: Activity, label: 'Dashboard' },
+        { id: 'services', icon: Sparkles, label: 'Service Menu' },
         { id: 'garage', icon: Car, label: 'My Garage' },
-        { id: 'ledger', icon: Wallet, label: 'Ledger & Dues' },
+        { id: 'ledger', icon: Wallet, label: 'Credit / Khata' },
         { id: 'history', icon: Star, label: 'Wash History' }
     ];
 

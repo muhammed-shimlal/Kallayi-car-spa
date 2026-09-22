@@ -7,7 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import { deriveBookingPricing } from '@/lib/logic/booking';
+import { normalizePhone, getPhoneVariants } from '@/lib/phone';
 import { BookingStatus, VehicleType } from '@/types/database';
+import { normalizeVehicleType } from '@/lib/vehicleCatalog';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,6 +17,7 @@ export const revalidate = 0;
 export async function GET(request: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
+    const authUser = await getAuthUserFromRequest(request);
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get('status');
@@ -36,6 +39,44 @@ export async function GET(request: NextRequest) {
       .order('time_slot', { ascending: false })
       .limit(limit);
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // STRICT CUSTOMER DATA ISOLATION
+    // ─────────────────────────────────────────────────────────────────────────────
+    if (authUser) {
+      const userRole = (authUser.user_metadata?.role || '').toUpperCase();
+      const isStaffOrAdmin = ['ADMIN', 'MANAGER', 'WASHER', 'TECHNICIAN', 'DRIVER'].includes(userRole);
+
+      if (!isStaffOrAdmin) {
+        // Find customer record matching this authenticated user
+        const { data: userCustomer } = await supabase
+          .from('customers')
+          .select('id, phone_number')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+
+        if (!userCustomer) {
+          // If no customer profile found for user, strictly return empty list to prevent leaks
+          return NextResponse.json({
+            success: true,
+            count: 0,
+            data: [],
+          });
+        }
+
+        // Strictly isolate bookings to this customer only
+        query = query.eq('customer_id', userCustomer.id);
+      }
+    } else {
+      // Unauthenticated requests cannot list bookings
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Authentication required to view bookings.' },
+        { status: 401 }
+      );
+    }
+
+    const excludeStatus = searchParams.get('exclude_status');
+    const activeOnly = searchParams.get('active_only') === 'true' || searchParams.get('queue') === 'true';
+
     if (status) {
       if (status.includes(',')) {
         const statuses = status.split(',').map((s) => s.trim()) as BookingStatus[];
@@ -43,6 +84,13 @@ export async function GET(request: NextRequest) {
       } else {
         query = query.eq('status', status as BookingStatus);
       }
+    } else if (activeOnly) {
+      query = query.neq('status', 'COMPLETED').neq('status', 'CANCELLED');
+    } else if (excludeStatus) {
+      const excludedStatuses = excludeStatus.split(',').map((s) => s.trim());
+      excludedStatuses.forEach((s) => {
+        query = query.neq('status', s as BookingStatus);
+      });
     }
 
     if (date) {
@@ -80,19 +128,25 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 
+    // 1. Flexible Field Extraction supporting standard and camelCase aliases
+    const customerId = body.customer_id || body.customerId;
+    const incomingPhone = body.phone || body.customer_phone || body.phoneNumber || body.phone_number || '';
+    const phone = incomingPhone ? normalizePhone(incomingPhone) : '';
+    const vehicleId = body.vehicle_id || body.vehicleId;
+    const plateNumber = String(body.plate_number || body.license_plate || body.plateNumber || body.registration_number || '').toUpperCase().trim();
+
+    let customer_id = customerId || undefined;
+    let vehicle_id = vehicleId ? Number(vehicleId) : undefined;
+
     let {
-      customer_id,
-      vehicle_id,
       technician_id,
       service_package_id,
       package_id,
-      phone,
       name,
       customer_name,
-      plate_number,
       make = 'Standard',
       model = 'Vehicle',
-      vehicle_type = 'CAR',
+      vehicle_type = 'HATCHBACK',
       color = 'White',
       time_slot,
       duration_minutes,
@@ -119,17 +173,53 @@ export async function POST(request: NextRequest) {
     }
 
     // Auto-resolve Customer from Authenticated Session if customer_id not directly supplied
-    if (!customer_id) {
-      const authUser = await getAuthUserFromRequest(request);
-      if (authUser) {
-        const { data: custRecord } = await supabase
-          .from('customers')
-          .select('id')
-          .eq('user_id', authUser.id)
-          .maybeSingle();
+    // IMPORTANT: Only auto-resolve if the caller is an end-customer (not staff or admin processing a walk-in)
+    const authUser = await getAuthUserFromRequest(request);
+    const userRole = (authUser?.user_metadata?.role || '').toUpperCase();
+    const isStaffOrAdmin = ['ADMIN', 'MANAGER', 'WASHER', 'TECHNICIAN', 'DRIVER'].includes(userRole);
 
-        if (custRecord) {
-          customer_id = custRecord.id;
+    if (!customer_id && authUser && !isStaffOrAdmin) {
+      const { data: custRecord } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('user_id', authUser.id)
+        .maybeSingle();
+
+      if (custRecord) {
+        customer_id = custRecord.id;
+      } else {
+        const userPhone = authUser.phone || authUser.user_metadata?.phone;
+        if (userPhone) {
+          const canonicalPhone = normalizePhone(userPhone);
+          const { variants } = getPhoneVariants(canonicalPhone);
+          const { data: existingCust } = await supabase
+            .from('customers')
+            .select('id')
+            .in('phone_number', variants)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingCust) {
+            customer_id = existingCust.id;
+          } else {
+            const { data: newCust } = await supabase
+              .from('customers')
+              .insert({
+                user_id: authUser.id,
+                name: authUser.user_metadata?.name || authUser.user_metadata?.full_name || 'Valued Customer',
+                phone_number: canonicalPhone,
+                address: '',
+                loyalty_points: 0,
+                outstanding_balance: 0.0,
+                credit_limit: 5000.0,
+              })
+              .select('id')
+              .maybeSingle();
+
+            if (newCust) {
+              customer_id = newCust.id;
+            }
+          }
         }
       }
     }
@@ -157,11 +247,14 @@ export async function POST(request: NextRequest) {
 
     // Auto-resolve Customer by Phone if customer_id still not resolved
     if (!customer_id && phone) {
-      const cleanPhone = String(phone).replace(/\D/g, '');
+      const canonicalPhone = phone;
+      const { variants } = getPhoneVariants(phone);
+
       const { data: existingCust } = await supabase
         .from('customers')
         .select('*')
-        .or(`phone_number.eq.${cleanPhone},phone_number.eq.${phone}`)
+        .in('phone_number', variants)
+        .order('user_id', { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle();
 
@@ -175,13 +268,13 @@ export async function POST(request: NextRequest) {
             .eq('id', existingCust.id);
         }
       } else {
-        // Create guest customer record in customers
+        // Create guest customer record in customers with canonical E.164 phone
         const { data: newCust, error: custErr } = await supabase
           .from('customers')
           .insert({
             user_id: null,
             name: resolvedCustName || 'Guest Customer',
-            phone_number: phone,
+            phone_number: canonicalPhone,
             address: address || '',
             loyalty_points: 0,
             outstanding_balance: 0.00,
@@ -193,16 +286,14 @@ export async function POST(request: NextRequest) {
         if (newCust) {
           customer_id = newCust.id;
         } else if (custErr) {
-          // Fallback to finding any existing customer
-          const { data: fallbackCust } = await supabase.from('customers').select('*').limit(1).single();
-          if (fallbackCust) customer_id = fallbackCust.id;
+          console.error('[Bookings Customer Insert Error]:', custErr.message);
         }
       }
     }
 
     // Auto-resolve Vehicle by Plate Number if vehicle_id not supplied
-    if (!vehicle_id && plate_number) {
-      const cleanPlate = String(plate_number).toUpperCase().trim();
+    if (!vehicle_id && plateNumber) {
+      const cleanPlate = plateNumber;
       const { data: existingVehicle } = await supabase
         .from('customer_vehicles')
         .select('*')
@@ -212,16 +303,16 @@ export async function POST(request: NextRequest) {
       if (existingVehicle) {
         vehicle_id = existingVehicle.id;
       } else {
-        // Insert vehicle
-        const guestUserId = '00000000-0000-0000-0000-000000000000';
-        const { data: newVehicle } = await supabase
+        // Insert vehicle for walk-in guest (user_id is null until customer claims account)
+        const normalizedType = normalizeVehicleType(vehicle_type);
+        const { data: newVehicle, error: vehErr } = await supabase
           .from('customer_vehicles')
           .insert({
-            user_id: guestUserId,
+            user_id: null,
             plate_number: cleanPlate,
             make: make || 'Standard',
             model: model || 'Vehicle',
-            vehicle_type: (vehicle_type as VehicleType) || 'CAR',
+            vehicle_type: normalizedType,
             color: color || 'White',
           })
           .select('*')
@@ -230,17 +321,30 @@ export async function POST(request: NextRequest) {
         if (newVehicle) {
           vehicle_id = newVehicle.id;
         } else {
-          const { data: fallbackVeh } = await supabase.from('customer_vehicles').select('*').limit(1).single();
-          if (fallbackVeh) vehicle_id = fallbackVeh.id;
+          if (vehErr) {
+            console.error('[Bookings Vehicle Insert Error]:', vehErr.message);
+          }
+          // Concurrent insert / conflict recovery
+          const { data: retryVeh } = await supabase
+            .from('customer_vehicles')
+            .select('*')
+            .eq('plate_number', cleanPlate)
+            .maybeSingle();
+          if (retryVeh) {
+            vehicle_id = retryVeh.id;
+          }
         }
       }
     }
 
     if (!customer_id || !vehicle_id) {
+      const missingDetails: string[] = [];
+      if (!customer_id) missingDetails.push('customer_id (or a valid phone number)');
+      if (!vehicle_id) missingDetails.push('vehicle_id (or plate_number)');
       return NextResponse.json(
         {
           success: false,
-          error: 'Missing required parameters: customer_id (or phone) and vehicle_id (or plate_number) are required.',
+          error: `Missing required parameters: ${missingDetails.join(' and ')} are required.`,
         },
         { status: 400 }
       );
@@ -270,16 +374,48 @@ export async function POST(request: NextRequest) {
             .maybeSingle();
 
           if (veh?.vehicle_type) {
-            const cleanVType = String(veh.vehicle_type).trim().toUpperCase();
-            const { data: tiered } = await supabase
+            const canonicalVType = normalizeVehicleType(veh.vehicle_type);
+            const { data: allTiers } = await supabase
               .from('service_package_prices')
-              .select('price')
-              .eq('package_id', service_package_id)
-              .eq('vehicle_type', cleanVType)
-              .maybeSingle();
+              .select('*')
+              .eq('package_id', service_package_id);
 
-            if (tiered && Number(tiered.price) > 0) {
-              packagePrice = Number(tiered.price);
+            const matchingTier = (allTiers || []).find(
+              (t: any) => t.vehicle_type && normalizeVehicleType(t.vehicle_type) === canonicalVType
+            );
+
+            if (matchingTier && matchingTier.price != null && !isNaN(Number(matchingTier.price))) {
+              packagePrice = Number(matchingTier.price);
+              if (matchingTier.estimated_time_minutes) {
+                pkgDuration = Number(matchingTier.estimated_time_minutes);
+              }
+            } else {
+              // Semantic fallbacks
+              let fallbackTier: any = null;
+              if (canonicalVType === 'COMPACT_SUV') {
+                fallbackTier = (allTiers || []).find((t: any) => normalizeVehicleType(t.vehicle_type) === 'SUV');
+              } else if (canonicalVType === 'SUV') {
+                fallbackTier = (allTiers || []).find((t: any) => normalizeVehicleType(t.vehicle_type) === 'COMPACT_SUV');
+              } else if (canonicalVType === 'VAN') {
+                fallbackTier = (allTiers || []).find((t: any) => normalizeVehicleType(t.vehicle_type) === 'MUV');
+              } else if (canonicalVType === 'MUV') {
+                fallbackTier = (allTiers || []).find((t: any) => normalizeVehicleType(t.vehicle_type) === 'VAN');
+              }
+
+              if (fallbackTier && fallbackTier.price != null && !isNaN(Number(fallbackTier.price))) {
+                packagePrice = Number(fallbackTier.price);
+                if (fallbackTier.estimated_time_minutes) {
+                  pkgDuration = Number(fallbackTier.estimated_time_minutes);
+                }
+              } else {
+                return NextResponse.json(
+                  {
+                    success: false,
+                    error: `Service pricing tier is not configured for vehicle type: ${canonicalVType}. Please configure pricing in Admin or choose an applicable service.`,
+                  },
+                  { status: 400 }
+                );
+              }
             }
           }
         }
@@ -291,8 +427,8 @@ export async function POST(request: NextRequest) {
       timeSlot: time_slot,
       durationMinutes: pkgDuration,
       packagePrice,
-      basePrice: base_price,
-      finalPrice: final_price != null ? Number(final_price) : undefined,
+      basePrice: packagePrice > 0 ? packagePrice : base_price,
+      finalPrice: final_price != null && Number(final_price) > 0 ? Number(final_price) : packagePrice,
       pointsRedeemed: points_redeemed,
     });
 

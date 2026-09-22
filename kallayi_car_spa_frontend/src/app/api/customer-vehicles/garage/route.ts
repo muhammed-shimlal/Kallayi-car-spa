@@ -6,28 +6,29 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getPhoneVariants, extractTenDigitPhone } from '@/lib/phone';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const rawPhone = searchParams.get('phone') || searchParams.get('phone_number') || searchParams.get('q') || '';
-    const cleanDigits = rawPhone.replace(/\D/g, '');
+    const { variants } = getPhoneVariants(rawPhone);
+    const tenDigit = extractTenDigitPhone(rawPhone);
 
-    if (!cleanDigits || cleanDigits.length < 10) {
+    if (!tenDigit && variants.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Valid 10-digit phone number is required.' },
         { status: 400 }
       );
     }
 
-    const pureNumber = cleanDigits.length > 10 && cleanDigits.startsWith('91') ? cleanDigits.slice(2) : cleanDigits;
     const supabase = getSupabaseAdmin();
 
-    // 1. Find customer record matching phone number
+    // 1. Find customer record matching phone number variants
     const { data: customerList, error: custErr } = await supabase
       .from('customers')
       .select('id, user_id, phone_number, name')
-      .or(`phone_number.ilike.%${pureNumber}%,phone_number.ilike.%${cleanDigits}%`);
+      .in('phone_number', variants);
 
     if (custErr) {
       return NextResponse.json({ success: false, error: custErr.message }, { status: 500 });

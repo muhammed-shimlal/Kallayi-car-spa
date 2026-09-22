@@ -1,12 +1,13 @@
 /**
  * KALLAYI CAR SPA & AUTO CARE - FINANCE EXPENSES API ROUTE
  * Next.js 16 Route Handler: GET /api/finance/expenses & POST /api/finance/expenses
- * Manages general shop expenses, staff advances/deductions, and payment methods.
+ * Manages general shop expenses, staff advances/deductions, receipt file uploads, and custom categories.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
 import { ExpenseType, ExpenseStatus, PaymentMethod, ExpenseTransactionType } from '@/types/database';
+import { uploadFileToStorage } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -87,11 +88,21 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     let payload: any = {};
+    let receiptFile: File | Blob | null = null;
+
     const contentType = request.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
       formData.forEach((value, key) => {
-        payload[key] = value;
+        if (key === 'receipt_image' || key === 'file' || key === 'receipt') {
+          if (typeof value === 'object' && value && 'size' in value && (value as any).size > 0) {
+            receiptFile = value as unknown as File;
+          } else if (typeof value === 'string' && value.trim() !== '') {
+            payload[key] = value;
+          }
+        } else {
+          payload[key] = value;
+        }
       });
     } else {
       payload = await request.json().catch(() => ({}));
@@ -101,6 +112,7 @@ export async function POST(request: NextRequest) {
       category_id,
       category,
       category_name,
+      custom_category,
       expense_type = 'BUSINESS',
       transaction_type = null,
       payment_method = 'CASH',
@@ -122,7 +134,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve category_id safely
+    // 1. Resolve category_id safely
     let finalCategoryId: number | null = null;
     const rawCat = (category_id !== undefined && category_id !== '' && category_id !== 'null')
       ? category_id
@@ -130,13 +142,17 @@ export async function POST(request: NextRequest) {
 
     if (rawCat !== null && rawCat !== undefined) {
       const parsed = parseInt(String(rawCat), 10);
-      if (!isNaN(parsed)) {
+      if (!isNaN(parsed) && parsed > 0) {
         finalCategoryId = parsed;
       }
     }
 
-    const rawCatName = category_name || (rawCat && isNaN(Number(rawCat)) && typeof rawCat === 'string' ? rawCat : null);
-    if (!finalCategoryId && rawCatName && String(rawCatName).trim() !== '') {
+    // Handle Custom Category creation (if "OTHER" selected or custom_category/category_name supplied)
+    const rawCatName = custom_category || category_name || (
+      rawCat && isNaN(Number(rawCat)) && typeof rawCat === 'string' && rawCat !== 'OTHER' ? rawCat : null
+    );
+
+    if (rawCatName && String(rawCatName).trim() !== '') {
       const trimmedName = String(rawCatName).trim();
       const { data: existingCat } = await supabase
         .from('expense_categories')
@@ -149,16 +165,36 @@ export async function POST(request: NextRequest) {
       } else {
         const { data: newCat } = await supabase
           .from('expense_categories')
-          .insert({ name: trimmedName, description: 'Created via POS/Admin Expenses' })
+          .insert({
+            name: trimmedName,
+            description: 'Custom category created via Expense Manager',
+          })
           .select('id')
           .single();
+
         if (newCat) {
           finalCategoryId = newCat.id;
         }
       }
     }
 
-    // Sanitize staff_id and recorded_by_id (must be valid non-empty string or null)
+    // 2. Handle Receipt Image Upload to Supabase Storage
+    let finalReceiptImage: string | null = null;
+
+    if (receiptFile) {
+      try {
+        finalReceiptImage = await uploadFileToStorage(receiptFile, 'receipts');
+      } catch (uploadErr: any) {
+        console.warn('[Receipt Upload Warning]:', uploadErr.message);
+      }
+    } else if (typeof receipt_image === 'string') {
+      const trimmed = receipt_image.trim();
+      if (trimmed !== '' && trimmed !== '[object File]' && trimmed !== 'null' && trimmed !== 'undefined') {
+        finalReceiptImage = trimmed;
+      }
+    }
+
+    // 3. Sanitize fields
     const sanitizedStaffId = typeof staff_id === 'string' && staff_id.trim() !== '' && staff_id.trim() !== 'null' && staff_id.trim() !== 'undefined'
       ? staff_id.trim()
       : null;
@@ -167,38 +203,24 @@ export async function POST(request: NextRequest) {
       ? recorded_by_id.trim()
       : null;
 
-    // Sanitize date
     const finalDate = date && String(date).trim() !== ''
       ? String(date).trim()
       : new Date().toISOString().split('T')[0];
 
-    // Sanitize expense_type
     const finalExpenseType: ExpenseType = (expense_type === 'STAFF' || expense_type === 'BUSINESS')
       ? expense_type
       : 'BUSINESS';
 
-    // Sanitize transaction_type
     const validTransactionTypes = ['ADVANCE', 'DEDUCTION', 'BONUS', 'REIMBURSEMENT', 'INCENTIVE'];
     const finalTransactionType: ExpenseTransactionType | null = validTransactionTypes.includes(transaction_type)
       ? transaction_type
       : null;
 
-    // Sanitize payment_method
     const validPaymentMethods = ['CASH', 'UPI', 'BANK_TRANSFER', 'CARD', 'CHEQUE'];
     const finalPaymentMethod: PaymentMethod = validPaymentMethods.includes(payment_method)
       ? payment_method
       : 'CASH';
 
-    // Sanitize receipt_image (only store string URL/path; ignore File objects or empty strings)
-    let finalReceiptImage: string | null = null;
-    if (typeof receipt_image === 'string') {
-      const trimmed = receipt_image.trim();
-      if (trimmed !== '' && trimmed !== '[object File]' && trimmed !== 'null' && trimmed !== 'undefined') {
-        finalReceiptImage = trimmed;
-      }
-    }
-
-    // Sanitize status
     const validStatuses = ['PENDING', 'APPROVED', 'PAID', 'CANCELLED'];
     const finalStatus: ExpenseStatus = validStatuses.includes(status)
       ? status
@@ -207,6 +229,7 @@ export async function POST(request: NextRequest) {
     const finalDescription = description !== undefined && description !== null ? String(description).trim() : '';
     const finalNotes = notes !== undefined && notes !== null ? String(notes).trim() : '';
 
+    // 4. Insert Expense into Database
     const { data: newExpense, error: insertErr } = await supabase
       .from('general_expenses')
       .insert({

@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import { BookingRow, BookingStatus, ChemicalRecipe } from '@/types/database';
 import {
   planChemicalDeductions,
@@ -23,6 +23,14 @@ interface RouteContext {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
+    const authUser = await getAuthUserFromRequest(request);
+    if (!authUser) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized. Please log in.' },
+        { status: 401 }
+      );
+    }
+
     const params = await context.params;
     const bookingId = parseInt(params.id, 10);
 
@@ -48,8 +56,24 @@ export async function GET(request: NextRequest, context: RouteContext) {
       .single();
 
     if (error || !booking) {
-      console.error('[Booking GET Error]:', error);
       return NextResponse.json({ success: false, error: 'Booking not found' }, { status: 404 });
+    }
+
+    // STRICT CUSTOMER DATA ISOLATION
+    const userRole = (authUser.user_metadata?.role || '').toUpperCase();
+    const isStaffOrAdmin = ['ADMIN', 'MANAGER', 'WASHER', 'TECHNICIAN', 'DRIVER'].includes(userRole);
+
+    if (!isStaffOrAdmin) {
+      const isOwner =
+        booking.customer?.user_id === authUser.id ||
+        (authUser.phone && booking.customer?.phone_number && booking.customer.phone_number.includes(authUser.phone.replace(/\D/g, '')));
+
+      if (!isOwner) {
+        return NextResponse.json(
+          { success: false, error: 'Forbidden. You do not have permission to view this booking.' },
+          { status: 403 }
+        );
+      }
     }
 
     return NextResponse.json({ success: true, data: booking });

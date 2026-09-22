@@ -20,60 +20,44 @@ export interface WhatsAppVerificationResult {
   error?: string;
 }
 
+import {
+  extractTenDigitPhone,
+  normalizePhone,
+  getPhoneVariants as getUnifiedPhoneVariants,
+  isValidIndianMobile,
+} from '@/lib/phone';
+
+export {
+  extractTenDigitPhone,
+  normalizePhone,
+  isValidIndianMobile,
+};
+
 /**
  * Sanitizes and standardizes phone number to standard digits with 91 prefix.
+ * e.g. 9847123456 -> 919847123456
  */
 export function sanitizePhoneNumber(rawPhone: string): string {
   if (!rawPhone) return '';
+  const tenDigit = extractTenDigitPhone(rawPhone);
+  if (tenDigit) {
+    return `91${tenDigit}`;
+  }
   let digits = rawPhone.replace(/\D/g, '');
   if (digits.length === 10) {
-    digits = `91${digits}`;
+    return `91${digits}`;
   } else if (digits.length === 11 && digits.startsWith('0')) {
-    digits = `91${digits.substring(1)}`;
+    return `91${digits.substring(1)}`;
   }
   return digits;
 }
 
 /**
  * Normalizes phone number into all standard representation variants for database queries:
- * e.g. ['+919876543210', '919876543210', '9876543210', '09876543210']
+ * e.g. ['+919847123456', '919847123456', '9847123456', '09847123456']
  */
-export function getPhoneVariants(rawPhone: string): {
-  digits: string;
-  e164: string;
-  tenDigit: string;
-  twelveDigit: string;
-  variants: string[];
-} {
-  if (!rawPhone) {
-    return { digits: '', e164: '', tenDigit: '', twelveDigit: '', variants: [] };
-  }
-  const digits = rawPhone.replace(/\D/g, '');
-  let tenDigit = digits;
-  if (digits.length === 12 && digits.startsWith('91')) {
-    tenDigit = digits.substring(2);
-  } else if (digits.length === 11 && digits.startsWith('0')) {
-    tenDigit = digits.substring(1);
-  } else if (digits.length > 10) {
-    tenDigit = digits.slice(-10);
-  }
-
-  const twelveDigit = tenDigit.length === 10 ? `91${tenDigit}` : digits;
-  const e164 = `+${twelveDigit}`;
-
-  const variants = Array.from(
-    new Set([
-      rawPhone.trim(),
-      digits,
-      tenDigit,
-      twelveDigit,
-      e164,
-      `+${digits}`,
-      `0${tenDigit}`,
-    ])
-  ).filter((v) => Boolean(v && v.trim().length >= 8));
-
-  return { digits, e164, tenDigit, twelveDigit, variants };
+export function getPhoneVariants(rawPhone: string) {
+  return getUnifiedPhoneVariants(rawPhone);
 }
 
 

@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       : cleanDigits;
 
     // 1. Search customer vehicles by plate_number, make, or model
-    const vehicleFilter = `plate_number.ilike.%${cleanPlate}%,registration_number.ilike.%${cleanPlate}%,make.ilike.%${cleanQuery}%,model.ilike.%${cleanQuery}%`;
+    const vehicleFilter = `plate_number.ilike.%${cleanQuery}%,plate_number.ilike.%${cleanPlate}%,registration_number.ilike.%${cleanQuery}%,registration_number.ilike.%${cleanPlate}%,make.ilike.%${cleanQuery}%,model.ilike.%${cleanQuery}%`;
     const { data: matchedVehicles } = await supabase
       .from('customer_vehicles')
       .select('*')
@@ -115,9 +115,10 @@ export async function GET(request: NextRequest) {
         created_at,
         final_price,
         base_price,
-        customer:customers(id, user_id, phone_number, name),
+        customer:customers(id, user_id, phone_number, name, outstanding_balance),
         vehicle:customer_vehicles(id, make, model, plate_number, vehicle_type),
-        service_package:service_packages(name)
+        service_package:service_packages(name),
+        invoice:invoices(id, amount, payment_method, split_cash, split_online, split_khata, is_paid)
       `)
       .order('created_at', { ascending: false });
 
@@ -166,13 +167,37 @@ export async function GET(request: NextRequest) {
       ? `${vehicle.make || ''} ${vehicle.model || ''} (${vehicle.vehicle_type || 'CAR'})`.trim()
       : 'Standard Vehicle';
     const phone = customer?.phone_number || 'N/A';
+    const outstandingBalance = Number(customer?.outstanding_balance || 0);
 
     let totalLifetimeSpend = 0;
 
     const timeline = rawBookings.map((b) => {
       const pkg = b.service_package;
+      const inv = Array.isArray(b.invoice) ? b.invoice[0] : (b.invoice || null);
       const price = Number(b.final_price || b.base_price || 0);
       totalLifetimeSpend += price;
+
+      const splitCash = Number(inv?.split_cash || 0);
+      const splitOnline = Number(inv?.split_online || 0);
+      const splitKhata = Number(inv?.split_khata || 0);
+      const totalAmount = Number(inv?.amount ?? price);
+
+      const rawMethod = String(inv?.payment_method || '').toUpperCase().trim();
+      let paymentMethod = 'CASH';
+
+      if (splitKhata > 0 && splitCash === 0 && splitOnline === 0) {
+        paymentMethod = 'CREDIT';
+      } else if (splitKhata > 0) {
+        paymentMethod = 'SPLIT';
+      } else if (rawMethod === 'ONLINE' || rawMethod === 'UPI' || (splitOnline > 0 && splitCash === 0)) {
+        paymentMethod = 'UPI';
+      } else if (rawMethod === 'SPLIT' || (splitCash > 0 && splitOnline > 0)) {
+        paymentMethod = 'SPLIT';
+      } else if (rawMethod === 'CARD') {
+        paymentMethod = 'UPI';
+      } else {
+        paymentMethod = 'CASH';
+      }
 
       const dateObj = new Date(b.time_slot || b.created_at);
       const formattedDate = isNaN(dateObj.getTime())
@@ -196,6 +221,12 @@ export async function GET(request: NextRequest) {
         technician_name: 'Spa Technician',
         price: price,
         price_paid: price,
+        payment_method: paymentMethod,
+        split_cash: splitCash,
+        split_online: splitOnline,
+        split_khata: splitKhata,
+        total_amount: totalAmount,
+        customer_outstanding_balance: outstandingBalance,
       };
     });
 
@@ -206,6 +237,7 @@ export async function GET(request: NextRequest) {
       plate: plateNumber,
       customer_name: customerName,
       phone: phone,
+      outstanding_balance: outstandingBalance,
       make_model: makeModel,
       total_visits: totalVisits,
       total_lifetime_spend: Math.round(totalLifetimeSpend * 100) / 100,
@@ -216,10 +248,12 @@ export async function GET(request: NextRequest) {
         model: makeModel,
         owner_name: customerName,
         owner_phone: phone,
+        outstanding_balance: outstandingBalance,
       },
       kpis: {
         total_visits: totalVisits,
         total_lifetime_spend: Math.round(totalLifetimeSpend * 100) / 100,
+        outstanding_balance: outstandingBalance,
       },
     };
 

@@ -28,14 +28,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // 1. Resolve customer record by id or user_id
     const { data: customer } = await supabase
       .from('customers')
-      .select('id, user_id, phone_number, outstanding_balance, credit_limit')
+      .select('id, name, user_id, phone_number, outstanding_balance, credit_limit')
       .or(`id.eq.${cleanId},user_id.eq.${cleanId}`)
       .maybeSingle();
 
     const targetCustomerId = customer ? customer.id : cleanId;
 
-    let customerName = 'Valued Customer';
-    if (customer?.user_id) {
+    let customerName = customer?.name || 'Valued Customer';
+    if ((customerName === 'Valued Customer' || customerName === 'Guest Customer') && customer?.user_id) {
       try {
         const { data: authUser } = await supabase.auth.admin.getUserById(customer.user_id);
         if (authUser?.user?.user_metadata) {
@@ -56,7 +56,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
       .from('khata_ledgers')
       .select(`
         *,
-        booking:bookings(id, status, time_slot, final_price, service_package:service_packages(name))
+        booking:bookings!related_booking_id(
+          id,
+          status,
+          time_slot,
+          final_price,
+          vehicle:customer_vehicles(plate_number, make, model),
+          service_package:service_packages(name)
+        )
       `)
       .eq('customer_id', targetCustomerId)
       .order('created_at', { ascending: false });

@@ -4,7 +4,8 @@
  * Zero-dependency, deterministic math matching backend/bookings/models.py.
  */
 
-import { VehicleType, BookingStatus } from '@/types/database';
+import { VehicleType, BookingStatus } from '../../types/database';
+import { normalizeVehicleType } from '../vehicleCatalog';
 
 /**
  * Standard 2-decimal mathematical rounding matching Python's Decimal('0.01') precision.
@@ -34,19 +35,12 @@ export interface BookingPricingOutput {
 }
 
 /**
- * Replicates Booking.save() pricing and duration derivation logic from Django:
+ * Replicates Booking.save() pricing and duration derivation logic:
  * 
  * 1. end_time = time_slot + timedelta(minutes=duration_minutes)
- * 2. base_price defaults to package.price if not supplied or <= 0.
- * 3. final_price defaults to base_price if not supplied or <= 0.
- * 4. If base_price > 0:
- *      if final_price > base_price -> final_price = base_price
- *      diff = base_price - final_price
- *      discount_amount = max(diff, 0)
- *      discount_percentage = round((discount_amount / base_price) * 100, 2)
- * 5. If base_price <= 0:
- *      discount_amount = 0
- *      discount_percentage = 0
+ * 2. base_price strictly respects vehicle tier packagePrice if supplied, else basePrice.
+ * 3. final_price strictly preserves vehicle tier price, adjusting basePrice if tier > flat base.
+ * 4. Calculates discount amount and percentage when final_price < base_price.
  */
 export function deriveBookingPricing(input: BookingPricingInput): BookingPricingOutput {
   const duration = Math.max(input.durationMinutes ?? 60, 0);
@@ -60,36 +54,31 @@ export function deriveBookingPricing(input: BookingPricingInput): BookingPricing
 
   // Parse numbers safely
   const pkgPrice = input.packagePrice != null ? roundToTwoDecimals(input.packagePrice) : 0;
-  let bPrice = input.basePrice != null && Number(input.basePrice) > 0 
-    ? roundToTwoDecimals(input.basePrice) 
-    : pkgPrice;
+  
+  // Base price is the vehicle's specific tier price (if supplied > 0), else input.basePrice
+  let bPrice = pkgPrice > 0 
+    ? pkgPrice 
+    : (input.basePrice != null && Number(input.basePrice) > 0 ? roundToTwoDecimals(input.basePrice) : 0);
 
-  let fPrice = input.finalPrice != null ? roundToTwoDecimals(input.finalPrice) : 0;
-
-  // If final price is 0 or unassigned, default to base price
-  if (fPrice <= 0 && bPrice > 0) {
-    fPrice = bPrice;
-  }
+  let fPrice = input.finalPrice != null && Number(input.finalPrice) > 0 
+    ? roundToTwoDecimals(input.finalPrice) 
+    : bPrice;
 
   let discountAmount = 0.00;
   let discountPercentage = 0.00;
 
   if (bPrice > 0) {
-    // Final price cannot exceed base price in standard discount model
-    if (fPrice > bPrice) {
-      fPrice = bPrice;
+    if (fPrice < bPrice) {
+      discountAmount = roundToTwoDecimals(bPrice - fPrice);
+      discountPercentage = roundToTwoDecimals((discountAmount / bPrice) * 100.0);
+    } else {
+      // If final price exceeds base price (e.g. higher tier override), adjust basePrice to match
+      bPrice = fPrice;
+      discountAmount = 0.00;
+      discountPercentage = 0.00;
     }
-
-    const diff = bPrice - fPrice;
-    discountAmount = Math.max(diff, 0.00);
-    discountPercentage = roundToTwoDecimals((discountAmount / bPrice) * 100.0);
-    
-    bPrice = roundToTwoDecimals(bPrice);
-    fPrice = roundToTwoDecimals(fPrice);
-    discountAmount = roundToTwoDecimals(discountAmount);
   } else {
-    bPrice = 0.00;
-    fPrice = Math.max(fPrice, 0.00);
+    bPrice = fPrice;
     discountAmount = 0.00;
     discountPercentage = 0.00;
   }
@@ -97,10 +86,10 @@ export function deriveBookingPricing(input: BookingPricingInput): BookingPricing
   return {
     timeSlot: timeSlotIso,
     endTime: endTimeIso,
-    basePrice: bPrice,
-    finalPrice: fPrice,
-    discountAmount,
-    discountPercentage,
+    basePrice: roundToTwoDecimals(bPrice),
+    finalPrice: roundToTwoDecimals(fPrice),
+    discountAmount: roundToTwoDecimals(discountAmount),
+    discountPercentage: roundToTwoDecimals(discountPercentage),
   };
 }
 
@@ -136,52 +125,56 @@ export function applyCouponDiscount(
 
 /**
  * Resolves the tiered price for a vehicle type from service package configuration.
- * Cascades: exact match -> semantic fallbacks (COMPACT_SUV <-> SUV, VAN <-> MUV, CAR -> SEDAN/HATCHBACK) -> base price.
+ * Strictly checks exact canonical match using normalizeVehicleType (AUTO, BIKE, SUV, etc.).
+ * Cascades: exact match -> semantic fallbacks (COMPACT_SUV <-> SUV, VAN <-> MUV) -> base price.
  */
 export function resolvePackagePriceForVehicle(
   defaultPackagePrice: number | string,
   tieredPrices?: Array<{ vehicle_type: string; price: number | string }> | null,
-  vehicleType?: VehicleType | string | null
+  vehicleType?: VehicleType | string | null,
+  strict: boolean = false
 ): number {
   const basePriceNum = Math.max(roundToTwoDecimals(Number(defaultPackagePrice) || 0), 0);
-  if (!vehicleType || !tieredPrices || !Array.isArray(tieredPrices) || tieredPrices.length === 0) {
+  if (!vehicleType) {
     return basePriceNum;
   }
 
-  const normalizedType = String(vehicleType).trim().toUpperCase();
+  const canonicalType = normalizeVehicleType(vehicleType);
 
-  // 1. Exact vehicle type match
+  if (!tieredPrices || !Array.isArray(tieredPrices) || tieredPrices.length === 0) {
+    return strict ? 0 : basePriceNum;
+  }
+
+  // 1. Exact canonical vehicle type match
   const exactMatch = tieredPrices.find(
-    (tp) => tp && tp.vehicle_type && tp.vehicle_type.trim().toUpperCase() === normalizedType
+    (tp) => tp && tp.vehicle_type && normalizeVehicleType(tp.vehicle_type) === canonicalType
   );
-  if (exactMatch && Number(exactMatch.price) > 0) {
+  if (exactMatch && exactMatch.price != null && !isNaN(Number(exactMatch.price)) && Number(exactMatch.price) > 0) {
     return roundToTwoDecimals(Number(exactMatch.price));
   }
 
   // 2. Cascading fallbacks for Indian automotive segments
   const fallbackKeys: string[] = [];
-  if (normalizedType === 'CAR') {
-    fallbackKeys.push('SEDAN', 'HATCHBACK');
-  } else if (normalizedType === 'COMPACT_SUV') {
+  if (canonicalType === 'COMPACT_SUV') {
     fallbackKeys.push('SUV');
-  } else if (normalizedType === 'SUV') {
+  } else if (canonicalType === 'SUV') {
     fallbackKeys.push('COMPACT_SUV');
-  } else if (normalizedType === 'VAN') {
+  } else if (canonicalType === 'VAN') {
     fallbackKeys.push('MUV');
-  } else if (normalizedType === 'MUV') {
+  } else if (canonicalType === 'MUV') {
     fallbackKeys.push('VAN');
   }
 
   for (const fallbackKey of fallbackKeys) {
     const fallbackMatch = tieredPrices.find(
-      (tp) => tp && tp.vehicle_type && tp.vehicle_type.trim().toUpperCase() === fallbackKey
+      (tp) => tp && tp.vehicle_type && normalizeVehicleType(tp.vehicle_type) === fallbackKey
     );
-    if (fallbackMatch && Number(fallbackMatch.price) > 0) {
+    if (fallbackMatch && fallbackMatch.price != null && !isNaN(Number(fallbackMatch.price)) && Number(fallbackMatch.price) > 0) {
       return roundToTwoDecimals(Number(fallbackMatch.price));
     }
   }
 
-  return basePriceNum;
+  return strict ? 0 : basePriceNum;
 }
 
 /**

@@ -34,6 +34,15 @@ export interface StaffMember {
     salary_amount?: number | string;
     base_salary: number | string;
     commission_rate?: number | string;
+    commission_percentage?: number | string;
+    retained_balance?: number | string;
+    wash_revenue_today?: number | string;
+    unsettled_advances?: number | string;
+    advances?: number | string;
+    collected_cash_holding?: number | string;
+    cash_in_hand?: number | string;
+    due_amount?: number | string;
+    pending_balance?: number | string;
     is_active?: boolean;
 }
 
@@ -58,23 +67,44 @@ export interface KhataLedgerEntry {
 }
 
 export interface PayrollWorker {
-    id: number;
+    id: string | number;
     name?: string;
     first_name?: string;
     username?: string;
     role: string;
     jobs_completed?: number;
     tips?: number | string;
+    tips_earned?: number | string;
     commission?: number | string;
+    commission_rate?: number | string;
+    commission_percentage?: number | string;
+    wash_revenue?: number | string;
+    wash_revenue_today?: number | string;
     base_salary?: number | string;
+    base_wage?: number | string;
     commission_earned?: number | string;
+    gross_earnings?: number | string;
+    gross_earned?: number | string;
     advances?: number | string;
+    unsettled_advances?: number | string;
+    retained_balance?: number | string;
+    previous_retained_balance?: number | string;
+    total_payable_due?: number | string;
+    net_payable?: number | string;
     final_payout?: number | string;
+    amount_paid?: number | string;
+    balance_retained?: number | string;
     pending_balance?: number | string;
     due_amount?: number | string;
+    cash_in_hand?: number | string;
+    collected_cash_holding?: number | string;
     amount?: number | string;
     status?: string;
+    is_settled?: boolean;
     user_id?: string | number;
+    profile_id?: string | number;
+    staff_id?: string | number;
+    payroll_id?: string | number | null;
 }
 
 export interface RecentBooking {
@@ -112,11 +142,15 @@ export interface KpiSummary {
     today_revenue?: number;
     pre_booking_revenue?: number;
     today_total_credit?: number;
+    today_credit_asset?: number;
     today_collection_bank?: number;
+    bank_today?: number;
     chemical_cost_today?: number;
     general_expenses_today: number;
+    general_expense_today?: number;
     labor_cost_today: number;
     today_washed_count?: number;
+    washed_today?: number;
 }
 
 export interface ChartDataPoint {
@@ -126,8 +160,9 @@ export interface ChartDataPoint {
 }
 
 export interface ExpenseCategory {
-    id: number;
+    id: number | string;
     name: string;
+    description?: string;
 }
 
 export interface Expense {

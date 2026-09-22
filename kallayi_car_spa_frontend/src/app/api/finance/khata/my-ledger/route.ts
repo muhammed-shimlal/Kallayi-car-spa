@@ -1,11 +1,14 @@
 /**
- * KALLAYI CAR SPA & AUTO CARE - FINANCE KHATA MY-LEDGER ALIAS ROUTE
+ * KALLAYI CAR SPA & AUTO CARE - MY LEDGER ALIAS ROUTE
  * Next.js 16 Route Handler: GET /api/finance/khata/my-ledger
  */
 
 import { NextRequest } from 'next/server';
-import { GET as getCustomerLedger } from '@/app/api/customers/me/ledger/route';
+import { GET as getCustomerKhata } from '@/app/api/customer/khata/route';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
-  return getCustomerLedger(request);
+  return getCustomerKhata(request);
 }

@@ -8,6 +8,7 @@ import { SmartVehicleSelector } from '@/components/ui/smart-vehicle-selector';
 import { VehicleImage } from '@/components/ui/VehicleImage';
 import { VehicleType } from '@/types/database';
 import { resolvePackagePriceForVehicle } from '@/lib/logic/booking';
+import { normalizeVehicleType } from '@/lib/vehicleCatalog';
 
 export interface SlotInfo {
     time: string;
@@ -20,6 +21,8 @@ export interface SlotInfo {
 interface BookingWizardProps {
     setIsBooking: (val: boolean) => void;
     myVehicles: Vehicle[];
+    initialVehicle?: Vehicle | null;
+    initialPackage?: any | null;
 }
 
 // 1-Hour Minimum Interval Operational Slots (09:00 AM - 07:00 PM)
@@ -37,7 +40,7 @@ const DEFAULT_1HOUR_SLOTS = [
     '07:00 PM',
 ];
 
-export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) {
+export function BookingWizard({ setIsBooking, myVehicles, initialVehicle, initialPackage }: BookingWizardProps) {
     const [bookingStep, setBookingStep] = useState(1);
     const [vehiclesList, setVehiclesList] = useState<Vehicle[]>(myVehicles);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,8 +61,8 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
     const [selectedSlot, setSelectedSlot] = useState<string>('');
 
     // Step 1 States
-    const [selectedVehicle, setSelectedVehicle] = useState<any>(null);
-    const [selectedPackage, setSelectedPackage] = useState<any>(null);
+    const [selectedVehicle, setSelectedVehicle] = useState<any>(initialVehicle || null);
+    const [selectedPackage, setSelectedPackage] = useState<any>(initialPackage || null);
     const [servicePackages, setServicePackages] = useState<any[]>([]);
     const [isLoadingPackages, setIsLoadingPackages] = useState(false);
 
@@ -82,12 +85,24 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
         setVehiclesList(myVehicles);
     }, [myVehicles]);
 
+    useEffect(() => {
+        if (initialVehicle) {
+            setSelectedVehicle(initialVehicle);
+        }
+    }, [initialVehicle]);
+
+    useEffect(() => {
+        if (initialPackage) {
+            setSelectedPackage(initialPackage);
+        }
+    }, [initialPackage]);
+
     // Auto-select single vehicle if only one exists in garage
     useEffect(() => {
-        if (vehiclesList.length === 1 && !selectedVehicle) {
+        if (vehiclesList.length === 1 && !selectedVehicle && !initialVehicle) {
             setSelectedVehicle(vehiclesList[0]);
         }
-    }, [vehiclesList, selectedVehicle]);
+    }, [vehiclesList, selectedVehicle, initialVehicle]);
 
     const handleAddVehicleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -168,7 +183,8 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
         const fetchPackages = async () => {
             setIsLoadingPackages(true);
             try {
-                const vType = (selectedVehicle as any)?.vehicle_type || (selectedVehicle as any)?.type || '';
+                const rawVType = (selectedVehicle as any)?.vehicle_type || (selectedVehicle as any)?.type || '';
+                const vType = rawVType ? normalizeVehicleType(rawVType) : '';
                 const endpoint = vType ? `/services?vehicle_type=${encodeURIComponent(vType)}` : '/services';
                 const res = await api.get(endpoint, { 
                     headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
@@ -188,10 +204,14 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                     if (!prevSelected) return null;
                     const matched = pkgs.find((p: any) => p.id === prevSelected.id);
                     if (matched) {
-                        return matched;
+                        return {
+                            ...matched,
+                            price: matched.resolved_price ?? matched.price,
+                            final_price: matched.resolved_price ?? matched.price,
+                        };
                     }
                     const dynamicPrice = resolvePackagePriceForVehicle(
-                        prevSelected.base_price || prevSelected.price,
+                        prevSelected.price || prevSelected.base_price,
                         prevSelected.tiered_prices || prevSelected.service_package_prices,
                         vType
                     );
@@ -357,16 +377,15 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                 const durationMinutes = Math.max(Number(selectedPackage.duration_minutes) || 60, 60);
                 const endTimeDate = new Date(timeSlotDate.getTime() + durationMinutes * 60 * 1000);
 
+                const canonicalVType = normalizeVehicleType(selectedVehicle?.vehicle_type);
                 const finalPrice = selectedPackage
                     ? resolvePackagePriceForVehicle(
                         selectedPackage.price,
                         selectedPackage.tiered_prices || selectedPackage.service_package_prices,
-                        selectedVehicle?.vehicle_type
+                        canonicalVType
                     )
                     : 0;
-                const basePrice = selectedPackage
-                    ? parseFloat(selectedPackage.base_price || selectedPackage.price || finalPrice)
-                    : 0;
+                const basePrice = finalPrice > 0 ? finalPrice : parseFloat(selectedPackage.base_price || selectedPackage.price || 0);
 
                 await api.post('/bookings', {
                     vehicle: parseInt(selectedVehicle.id, 10),
@@ -531,7 +550,7 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                         </div>
                                     ) : (
                                         servicePackages.map(pkg => {
-                                            const effectivePrice = resolvePackagePriceForVehicle(
+                                            const effectivePrice = pkg.resolved_price ?? resolvePackagePriceForVehicle(
                                                 pkg.price,
                                                 pkg.tiered_prices || pkg.service_package_prices,
                                                 selectedVehicle?.vehicle_type
@@ -725,10 +744,14 @@ export function BookingWizard({ setIsBooking, myVehicles }: BookingWizardProps) 
                                     <div className="flex justify-between items-center text-base pt-2">
                                         <span className="font-bold tracking-widest uppercase text-white">Total Due On Site</span>
                                         <span className="font-bold text-xl text-spa-mint">
-                                            ₹{selectedPackage ? resolvePackagePriceForVehicle(
-                                                selectedPackage.price,
-                                                selectedPackage.tiered_prices || selectedPackage.service_package_prices,
-                                                selectedVehicle?.vehicle_type
+                                            ₹{selectedPackage ? (
+                                                selectedPackage.resolved_price ??
+                                                selectedPackage.final_price ??
+                                                resolvePackagePriceForVehicle(
+                                                    selectedPackage.price,
+                                                    selectedPackage.tiered_prices || selectedPackage.service_package_prices,
+                                                    selectedVehicle?.vehicle_type
+                                                )
                                             ).toLocaleString() : 0}
                                         </span>
                                     </div>

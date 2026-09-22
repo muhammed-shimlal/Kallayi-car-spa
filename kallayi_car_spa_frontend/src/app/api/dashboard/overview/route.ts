@@ -13,47 +13,65 @@ export async function GET() {
   try {
     const supabase = getSupabaseAdmin();
 
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const todayStart = `${todayStr}T00:00:00.000Z`;
-    const todayEnd = `${todayStr}T23:59:59.999Z`;
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 1. STRICT INDIAN STANDARD TIME (IST - Asia/Kolkata) TIME BOUNDARIES
+    // ─────────────────────────────────────────────────────────────────────────────
+    const istFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const istDateStr = istFormatter.format(new Date()); // "YYYY-MM-DD" in IST
+    const istStartUtc = new Date(`${istDateStr}T00:00:00+05:30`).toISOString();
+    const istEndUtc = new Date(`${istDateStr}T23:59:59.999+05:30`).toISOString();
 
-    // 1. Calculate 7-Day Revenue Trend
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(now.getDate() - 6);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
-    const sevenDaysAgoStr = sevenDaysAgo.toISOString();
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 2. 7-DAY REVENUE TREND (IST Rolling 7 Days)
+    // ─────────────────────────────────────────────────────────────────────────────
+    const sevenDaysAgo = new Date(`${istDateStr}T00:00:00+05:30`);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    const sevenDaysAgoUtc = sevenDaysAgo.toISOString();
 
     const { data: weekInvoices } = await supabase
       .from('invoices')
-      .select('amount, created_at, is_paid')
-      .eq('is_paid', true)
-      .gte('created_at', sevenDaysAgoStr);
+      .select('*')
+      .gte('created_at', sevenDaysAgoUtc)
+      .lte('created_at', istEndUtc);
 
     const revenueByDayMap = new Map<string, number>();
     const chartData = [];
 
     // Initialize 7 days in order
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      const dayIso = d.toISOString().split('T')[0];
+      const d = new Date(`${istDateStr}T00:00:00+05:30`);
+      d.setDate(d.getDate() - i);
+      const dayIso = istFormatter.format(d);
       revenueByDayMap.set(dayIso, 0);
     }
 
-    for (const inv of weekInvoices || []) {
+    for (const inv of ((weekInvoices || []) as any[])) {
       if (inv.created_at) {
-        const invDay = inv.created_at.split('T')[0];
+        const invDay = istFormatter.format(new Date(inv.created_at));
         if (revenueByDayMap.has(invDay)) {
-          const current = revenueByDayMap.get(invDay) || 0;
-          revenueByDayMap.set(invDay, current + Number(inv.amount || 0));
+          const invTotal = Number(
+            inv.final_price ||
+            inv.total_amount ||
+            (Number(inv.split_cash || 0) + Number(inv.split_online || 0) + Number(inv.split_khata || 0)) ||
+            inv.amount ||
+            0
+          );
+          if (inv.is_paid || invTotal > 0) {
+            const current = revenueByDayMap.get(invDay) || 0;
+            revenueByDayMap.set(invDay, current + invTotal);
+          }
         }
       }
     }
 
     for (const [dayIso, val] of revenueByDayMap.entries()) {
-      const d = new Date(`${dayIso}T00:00:00.000Z`);
-      const dayName = DAY_NAMES[d.getUTCDay()];
+      const d = new Date(`${dayIso}T00:00:00+05:30`);
+      const dayName = DAY_NAMES[d.getDay()];
       const formattedVal = Math.round(val * 100) / 100;
       chartData.push({
         name: dayName,
@@ -66,19 +84,31 @@ export async function GET() {
       });
     }
 
-    // 2. Fetch Today's Completed Washed Vehicles
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 3. FETCH TODAY'S WASHED VEHICLES & QUEUE (IST)
+    // ─────────────────────────────────────────────────────────────────────────────
     const { data: todayBookings } = await supabase
       .from('bookings')
       .select(`
         *,
         customer:customers(*),
         vehicle:customer_vehicles(*),
-        service_package:service_packages(*),
-        technician_profile:staff_profiles!technician_id(*)
+        service_package:service_packages(*)
       `)
-      .gte('time_slot', todayStart)
-      .lte('time_slot', todayEnd)
-      .order('time_slot', { ascending: false });
+      .or(`created_at.gte.${istStartUtc},time_slot.gte.${istStartUtc}`)
+      .lte('created_at', istEndUtc)
+      .order('created_at', { ascending: false });
+
+    // Fetch staff directory in memory to resolve technician names without schema relationship errors
+    const { data: staffList } = await supabase
+      .from('staff_profiles')
+      .select('id, user_id, role');
+
+    const staffMap = new Map();
+    (staffList || []).forEach((s: any) => {
+      staffMap.set(s.id, s);
+      staffMap.set(s.user_id, s);
+    });
 
     const rawTodayBookings = (todayBookings || []) as any[];
 
@@ -87,7 +117,7 @@ export async function GET() {
         const customer = b.customer;
         const vehicle = b.vehicle;
         const pkg = b.service_package;
-        const techProfile = b.technician_profile;
+        const techProfile = b.technician_id ? staffMap.get(b.technician_id) : null;
 
         let customerName = (customer?.name && customer.name !== 'Guest Customer') ? customer.name : '';
         if (!customerName && customer?.user_id) {
@@ -109,25 +139,11 @@ export async function GET() {
           customerName = customer?.name || 'Walk-In Customer';
         }
 
-        let technicianName = 'Unassigned';
-        if (techProfile?.user_id) {
-          try {
-            const { data: techUser } = await supabase.auth.admin.getUserById(techProfile.user_id);
-            if (techUser?.user?.user_metadata) {
-              const meta = techUser.user.user_metadata;
-              const tName =
-                meta.full_name ||
-                meta.name ||
-                `${meta.first_name || ''} ${meta.last_name || ''}`.trim();
-              if (tName) technicianName = tName;
-            }
-          } catch {
-            // Fallback
-          }
-        }
+        let technicianName = techProfile ? `Staff (${techProfile.role})` : 'Unassigned';
 
         const dateObj = new Date(b.time_slot || b.created_at);
         const timeFormatted = dateObj.toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata',
           hour: '2-digit',
           minute: '2-digit',
           hour12: true,
@@ -143,7 +159,7 @@ export async function GET() {
           is_today: true,
           plate_number: vehicle?.plate_number || 'UNKNOWN',
           vehicle_plate: vehicle?.plate_number || 'UNKNOWN',
-          vehicle_model: vehicle ? `${vehicle.make} ${vehicle.model}` : 'Standard Car',
+          vehicle_model: vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Standard Car' : 'Standard Car',
           customer_name: customerName,
           customer_phone: customer?.phone_number || '',
           service_package_name: pkg?.name || 'Car Spa Wash',
@@ -156,7 +172,7 @@ export async function GET() {
       })
     );
 
-    // 3. Fetch Active Queue Bookings (Recent Bookings for Kanban/List)
+    // Active Queue Bookings for Kanban/List
     const { data: queueBookings } = await supabase
       .from('bookings')
       .select(`
@@ -183,58 +199,164 @@ export async function GET() {
       final_price: Number(b.final_price || 0),
     }));
 
-    // 4. Aggregate KPIs
-    // Today's Revenue & Khata credit from invoices
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 4. REAL-TIME FINANCIAL KPI AGGREGATIONS (IST TODAY)
+    // ─────────────────────────────────────────────────────────────────────────────
+    
+    // (A) Washed Today Count
+    const completedWashes = rawTodayBookings.filter((b) =>
+      ['COMPLETED', 'READY_FOR_PICKUP', 'READY', 'IN_PROGRESS', 'WAITING'].includes(b.status)
+    );
+    const washedToday = completedWashes.length > 0 ? completedWashes.length : rawTodayBookings.length;
+
+    // (B) Today's Revenue & Invoiced Khata Credit
     const { data: todayInvoices } = await supabase
       .from('invoices')
       .select('*')
-      .gte('created_at', todayStart)
-      .lte('created_at', todayEnd);
+      .gte('created_at', istStartUtc)
+      .lte('created_at', istEndUtc);
 
     let todayRevenue = 0;
-    let todayCredit = 0;
-    for (const inv of todayInvoices || []) {
-      if (inv.is_paid) {
-        todayRevenue += Number(inv.amount || 0);
+    let todayInvoiceCredit = 0;
+    for (const inv of ((todayInvoices || []) as any[])) {
+      const invTotal = Number(
+        inv.final_price ||
+        inv.total_amount ||
+        (Number(inv.split_cash || 0) + Number(inv.split_online || 0) + Number(inv.split_khata || 0)) ||
+        inv.amount ||
+        0
+      );
+      if (inv.is_paid || invTotal > 0) {
+        todayRevenue += invTotal;
       }
-      todayCredit += Number(inv.split_khata || 0);
+      todayInvoiceCredit += Number(inv.split_khata || 0);
     }
 
-    // Today's General Expenses
-    const { data: todayExpList } = await supabase
-      .from('general_expenses')
+    // (C) Today's Credit as Asset (Max of invoice split_khata and khata_ledgers CHARGE records)
+    const { data: todayKhataCharges } = await supabase
+      .from('khata_ledgers')
       .select('amount')
-      .eq('date', todayStr)
-      .neq('status', 'CANCELLED');
+      .eq('transaction_type', 'CHARGE')
+      .gte('created_at', istStartUtc)
+      .lte('created_at', istEndUtc);
 
-    const todayExpenses = (todayExpList || []).reduce(
-      (sum, e) => sum + Number(e.amount || 0),
+    const ledgerCharges = (todayKhataCharges || []).reduce(
+      (sum: number, k: any) => sum + Number(k.amount || 0),
       0
     );
+    const todayCreditAsset = Math.max(todayInvoiceCredit, ledgerCharges);
 
-    // Today's Collection Bank Deposit
-    const { data: todayBankDepositRecord } = await supabase
-      .from('collection_banks')
-      .select('amount')
-      .eq('date', todayStr)
-      .maybeSingle();
+    // (D) Labor Cost Today
+    const { data: todayPayrollEntries } = await supabase
+      .from('payroll_entries')
+      .select('base_wage, commission_earned, tips_earned, total_earned')
+      .eq('date', istDateStr);
 
-    const todayBankDeposit = Number(todayBankDepositRecord?.amount || 0);
+    let laborCostToday = 0;
+    if (todayPayrollEntries && todayPayrollEntries.length > 0) {
+      laborCostToday = todayPayrollEntries.reduce(
+        (sum: number, p: any) => sum + Number(p.total_earned || (Number(p.base_wage || 0) + Number(p.commission_earned || 0) + Number(p.tips_earned || 0))),
+        0
+      );
+    } else {
+      // Fallback: Active staff daily base salaries + commission rules from today's completed jobs
+      const { data: activeStaff } = await supabase
+        .from('staff_profiles')
+        .select('base_salary, salary_amount, salary_type, commission_rate, id, user_id')
+        .eq('is_active', true);
 
-    const completedTodayCount = todayWashedVehicles.filter((v) => v.status === 'COMPLETED').length;
-    const todayWashedCount = completedTodayCount > 0 ? completedTodayCount : todayWashedVehicles.length;
+      const baseSalaries = (activeStaff || []).reduce((sum: number, s: any) => {
+        if (s.salary_type === 'DAILY' || s.salary_type === 'SALARY') {
+          return sum + Number(s.salary_amount ?? s.base_salary ?? 0);
+        }
+        return sum;
+      }, 0);
 
-    const netProfitToday = Math.max(0, todayRevenue - todayExpenses);
+      let estimatedCommissions = 0;
+      for (const b of rawTodayBookings) {
+        if (b.status === 'COMPLETED' || b.status === 'READY') {
+          const techId = b.technician_id;
+          const staff = (activeStaff || []).find((s: any) => s.id === techId || s.user_id === techId);
+          if (staff && Number(staff.commission_rate || 0) > 0) {
+            const price = Number(b.final_price || b.base_price || 0);
+            estimatedCommissions += (price * Number(staff.commission_rate)) / 100;
+          }
+        }
+      }
+      laborCostToday = Math.round((baseSalaries + estimatedCommissions) * 100) / 100;
+    }
+
+    // (E) General Expenses Today
+    const { data: todayExpList } = await supabase
+      .from('general_expenses')
+      .select('amount, status, description')
+      .eq('date', istDateStr)
+      .neq('status', 'CANCELLED');
+
+    const generalExpensesToday = (todayExpList || [])
+      .filter((e: any) => !e.description?.includes('[STAFF_CASH_HANDOVER') && !e.description?.includes('[STAFF_ADVANCE:UNSETTLED'))
+      .reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0);
+
+    // (F) Bank Deposits Today
+    let bankToday = 0;
+    try {
+      const { data: bankTxList, error: bErr } = await supabase
+        .from('bank_transactions')
+        .select('amount, transaction_type, transaction_date')
+        .eq('transaction_type', 'DEPOSIT')
+        .or(`transaction_date.eq.${istDateStr},transaction_date.gte.${istDateStr}T00:00:00`);
+
+      if (!bErr && bankTxList && bankTxList.length > 0) {
+        bankToday = bankTxList.reduce((sum: number, tx: any) => sum + Number(tx.amount || 0), 0);
+      }
+    } catch {
+      // ignore
+    }
+
+    if (bankToday === 0) {
+      const { data: todayBankDepositRecord } = await supabase
+        .from('collection_banks')
+        .select('amount')
+        .eq('date', istDateStr)
+        .maybeSingle();
+
+      if (todayBankDepositRecord) {
+        bankToday = Number(todayBankDepositRecord.amount || 0);
+      }
+    }
+
+    // (G) Net Operating Profit Today
+    // Net Profit = Today Revenue - (Labor Cost Today + General Expense Today)
+    const netProfitToday = Math.round((todayRevenue - (laborCostToday + generalExpensesToday)) * 100) / 100;
 
     const kpiSummary = {
-      revenue_today: Math.round(todayRevenue * 100) / 100,
+      // 1. Net Operating Profit Today
+      net_profit_today: netProfitToday,
+
+      // 2. Washed Today Count
+      washed_today: washedToday,
+      today_washed_count: washedToday,
+
+      // 3. Today Revenue
       today_revenue: Math.round(todayRevenue * 100) / 100,
-      net_profit_today: Math.round(netProfitToday * 100) / 100,
-      today_washed_count: todayWashedCount,
-      general_expenses_today: Math.round(todayExpenses * 100) / 100,
-      today_collection_bank: Math.round(todayBankDeposit * 100) / 100,
-      today_total_credit: Math.round(todayCredit * 100) / 100,
-      labor_cost_today: 0,
+      revenue_today: Math.round(todayRevenue * 100) / 100,
+
+      // 4. Today Credit as Asset
+      today_credit_asset: Math.round(todayCreditAsset * 100) / 100,
+      today_total_credit: Math.round(todayCreditAsset * 100) / 100,
+
+      // 5. Labor Cost Today
+      labor_cost_today: Math.round(laborCostToday * 100) / 100,
+
+      // 6. General Expense Today
+      general_expense_today: Math.round(generalExpensesToday * 100) / 100,
+      general_expenses_today: Math.round(generalExpensesToday * 100) / 100,
+
+      // 7. Bank Deposits Today
+      bank_today: Math.round(bankToday * 100) / 100,
+      today_collection_bank: Math.round(bankToday * 100) / 100,
+
+      // Pre-booking Cash
       pre_booking_revenue: 0,
     };
 
@@ -242,7 +364,8 @@ export async function GET() {
       success: true,
       chartData,
       todayWashedVehicles,
-      todayWashedCount,
+      todayWashedCount: washedToday,
+      washed_today: washedToday,
       recentBookings,
       kpiData: kpiSummary,
       results: todayWashedVehicles,
@@ -250,6 +373,7 @@ export async function GET() {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal Server Error';
+    console.error('[Dashboard Overview Error]:', err);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

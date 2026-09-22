@@ -19,19 +19,19 @@ import {
   deleteCategory,
 } from '@/lib/api';
 import api from '@/lib/api';
-import { BODY_TYPE_OPTIONS } from '@/lib/vehicleCatalog';
+import { BODY_TYPE_OPTIONS, normalizeVehicleType } from '@/lib/vehicleCatalog';
 
 const ALL_BODY_TYPES = [
-  { key: 'HATCHBACK', label: 'Hatchback', icon: '🚗' },
-  { key: 'SEDAN', label: 'Sedan', icon: '🚘' },
-  { key: 'COMPACT_SUV', label: 'Compact SUV', icon: '🚙' },
-  { key: 'SUV', label: 'Full SUV', icon: '🏔️' },
-  { key: 'MUV', label: 'MUV', icon: '🚐' },
-  { key: 'VAN', label: 'Van', icon: '🚐' },
-  { key: 'LUXURY', label: 'Luxury', icon: '✨' },
-  { key: 'BIKE', label: 'Bike / Scooter', icon: '🏍️' },
-  { key: 'AUTO', label: 'Auto Rickshaw', icon: '🛺' },
-  { key: 'TRUCK', label: 'Truck / Commercial', icon: '🚚' },
+  { key: 'HATCHBACK', label: 'Hatchback', icon: '🚗', example: 'Alto, Swift, i10' },
+  { key: 'SEDAN', label: 'Sedan', icon: '🚘', example: 'Dzire, City, Verna' },
+  { key: 'COMPACT_SUV', label: 'Compact SUV', icon: '🚙', example: 'Brezza, Venue, Nexon' },
+  { key: 'SUV', label: 'SUV / Full SUV', icon: '🏔️', example: 'Scorpio, Fortuner, XUV700' },
+  { key: 'MUV', label: 'MUV', icon: '🚐', example: 'Innova, Ertiga, Carens' },
+  { key: 'LUXURY', label: 'Luxury', icon: '✨', example: 'BMW, Mercedes, Audi' },
+  { key: 'BIKE', label: 'Two-Wheeler / Bike', icon: '🏍️', example: 'Activa, Splendor, Pulsar' },
+  { key: 'AUTO', label: 'Auto-rickshaw (AUTO)', icon: '🛺', example: 'Bajaj RE, Ape, Alfa' },
+  { key: 'VAN', label: 'Van / Commercial', icon: '🚐', example: 'Omni, Eeco, Traveler' },
+  { key: 'TRUCK', label: 'Commercial Truck', icon: '🚚', example: 'Pickup, Dost, Super Carry' },
 ];
 
 export default function ServicesTab() {
@@ -45,12 +45,15 @@ export default function ServicesTab() {
   const [isPkgModalOpen, setIsPkgModalOpen] = useState(false);
   const [editingPkg, setEditingPkg] = useState<any | null>(null);
   const [isSavingPkg, setIsSavingPkg] = useState(false);
+  const [expandedPkgTiers, setExpandedPkgTiers] = useState<number | null>(null);
 
   const [pkgForm, setPkgForm] = useState({
     name: '',
     price: '',
     duration_minutes: '45',
     description: '',
+    is_active: true,
+    icon_url: '',
     tiered_prices: {
       HATCHBACK: '',
       SEDAN: '',
@@ -63,12 +66,29 @@ export default function ServicesTab() {
       AUTO: '',
       TRUCK: '',
     } as Record<string, string>,
+    duration_map: {
+      HATCHBACK: '45',
+      SEDAN: '45',
+      COMPACT_SUV: '50',
+      SUV: '60',
+      MUV: '60',
+      VAN: '60',
+      LUXURY: '60',
+      BIKE: '30',
+      AUTO: '35',
+      TRUCK: '75',
+    } as Record<string, string>,
   });
 
   const loadPackages = useCallback(async () => {
     setIsLoadingPackages(true);
     try {
-      const res = await api.get('/services');
+      let res;
+      try {
+        res = await api.get('/admin/services');
+      } catch {
+        res = await api.get('/services?all=true');
+      }
       const data = res.data;
       const list = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
       setPackages(list);
@@ -84,9 +104,28 @@ export default function ServicesTab() {
     loadPackages();
   }, [loadPackages]);
 
+  const handleToggleActive = async (pkgId: number, currentActive: boolean) => {
+    const newStatus = !currentActive;
+    // Optimistic update
+    setPackages((prev) =>
+      prev.map((p) => (p.id === pkgId ? { ...p, is_active: newStatus } : p))
+    );
+    try {
+      await api.patch('/admin/services', { id: pkgId, is_active: newStatus });
+      toast.success(`Service is now ${newStatus ? 'ACTIVE' : 'INACTIVE'}`);
+    } catch (err: any) {
+      console.error('Toggle active error:', err);
+      toast.error('Failed to toggle status.');
+      loadPackages();
+    }
+  };
+
   const openPkgModal = (pkg: any | null = null) => {
     if (pkg) {
       setEditingPkg(pkg);
+      const basePriceStr = String(pkg.price || pkg.base_price || '');
+      const baseDurationStr = String(pkg.duration_minutes || '45');
+
       const tierMap: Record<string, string> = {
         HATCHBACK: '',
         SEDAN: '',
@@ -100,35 +139,67 @@ export default function ServicesTab() {
         TRUCK: '',
       };
 
+      const durationMap: Record<string, string> = {
+        HATCHBACK: baseDurationStr,
+        SEDAN: baseDurationStr,
+        COMPACT_SUV: '50',
+        SUV: '60',
+        MUV: '60',
+        VAN: '60',
+        LUXURY: '60',
+        BIKE: '30',
+        AUTO: '35',
+        TRUCK: '75',
+      };
+
       if (pkg.tier_prices && typeof pkg.tier_prices === 'object') {
         Object.entries(pkg.tier_prices).forEach(([k, v]) => {
-          tierMap[k.toUpperCase()] = String(v || '');
-        });
-      } else if (Array.isArray(pkg.tiered_prices)) {
-        pkg.tiered_prices.forEach((tp: any) => {
-          if (tp.vehicle_type) {
-            tierMap[tp.vehicle_type.toUpperCase()] = String(tp.price);
-          }
-        });
-      } else if (Array.isArray(pkg.service_package_prices)) {
-        pkg.service_package_prices.forEach((tp: any) => {
-          if (tp.vehicle_type) {
-            tierMap[tp.vehicle_type.toUpperCase()] = String(tp.price);
+          const canonicalKey = normalizeVehicleType(k);
+          if (v !== undefined && v !== null && String(v).trim() !== '') {
+            tierMap[canonicalKey] = String(v);
           }
         });
       }
 
-      // Default empty to base price
+      if (pkg.duration_map && typeof pkg.duration_map === 'object') {
+        Object.entries(pkg.duration_map).forEach(([k, v]) => {
+          const canonicalKey = normalizeVehicleType(k);
+          if (v !== undefined && v !== null && String(v).trim() !== '') {
+            durationMap[canonicalKey] = String(v);
+          }
+        });
+      }
+
+      if (Array.isArray(pkg.tiered_prices)) {
+        pkg.tiered_prices.forEach((tp: any) => {
+          if (tp.vehicle_type) {
+            const key = normalizeVehicleType(tp.vehicle_type);
+            if (tp.price != null && !isNaN(Number(tp.price))) {
+              tierMap[key] = String(tp.price);
+            }
+            if (tp.estimated_time_minutes) {
+              durationMap[key] = String(tp.estimated_time_minutes);
+            }
+          }
+        });
+      }
+
+      // If creating a brand new service or if tier was completely empty, populate basePriceStr
       Object.keys(tierMap).forEach((k) => {
-        if (!tierMap[k]) tierMap[k] = String(pkg.price || pkg.base_price || '');
+        if (!tierMap[k] && basePriceStr) {
+          tierMap[k] = basePriceStr;
+        }
       });
 
       setPkgForm({
         name: pkg.name,
-        price: String(pkg.price || pkg.base_price || ''),
-        duration_minutes: String(pkg.duration_minutes || '45'),
+        price: basePriceStr,
+        duration_minutes: baseDurationStr,
         description: pkg.description || '',
+        is_active: pkg.is_active !== undefined ? Boolean(pkg.is_active) : true,
+        icon_url: pkg.icon_url || '',
         tiered_prices: tierMap,
+        duration_map: durationMap,
       });
     } else {
       setEditingPkg(null);
@@ -137,6 +208,8 @@ export default function ServicesTab() {
         price: '',
         duration_minutes: '45',
         description: '',
+        is_active: true,
+        icon_url: '',
         tiered_prices: {
           HATCHBACK: '',
           SEDAN: '',
@@ -149,6 +222,18 @@ export default function ServicesTab() {
           AUTO: '',
           TRUCK: '',
         },
+        duration_map: {
+          HATCHBACK: '45',
+          SEDAN: '45',
+          COMPACT_SUV: '50',
+          SUV: '60',
+          MUV: '60',
+          VAN: '60',
+          LUXURY: '60',
+          BIKE: '30',
+          AUTO: '35',
+          TRUCK: '75',
+        },
       });
     }
     setIsPkgModalOpen(true);
@@ -160,12 +245,14 @@ export default function ServicesTab() {
       toast.error('Please enter a Base Catalog Price first.');
       return;
     }
-    const updated: Record<string, string> = {};
+    const updatedP: Record<string, string> = {};
+    const updatedD: Record<string, string> = {};
     ALL_BODY_TYPES.forEach((t) => {
-      updated[t.key] = val;
+      updatedP[t.key] = val;
+      updatedD[t.key] = pkgForm.duration_minutes || '45';
     });
-    setPkgForm((prev) => ({ ...prev, tiered_prices: updated }));
-    toast.success('Applied base price to all 10 vehicle body tiers!');
+    setPkgForm((prev) => ({ ...prev, tiered_prices: updatedP, duration_map: updatedD }));
+    toast.success('Applied base price & duration to all vehicle body tiers!');
   };
 
   const handleSavePackage = async (e: React.FormEvent) => {
@@ -184,25 +271,31 @@ export default function ServicesTab() {
     const tieredArray = ALL_BODY_TYPES.map((bt) => ({
       vehicle_type: bt.key,
       price: parseFloat(pkgForm.tiered_prices[bt.key]) || basePriceNum,
+      estimated_time_minutes: parseInt(pkgForm.duration_map[bt.key], 10) || parseInt(pkgForm.duration_minutes, 10) || 45,
     }));
 
     const payload = {
+      id: editingPkg?.id,
       name: pkgForm.name.trim(),
       price: basePriceNum,
+      base_price: basePriceNum,
       duration_minutes: parseInt(pkgForm.duration_minutes, 10) || 45,
       description: pkgForm.description.trim(),
+      is_active: pkgForm.is_active,
+      icon_url: pkgForm.icon_url.trim(),
       vehicle_type: 'ALL',
       tiered_prices: tieredArray,
       tier_prices: pkgForm.tiered_prices,
+      duration_map: pkgForm.duration_map,
     };
 
     try {
       if (editingPkg) {
-        await api.patch(`/services/${editingPkg.id}`, payload);
-        toast.success(`Service package "${pkgForm.name}" updated successfully!`);
+        await api.put('/admin/services', payload);
+        toast.success(`Service "${pkgForm.name}" updated successfully!`);
       } else {
-        await api.post('/services', payload);
-        toast.success(`Service package "${pkgForm.name}" created successfully!`);
+        await api.post('/admin/services', payload);
+        toast.success(`Service "${pkgForm.name}" created successfully!`);
       }
       setIsPkgModalOpen(false);
       loadPackages();
@@ -218,7 +311,7 @@ export default function ServicesTab() {
   const handleDeletePackage = async (id: number, name: string) => {
     if (!window.confirm(`Are you sure you want to permanently delete "${name}"?`)) return;
     try {
-      await api.delete(`/services/${id}`);
+      await api.delete(`/admin/services?id=${id}`);
       toast.success(`Package "${name}" deleted.`);
       setPackages((prev) => prev.filter((p) => p.id !== id));
     } catch (err: any) {
@@ -499,22 +592,51 @@ export default function ServicesTab() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {packages.map((pkg) => {
-                const tierCount = Array.isArray(pkg.tiered_prices) ? pkg.tiered_prices.length : (pkg.tier_prices ? Object.keys(pkg.tier_prices).length : 0);
+                const tierPricesObj = pkg.tier_prices || {};
+                const validPrices = Object.values(tierPricesObj)
+                  .map(Number)
+                  .filter((p) => !isNaN(p) && p > 0);
+                const minPrice = validPrices.length > 0 ? Math.min(...validPrices) : Number(pkg.price || pkg.base_price || 0);
+                const maxPrice = validPrices.length > 0 ? Math.max(...validPrices) : Number(pkg.price || pkg.base_price || 0);
+                const isExpanded = expandedPkgTiers === pkg.id;
+
                 return (
                   <div
                     key={pkg.id}
-                    className="bg-[#141518]/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 flex flex-col justify-between hover:border-[#01FFFF]/40 transition-all shadow-xl group"
+                    className="bg-[#141518]/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 flex flex-col justify-between hover:border-[#01FFFF]/40 transition-all shadow-xl group relative overflow-hidden"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-2 mb-3">
-                        <h3 className="font-syncopate font-bold text-base text-white group-hover:text-[#01FFFF] transition">
-                          {pkg.name}
-                        </h3>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(pkg.id, pkg.is_active !== false)}
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer ${
+                                pkg.is_active !== false
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
+                                  : 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
+                              }`}
+                              title="Click to toggle status"
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  pkg.is_active !== false ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+                                }`}
+                              />
+                              {pkg.is_active !== false ? 'Active' : 'Inactive'}
+                            </button>
+                          </div>
+                          <h3 className="font-syncopate font-bold text-base text-white group-hover:text-[#01FFFF] transition">
+                            {pkg.name}
+                          </h3>
+                        </div>
+
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={() => openPkgModal(pkg)}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-[#01FFFF]/20 text-zinc-400 hover:text-[#01FFFF] transition"
+                            className="p-2 rounded-lg bg-white/5 hover:bg-[#01FFFF]/20 text-zinc-400 hover:text-[#01FFFF] transition cursor-pointer"
                             title="Edit Package"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
@@ -522,7 +644,7 @@ export default function ServicesTab() {
                           <button
                             type="button"
                             onClick={() => handleDeletePackage(pkg.id, pkg.name)}
-                            className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition"
+                            className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition cursor-pointer"
                             title="Delete Package"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -534,27 +656,44 @@ export default function ServicesTab() {
                         {pkg.description || 'Standard high quality car wash & care.'}
                       </p>
 
+                      {/* Pricing Range Metric Card */}
                       <div className="grid grid-cols-2 gap-2 bg-black/40 p-3 rounded-2xl border border-white/5 mb-4 text-xs font-mono">
                         <div>
-                          <span className="text-zinc-500 block text-[10px] uppercase">Base Price</span>
-                          <span className="text-white font-bold text-sm">₹{Number(pkg.price || pkg.base_price || 0).toLocaleString()}</span>
+                          <span className="text-zinc-500 block text-[10px] uppercase">Dynamic Tier Range</span>
+                          <span className="text-[#01FFFF] font-bold text-sm">
+                            ₹{minPrice.toLocaleString()} – ₹{maxPrice.toLocaleString()}
+                          </span>
                         </div>
                         <div>
-                          <span className="text-zinc-500 block text-[10px] uppercase">Est. Duration</span>
+                          <span className="text-zinc-500 block text-[10px] uppercase">Base Duration</span>
                           <span className="text-zinc-300 font-bold flex items-center gap-1">
                             <Clock className="w-3 h-3 text-[#01FFFF]" /> {pkg.duration_minutes || 45}m
                           </span>
                         </div>
                       </div>
 
-                      {/* Tiered Price Summary Pills */}
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
-                          Tier Pricing Matrix ({tierCount} Tiers):
-                        </span>
+                      {/* Tier Matrix Trigger Button */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                            Vehicle Tier Prices:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedPkgTiers(isExpanded ? null : pkg.id)}
+                            className="text-[10px] text-[#01FFFF] hover:underline font-mono cursor-pointer"
+                          >
+                            {isExpanded ? 'Hide Matrix' : 'View All Tiers'}
+                          </button>
+                        </div>
+
+                        {/* Top 4 Pills */}
                         <div className="flex flex-wrap gap-1.5">
-                          {ALL_BODY_TYPES.slice(0, 5).map((t) => {
-                            const pVal = pkg.tier_prices?.[t.key] || (pkg.tiered_prices?.find((p: any) => p.vehicle_type === t.key)?.price) || pkg.price;
+                          {ALL_BODY_TYPES.slice(0, 4).map((t) => {
+                            const pVal =
+                              pkg.tier_prices?.[t.key] ||
+                              pkg.tiered_prices?.find((p: any) => p.vehicle_type === t.key)?.price ||
+                              pkg.price;
                             return (
                               <span
                                 key={t.key}
@@ -564,19 +703,54 @@ export default function ServicesTab() {
                               </span>
                             );
                           })}
-                          {ALL_BODY_TYPES.length > 5 && (
-                            <span className="text-[10px] font-mono bg-white/5 px-2 py-0.5 rounded border border-white/10 text-zinc-400">
-                              +{ALL_BODY_TYPES.length - 5} more
-                            </span>
-                          )}
                         </div>
+
+                        {/* Expandable Full Matrix Drawer */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="mt-3 overflow-hidden bg-black/60 rounded-2xl border border-white/10 p-3"
+                            >
+                              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                                {ALL_BODY_TYPES.map((t) => {
+                                  const pVal =
+                                    pkg.tier_prices?.[t.key] ||
+                                    pkg.tiered_prices?.find((p: any) => p.vehicle_type === t.key)?.price ||
+                                    pkg.price;
+                                  const dVal =
+                                    pkg.duration_map?.[t.key] ||
+                                    pkg.tiered_prices?.find((p: any) => p.vehicle_type === t.key)?.estimated_time_minutes ||
+                                    pkg.duration_minutes ||
+                                    45;
+                                  return (
+                                    <div
+                                      key={t.key}
+                                      className="flex items-center justify-between p-1.5 rounded bg-white/5 border border-white/5"
+                                    >
+                                      <span className="text-zinc-400 text-[10px] flex items-center gap-1 truncate">
+                                        <span>{t.icon}</span> {t.label.split('/')[0].trim()}
+                                      </span>
+                                      <div className="text-right">
+                                        <span className="text-[#01FFFF] font-bold block text-[11px]">₹{pVal}</span>
+                                        <span className="text-zinc-500 text-[9px] block">{dVal}m</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     </div>
 
                     <div className="pt-4 border-t border-white/5 mt-4 flex items-center justify-between text-xs text-zinc-500">
                       <span>ID #{pkg.id}</span>
-                      <span className="text-emerald-400 flex items-center gap-1 font-semibold">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Active in POS & Wizard
+                      <span className="text-zinc-400 text-[10px] font-mono">
+                        {pkg.is_active !== false ? 'Visible in Customer Catalog' : 'Hidden from Catalog'}
                       </span>
                     </div>
                   </div>
@@ -794,6 +968,25 @@ export default function ServicesTab() {
 
               <form onSubmit={handleSavePackage} className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2 flex items-center justify-between bg-black/40 p-3 rounded-2xl border border-white/5">
+                    <div>
+                      <span className="text-xs font-bold text-white block">Service Visibility Status</span>
+                      <span className="text-[10px] text-zinc-400 block">Active services appear in customer catalog & booking wizard.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPkgForm({ ...pkgForm, is_active: !pkgForm.is_active })}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        pkgForm.is_active
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                          : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${pkgForm.is_active ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      {pkgForm.is_active ? 'ACTIVE' : 'INACTIVE'}
+                    </button>
+                  </div>
+
                   <div className="sm:col-span-2">
                     <label className="text-[11px] font-bold text-zinc-400 uppercase block mb-1.5">Package Name</label>
                     <input
@@ -807,7 +1000,7 @@ export default function ServicesTab() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase block mb-1.5">Base Catalog Price (₹)</label>
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase block mb-1.5">Base Catalog Fallback Price (₹)</label>
                     <input
                       type="number"
                       required
@@ -821,7 +1014,7 @@ export default function ServicesTab() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-bold text-zinc-400 uppercase block mb-1.5">Duration (Minutes)</label>
+                    <label className="text-[11px] font-bold text-zinc-400 uppercase block mb-1.5">Base Duration (Minutes)</label>
                     <input
                       type="number"
                       required
@@ -851,9 +1044,9 @@ export default function ServicesTab() {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <h4 className="text-xs font-bold uppercase tracking-wider text-[#01FFFF]">
-                        Vehicle Body-Type Tiered Prices (₹)
+                        Vehicle Body-Type Tiered Pricing Matrix
                       </h4>
-                      <p className="text-[10px] text-zinc-400">Custom prices charged per vehicle class at checkout.</p>
+                      <p className="text-[10px] text-zinc-400">Specify exact price (₹) and estimated duration (mins) for each vehicle segment.</p>
                     </div>
                     <button
                       type="button"
@@ -864,28 +1057,56 @@ export default function ServicesTab() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                     {ALL_BODY_TYPES.map((bt) => (
-                      <div key={bt.key} className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-400 uppercase flex items-center gap-1">
-                          <span>{bt.icon}</span> {bt.label}
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder={pkgForm.price || '0'}
-                          value={pkgForm.tiered_prices[bt.key] || ''}
-                          onChange={(e) =>
-                            setPkgForm({
-                              ...pkgForm,
-                              tiered_prices: {
-                                ...pkgForm.tiered_prices,
-                                [bt.key]: e.target.value,
-                              },
-                            })
-                          }
-                          className="w-full bg-black/60 border border-white/10 focus:border-[#01FFFF] rounded-lg px-2.5 py-2 text-xs font-mono text-white outline-none"
-                        />
+                      <div key={bt.key} className="p-3 bg-black/60 rounded-xl border border-white/5 space-y-2">
+                        <div className="border-b border-white/5 pb-1.5">
+                          <div className="flex items-center gap-1.5 text-zinc-200 font-bold text-[11px]">
+                            <span>{bt.icon}</span>
+                            <span className="truncate">{bt.label}</span>
+                          </div>
+                          {bt.example && (
+                            <span className="text-[9px] text-zinc-500 block truncate mt-0.5">{bt.example}</span>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-[9px] uppercase tracking-wider text-zinc-500 block">Price (₹)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder={pkgForm.price || '0'}
+                            value={pkgForm.tiered_prices[bt.key] || ''}
+                            onChange={(e) =>
+                              setPkgForm({
+                                ...pkgForm,
+                                tiered_prices: {
+                                  ...pkgForm.tiered_prices,
+                                  [bt.key]: e.target.value,
+                                },
+                              })
+                            }
+                            className="w-full bg-black/80 border border-white/10 focus:border-[#01FFFF] rounded-lg px-2 py-1.5 text-xs font-mono text-[#01FFFF] outline-none font-bold"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] uppercase tracking-wider text-zinc-500 block">Time (mins)</label>
+                          <input
+                            type="number"
+                            step="5"
+                            placeholder={pkgForm.duration_minutes || '45'}
+                            value={pkgForm.duration_map?.[bt.key] || ''}
+                            onChange={(e) =>
+                              setPkgForm({
+                                ...pkgForm,
+                                duration_map: {
+                                  ...pkgForm.duration_map,
+                                  [bt.key]: e.target.value,
+                                },
+                              })
+                            }
+                            className="w-full bg-black/80 border border-white/10 focus:border-[#01FFFF] rounded-lg px-2 py-1.5 text-xs font-mono text-zinc-300 outline-none"
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>

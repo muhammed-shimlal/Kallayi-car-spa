@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import { VehicleType, CustomerVehicleRow } from '@/types/database';
+import { normalizeVehicleType } from '@/lib/vehicleCatalog';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -102,7 +103,7 @@ export async function PATCH(
       }
     }
     if (vehicle_type !== undefined) {
-      updates.vehicle_type = String(vehicle_type).trim().toUpperCase() as VehicleType;
+      updates.vehicle_type = normalizeVehicleType(vehicle_type);
     }
     if (color !== undefined) updates.color = String(color).trim();
     if (year !== undefined) updates.year = year ? Number(year) : null;

@@ -102,6 +102,30 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     const fetchHeaders = { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' };
 
+    // Real-time synchronization across Live Queue, POS, and Khata tabs
+    useEffect(() => {
+        const handleSync = () => {
+            queryClient.invalidateQueries({ queryKey: ['khataCustomers'] });
+            queryClient.invalidateQueries({ queryKey: ['khataRecentLedgers'] });
+            queryClient.invalidateQueries({ queryKey: ['customerCredits'] });
+            queryClient.invalidateQueries({ queryKey: ['kpiData'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+            queryClient.invalidateQueries({ queryKey: ['recentBookings'] });
+            queryClient.invalidateQueries({ queryKey: ['todayWashedVehicles'] });
+            queryClient.invalidateQueries({ queryKey: ['bankTransactions'] });
+        };
+        window.addEventListener('booking:completed', handleSync);
+        window.addEventListener('queue:updated', handleSync);
+        window.addEventListener('khata:updated', handleSync);
+        window.addEventListener('bank:updated', handleSync);
+        return () => {
+            window.removeEventListener('booking:completed', handleSync);
+            window.removeEventListener('queue:updated', handleSync);
+            window.removeEventListener('khata:updated', handleSync);
+            window.removeEventListener('bank:updated', handleSync);
+        };
+    }, [queryClient]);
+
     // --- React Query Fetchers ---
     const userQuery = useQuery({
         queryKey: ['userMe'],
@@ -126,16 +150,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     });
 
     const kpiQuery = useQuery<KpiSummary>({
-        queryKey: ['kpiData', overviewQuery.data],
+        queryKey: ['kpiData'],
         queryFn: async () => {
-            if (overviewQuery.data?.kpiData) {
-                return overviewQuery.data.kpiData;
-            }
             const res = await fetch(`${API_BASE}/dashboard/overview`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed to fetch KPI');
             const data = await res.json();
             return data.kpiData;
         },
+        refetchInterval: 10000,
         enabled: true
     });
 
@@ -200,14 +222,28 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         enabled: true
     });
 
+    const DEFAULT_EXPENSE_CATEGORIES_FALLBACK: ExpenseCategory[] = [
+        { id: 1, name: '🧴 Wash Chemicals', description: 'Shampoo, Foam, Wax, Polish, Degreaser, Tire Shine' },
+        { id: 2, name: '👥 Salaries & Commission', description: 'Staff Wages, Daily Helper, Staff Advance' },
+        { id: 3, name: '⚡ Electricity & Water', description: 'Electricity Bill, Water Tankers, KSEB' },
+        { id: 4, name: '🏢 Rent & Maintenance', description: 'Shop Rent, Lease, Property Upkeep' },
+        { id: 5, name: '🔧 Machinery & Tools', description: 'Pressure Washer Parts, Vacuum Repairs, Compressor Oil, Pipe/Nozzle replacement' },
+        { id: 6, name: '🧽 Consumables', description: 'Microfiber Cloths, Brushes, Gloves, Spray Bottles' },
+        { id: 7, name: '☕ Tea & Refreshments', description: 'Staff Tea/Snacks, Customer Refreshments' },
+        { id: 8, name: '📢 Marketing & Promo', description: 'Board, Banners, Social Media Ads' },
+        { id: 9, name: '➕ Other', description: 'Manual custom category' },
+    ];
+
     const expenseCategoriesQuery = useQuery<ExpenseCategory[]>({
         queryKey: ['expenseCategories'],
         queryFn: async () => {
             const res = await fetch(`${API_BASE}/finance/expense-categories`, { headers: fetchHeaders });
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
-            return Array.isArray(data) ? data : (data.data || []);
+            const list = Array.isArray(data) ? data : (data.data || []);
+            return list.length > 0 ? list : DEFAULT_EXPENSE_CATEGORIES_FALLBACK;
         },
+        placeholderData: DEFAULT_EXPENSE_CATEGORIES_FALLBACK,
         enabled: true
     });
 
@@ -230,6 +266,17 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             return Array.isArray(data) ? data : (data.customers || data.results || []);
+        },
+        enabled: true
+    });
+
+    const khataRecentLedgersQuery = useQuery<any[]>({
+        queryKey: ['khataRecentLedgers'],
+        queryFn: async () => {
+            const res = await fetch(`${API_BASE}/finance/khata/ledgers`, { headers: fetchHeaders });
+            if (!res.ok) return [];
+            const data = await res.json();
+            return Array.isArray(data) ? data : (data.ledgers || data.results || data.data || []);
         },
         enabled: true
     });
@@ -279,11 +326,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const eodQuery = useQuery<EodData>({
         queryKey: ['eodData'],
         queryFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/daily-audit`, { headers: fetchHeaders });
-            if (!res.ok) throw new Error('Failed');
+            const res = await fetch(`${API_BASE}/finance/eod`, { headers: fetchHeaders });
+            if (!res.ok) throw new Error('Failed to fetch EOD data');
             const data = await res.json();
-            return data.data?.summary || data;
+            return data.data || data;
         },
+        refetchInterval: 15000,
         enabled: true
     });
 
@@ -297,9 +345,45 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         enabled: true
     });
 
+    const bankQuery = useQuery({
+        queryKey: ['bankTransactions'],
+        queryFn: async () => {
+            const res = await fetch(`${API_BASE}/finance/bank`, { headers: fetchHeaders });
+            if (!res.ok) throw new Error('Failed to fetch bank data');
+            return res.json();
+        },
+        refetchInterval: 12000,
+        enabled: true
+    });
+
+    const staffHandoversQuery = useQuery({
+        queryKey: ['staffHandovers'],
+        queryFn: async () => {
+            const res = await fetch(`${API_BASE}/staff/cash-handover`, { headers: fetchHeaders });
+            if (!res.ok) return { total_handed_over: 0, handovers: [] };
+            return res.json();
+        },
+        enabled: true
+    });
+
     const isGlobalLoading = !isMounted || userQuery.isLoading;
 
-    const kpiData = kpiQuery.data || { net_profit_today: 0, revenue_today: 0, today_revenue: 0, pre_booking_revenue: 0, today_total_credit: 0, today_collection_bank: 0, general_expenses_today: 0, labor_cost_today: 0, today_washed_count: 0 };
+    const kpiData: KpiSummary = kpiQuery.data || {
+        net_profit_today: 0,
+        revenue_today: 0,
+        today_revenue: 0,
+        pre_booking_revenue: 0,
+        today_total_credit: 0,
+        today_credit_asset: 0,
+        today_collection_bank: 0,
+        bank_today: 0,
+        chemical_cost_today: 0,
+        general_expenses_today: 0,
+        general_expense_today: 0,
+        labor_cost_today: 0,
+        today_washed_count: 0,
+        washed_today: 0,
+    };
     const chartData = chartQuery.data || generateDemoChartData();
     const recentBookings = bookingsQuery.data || [];
     const todayWashedRaw = todayWashedQuery.data || { count: 0, today_washed_count: 0, results: [] };
@@ -310,11 +394,26 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const expenseCategories = expenseCategoriesQuery.data || [];
     const khataCustomers = khataQuery.data || [];
     const customerCredits = customerCreditsQuery.data || [];
+    const khataRecentLedgers = khataRecentLedgersQuery.data || [];
     const payrollData = payrollQuery.data || [];
     const services = servicesQuery.data || [];
     const staffDirectory = staffQuery.data || [];
     const eodData = eodQuery.data || null;
     const analyticsData = analyticsQuery.data || { busiest_hours: [], packages: [], top_staff: [] };
+
+    const rawBankData = bankQuery.data || {};
+    const bankSummary = rawBankData.summary || {
+        current_balance: rawBankData.current_balance || 0,
+        net_balance: rawBankData.current_balance || 0,
+        total_deposited: rawBankData.total_deposited || 0,
+        total_withdrawn: rawBankData.total_withdrawn || 0,
+        today_deposited: 0,
+        today_withdrawn: 0,
+        transaction_count: 0
+    };
+    const bankTransactions = Array.isArray(rawBankData.transactions) 
+        ? rawBankData.transactions 
+        : (Array.isArray(rawBankData.data) ? rawBankData.data : (Array.isArray(rawBankData.history) ? rawBankData.history : []));
 
 
     function generateDemoChartData() {
@@ -327,7 +426,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         return days;
     }
 // isSubmittingExpense in export is now mapped directly to expenseMutation.isPending
-    const [expenseForm, setExpenseForm] = useState({ category: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
+    const [expenseForm, setExpenseForm] = useState({ category: '', amount: '', date: new Date().toISOString().split('T')[0], description: '', custom_category: '' });
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
     const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
@@ -344,6 +443,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     // --- Manual Khata Charge State ---
     const [isManualKhataOpen, setIsManualKhataOpen] = useState(false);
     const [manualKhataForm, setManualKhataForm] = useState({ phone: '', name: '', amount: '', description: '' });
+
+    // --- Bank Management State ---
+    const [isBankDepositModalOpen, setIsBankDepositModalOpen] = useState(false);
+    const [isBankWithdrawModalOpen, setIsBankWithdrawModalOpen] = useState(false);
+
+    // --- EOD Closeout & Daily Audit Modal State ---
+    const [isEODModalOpen, setIsEODModalOpen] = useState(false);
 
     // --- Service Menu State ---
         const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
@@ -374,6 +480,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const [staffForm, setStaffForm] = useState({ first_name: '', phone_number: '', role: 'WASHER', base_salary: '', commission_rate: '' });
     const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
     const [advanceForm, setAdvanceForm] = useState({ staff_id: '', amount: '', description: '' });
+    const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
+    const [handoverForm, setHandoverForm] = useState({ staff_id: '', amount: '', notes: '' });
 
         
     // --- CRM State ---
@@ -543,7 +651,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         setIsStaffModalOpen(true);
     };
 
-    const saveStaff = async (data?: { first_name?: string; name?: string; phone_number?: string; phone?: string; role: string; salary_type?: string; salary_amount?: string; base_salary?: string; commission_rate?: string }) => {
+    const saveStaff = async (data?: { first_name?: string; name?: string; phone_number?: string; phone?: string; role: string; salary_type?: string; salary_amount?: string; base_salary?: string; commission_rate?: string; password?: string }) => {
         const token = localStorage.getItem('auth_token');
         const url = editingStaff
             ? `${API_BASE}/staff/directory/${editingStaff.id}/`
@@ -569,21 +677,31 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
                     salary_type: (formPayload as any).salary_type || 'DAILY',
                     salary_amount: salaryVal,
                     base_salary: salaryVal,
-                    commission_rate: commVal
+                    commission_rate: commVal,
+                    commission_percentage: commVal,
+                    password: (formPayload as any).password || (formPayload as any).default_password || undefined,
                 })
             });
             if (res.ok) {
+                const resData = await res.json().catch(() => ({}));
                 toast.success(editingStaff ? 'Staff updated!' : 'Staff registered successfully!');
-                setIsStaffModalOpen(false);
-                setEditingStaff(null);
                 await queryClient.invalidateQueries({ queryKey: ['staff'] });
                 await queryClient.refetchQueries({ queryKey: ['staff'] });
                 await queryClient.invalidateQueries({ queryKey: ['payrollData'] });
+                if (editingStaff) {
+                    setIsStaffModalOpen(false);
+                    setEditingStaff(null);
+                }
+                return { success: true, data: resData.data };
             } else {
-                const errData = await res.json();
+                const errData = await res.json().catch(() => ({}));
                 toast.error(errData.error || errData.detail || 'Failed to save staff member');
+                return { success: false, error: errData.error || errData.detail };
             }
-        } catch (e) { toast.error('Network error'); }
+        } catch (e) {
+            toast.error('Network error');
+            return { success: false, error: 'Network error' };
+        }
     };
 
     const toggleStaffStatus = async (id: number, isCurrentlyActive: boolean) => {
@@ -627,7 +745,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
                 formData.append('number_plate_image', proofFile);
             }
 
-            const res = await fetch(`${API_BASE}/finance/khata/manual-charge/`, {
+            const res = await fetch(`${API_BASE}/finance/khata/manual-charge`, {
                 method: 'POST',
                 headers: { 'Authorization': `Token ${token}` },
                 body: formData,
@@ -811,6 +929,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             await queryClient.invalidateQueries({ queryKey: ['expenses'] });
             await queryClient.refetchQueries({ queryKey: ['expenses'] });
             await queryClient.invalidateQueries({ queryKey: ['kpiData'] });
+            await queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
         },
         onError: (err: any) => {
             toast.error(err.message || 'Network error while recording expense.');
@@ -824,14 +943,28 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             return;
         }
 
+        const selectedCatObj = expenseCategories.find((c: any) => String(c.id) === String(expenseForm.category) || c.name === expenseForm.category);
+        const isOther = expenseForm.category === 'OTHER' || 
+                        expenseForm.category === 'Other' || 
+                        expenseForm.category === '9' ||
+                        (selectedCatObj && (selectedCatObj.name?.toLowerCase().includes('other') || String(selectedCatObj.id).toUpperCase() === 'OTHER'));
+        if (isOther && (!expenseForm.custom_category || !expenseForm.custom_category.trim())) {
+            toast.error('Please enter a custom category name.');
+            return;
+        }
+
         const categoryNum = Number(expenseForm.category);
         const amountNum = Number(expenseForm.amount) || 0;
 
         const formData = new FormData();
-        if (!isNaN(categoryNum) && categoryNum > 0) {
+        if (!isOther && !isNaN(categoryNum) && categoryNum > 0) {
             formData.append('category_id', String(categoryNum));
         }
         formData.append('category', expenseForm.category);
+        if (isOther && expenseForm.custom_category) {
+            formData.append('custom_category', expenseForm.custom_category.trim());
+            formData.append('category_name', expenseForm.custom_category.trim());
+        }
         formData.append('amount', String(amountNum));
         formData.append('date', expenseForm.date || new Date().toISOString().split('T')[0]);
         formData.append('description', expenseForm.description || '');
@@ -850,7 +983,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             category: catId,
             amount: String(expense.amount),
             date: expense.date,
-            description: expense.description || ''
+            description: expense.description || '',
+            custom_category: ''
         });
         setReceiptFile(null);
         setReceiptPreview((expense as any).receipt_image || (expense as any).receipt || null);
@@ -859,7 +993,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const cancelEditingExpense = () => {
         setEditingExpense(null);
-        setExpenseForm({ category: '', amount: '', date: new Date().toISOString().split('T')[0], description: '' });
+        setExpenseForm({ category: '', amount: '', date: new Date().toISOString().split('T')[0], description: '', custom_category: '' });
         clearFile();
     };
 
@@ -883,6 +1017,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
                 await queryClient.invalidateQueries({ queryKey: ['expenses'] });
                 await queryClient.refetchQueries({ queryKey: ['expenses'] });
                 await queryClient.invalidateQueries({ queryKey: ['kpiData'] });
+                await queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
             } else {
                 toast.error('Failed to delete expense.');
             }
@@ -913,11 +1048,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     };
 
     // Single consolidated invoice download function (downloadInvoicePDF removed — duplicate)
-    const downloadInvoice = useCallback(async (bookingId: string | number) => {
+    const downloadInvoice = useCallback(async (bookingOrInvoiceId: string | number) => {
         try {
             const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+            const cleanId = String(bookingOrInvoiceId).trim();
             
-            const res = await fetch(`${API_BASE}/finance/invoice/${bookingId}/pdf/`, {
+            const res = await fetch(`${API_BASE}/finance/invoice/${cleanId}/pdf`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Token ${token}`,
@@ -937,7 +1073,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            a.download = `Invoice_${bookingId}.pdf`;
+            a.download = `Invoice_${cleanId}.pdf`;
             document.body.appendChild(a);
             a.click();
             
@@ -1092,6 +1228,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             setKhataPaymentAmount('');
             queryClient.invalidateQueries({ queryKey: ['khataCustomers'] });
             queryClient.invalidateQueries({ queryKey: ['kpiData'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
             queryClient.invalidateQueries({ queryKey: ['recentBookings'] });
             if (selectedKhataCustomer) loadKhataLedger(selectedKhataCustomer);
         },
@@ -1124,7 +1261,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const handleCloseRegister = () => closeRegisterMutation.mutate();
 
-    const settleWorkerPay = async (id: number, amount?: number, paymentMethod?: string, notes?: string) => {
+    const settleWorkerPay = async (id: number | string, amount?: number, paymentMethod?: string, notes?: string) => {
         try {
             const token = localStorage.getItem('auth_token');
             const bodyData: any = {};
@@ -1132,7 +1269,30 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             if (paymentMethod) bodyData.payment_method = paymentMethod;
             if (notes) bodyData.notes = notes;
 
-            const res = await fetch(`${API_BASE}/staff/settle-pay/${id}/`, {
+            // Resolve ID if passed as numeric or non-UUID
+            let targetId = String(id || '').trim();
+            const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!UUID_REGEX.test(targetId)) {
+                const staffList = ((staffQuery.data || []) as any[]);
+                const matched = staffList.find((s: any) => 
+                    String(s.id) === targetId || 
+                    String(s.user_id) === targetId ||
+                    String(s.payroll_id) === targetId
+                );
+                if (matched?.id && UUID_REGEX.test(String(matched.id))) {
+                    targetId = String(matched.id);
+                } else {
+                    const num = parseInt(targetId, 10);
+                    if (!isNaN(num) && num >= 1 && num <= staffList.length) {
+                        const indexed = staffList[num - 1];
+                        if (indexed?.id && UUID_REGEX.test(String(indexed.id))) {
+                            targetId = String(indexed.id);
+                        }
+                    }
+                }
+            }
+
+            const res = await fetch(`${API_BASE}/staff/settle-pay/${targetId}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Token ${token}`,
@@ -1143,14 +1303,22 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             if (res.ok) {
                 const data = await res.json();
                 toast.success(data.message || 'Worker payout recorded successfully.');
-                queryClient.invalidateQueries();
+                queryClient.invalidateQueries({ queryKey: ['payrollData'] });
+                queryClient.invalidateQueries({ queryKey: ['staff'] });
+                queryClient.invalidateQueries({ queryKey: ['kpiData'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+                return data;
             } else {
-                toast.error("Failed to settle worker pay");
+                const err = await res.json().catch(() => ({}));
+                toast.error(err.error || "Failed to settle worker pay");
+                throw new Error(err.error || "Failed to settle worker pay");
             }
-        } catch (e) {
-            toast.error("Network error settling worker pay");
+        } catch (e: any) {
+            toast.error(e.message || "Network error settling worker pay");
+            throw e;
         }
     };
+
     const handleAddAdvance = async () => {
         if (!advanceForm.staff_id || !advanceForm.amount) {
             toast.error("Please select a worker and enter an amount.");
@@ -1158,29 +1326,114 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         }
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_BASE}/staff/advance/${advanceForm.staff_id}/`, {
+            let targetStaffId = String(advanceForm.staff_id || '').trim();
+            const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!UUID_REGEX.test(targetStaffId)) {
+                const staffList = ((staffQuery.data || []) as any[]);
+                const matched = staffList.find((s: any) => 
+                    String(s.id) === targetStaffId || 
+                    String(s.user_id) === targetStaffId
+                );
+                if (matched?.id && UUID_REGEX.test(String(matched.id))) {
+                    targetStaffId = String(matched.id);
+                }
+            }
+
+            const res = await fetch(`${API_BASE}/staff/advance/${targetStaffId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Token ${token}`
                 },
                 body: JSON.stringify({
-                    amount: advanceForm.amount,
+                    amount: parseFloat(advanceForm.amount),
+                    purpose: advanceForm.description || 'Cash Advance',
                     description: advanceForm.description || 'Cash Advance'
                 })
             });
 
             if (res.ok) {
-                toast.success("Advance added and deducted from ledger!");
+                const data = await res.json();
+                toast.success(data.message || "Advance added and deducted from ledger!");
                 setIsAdvanceModalOpen(false);
                 setAdvanceForm({ staff_id: '', amount: '', description: '' });
-                queryClient.invalidateQueries(); // Refresh the table!
+                queryClient.invalidateQueries({ queryKey: ['payrollData'] });
+                queryClient.invalidateQueries({ queryKey: ['staff'] });
+                queryClient.invalidateQueries({ queryKey: ['kpiData'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
             } else {
-                const err = await res.json();
+                const err = await res.json().catch(() => ({}));
                 toast.error(err.error || "Failed to add advance");
             }
         } catch (e) {
             toast.error("Network error adding advance");
+        }
+    };
+
+    const handleRecordHandover = async (
+        staffId?: string, 
+        amount?: number, 
+        notes?: string, 
+        reconciledInvoiceIds?: number[], 
+        vehiclePlates?: string[]
+    ) => {
+        let targetStaffId = staffId || handoverForm.staff_id;
+        const targetAmount = amount !== undefined ? amount : parseFloat(handoverForm.amount);
+        const targetNotes = notes !== undefined ? notes : handoverForm.notes;
+
+        if (!targetStaffId || !targetAmount || targetAmount <= 0) {
+            toast.error("Please select a staff member and enter a valid handover amount.");
+            return;
+        }
+
+        // UUID resolution fallback
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!UUID_REGEX.test(targetStaffId)) {
+            const staffList = ((staffQuery.data || []) as any[]);
+            const matched = staffList.find((s: any) => 
+                String(s.id) === targetStaffId || 
+                String(s.user_id) === targetStaffId ||
+                String(s.payroll_id) === targetStaffId
+            );
+            if (matched?.id && UUID_REGEX.test(String(matched.id))) {
+                targetStaffId = String(matched.id);
+            }
+        }
+
+        try {
+            const token = localStorage.getItem('auth_token');
+            const res = await fetch(`${API_BASE}/staff/cash-handover`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Token ${token}`
+                },
+                body: JSON.stringify({
+                    staff_id: targetStaffId,
+                    amount: targetAmount,
+                    notes: targetNotes || 'Cash Handover to Admin',
+                    reconciled_invoice_ids: reconciledInvoiceIds || [],
+                    vehicle_plates: vehiclePlates || []
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                toast.success(data.message || 'Cash handover recorded successfully!');
+                setIsHandoverModalOpen(false);
+                setHandoverForm({ staff_id: '', amount: '', notes: '' });
+                queryClient.invalidateQueries({ queryKey: ['staffHandovers'] });
+                queryClient.invalidateQueries({ queryKey: ['payrollData'] });
+                queryClient.invalidateQueries({ queryKey: ['staff'] });
+                queryClient.invalidateQueries({ queryKey: ['kpiData'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+                return data;
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(err.error || "Failed to record cash handover");
+            }
+        } catch (e) {
+            toast.error("Network error recording cash handover");
         }
     };
 
@@ -1210,13 +1463,20 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             isKhataModalOpen, setIsKhataModalOpen, isKhataCustomerModalOpen, setIsKhataCustomerModalOpen,
             isKhataLedgerModalOpen, setIsKhataLedgerModalOpen, isManualKhataOpen, setIsManualKhataOpen,
             isServiceModalOpen, setIsServiceModalOpen, isStaffModalOpen, setIsStaffModalOpen, openStaffModal,
-            isAdvanceModalOpen, setIsAdvanceModalOpen, isLedgerModalOpen, setIsLedgerModalOpen
+            isAdvanceModalOpen, setIsAdvanceModalOpen, isHandoverModalOpen, setIsHandoverModalOpen, isLedgerModalOpen, setIsLedgerModalOpen,
+            isBankDepositModalOpen, setIsBankDepositModalOpen, isBankWithdrawModalOpen, setIsBankWithdrawModalOpen,
+            isEODModalOpen, setIsEODModalOpen
         },
         financeState: {
             kpiData, chartData, expenses, expenseCategories, isSubmittingExpense: expenseMutation.isPending, expenseForm,
-            receiptFile, receiptPreview, editingExpense, khataCustomers, khataLedger, selectedKhataCustomer,
+            receiptFile, receiptPreview, editingExpense, khataCustomers, khataRecentLedgers, khataLedger, selectedKhataCustomer,
             editingKhataCustomer, khataCustomerForm, khataPaymentAmount, eodData, manualKhataForm,
             customerCredits, invoiceList, analyticsData, totalOutstandingCredit, totalDailyPayout, fileInputRef,
+            bankSummary, bankTransactions, refetchBank: () => {
+                queryClient.invalidateQueries({ queryKey: ['bankTransactions'] });
+                queryClient.invalidateQueries({ queryKey: ['kpiData'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardOverview'] });
+            }, isBankLoading: bankQuery.isLoading,
             setExpenseForm, setReceiptFile, setReceiptPreview, setKhataCustomerForm, setKhataPaymentAmount, setManualKhataForm,
             fetchExpenseCategories, handleFileChange, clearFile, handleExpenseSubmit, startEditingExpense,
             cancelEditingExpense, deleteExpense, downloadTaxReport, downloadInvoice, approveExpense, settleCredit,
@@ -1225,8 +1485,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         },
         staffState: {
             payrollData, staffDirectory, editingStaff, staffForm, advanceForm, setStaffForm, setAdvanceForm,
+            handoverForm, setHandoverForm,
             staffStatusFilter, setStaffStatusFilter, staffSearchQuery, setStaffSearchQuery,
-            fetchStaffDirectory, saveStaff, terminateStaff, toggleStaffStatus, settleWorkerPay, handleAddAdvance
+            handoversData: staffHandoversQuery.data?.handovers || [],
+            totalHandedOver: staffHandoversQuery.data?.total_handed_over || 0,
+            refetchHandovers: () => queryClient.invalidateQueries({ queryKey: ['staffHandovers'] }),
+            fetchStaffDirectory, saveStaff, terminateStaff, toggleStaffStatus, settleWorkerPay, handleAddAdvance, handleRecordHandover
         },
         serviceState: {
             services, editingService, serviceForm, setServiceForm, fetchServices, openServiceModal, saveService, deleteService

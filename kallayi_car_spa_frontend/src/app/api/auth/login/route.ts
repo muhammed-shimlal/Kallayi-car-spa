@@ -1,12 +1,21 @@
 /**
  * KALLAYI CAR SPA & AUTO CARE - AUTH LOGIN API ROUTE
  * Next.js 16 Route Handler: POST /api/auth/login
- * Bulletproof dual-mode authentication with admin emergency bypass, phone normalization, role resolution, and persistent cookies.
+ * 
+ * Features:
+ * - Admin emergency bypass & seed account authentication
+ * - Multiple customer record prioritization (prioritizes registered account over empty walk-in rows)
+ * - Input sanitization & multi-format phone normalization
+ * - Fallback Django PBKDF2 password verification & auto-upgrade to native bcrypt
+ * - Virtual email resolver to bypass disabled phone-provider in GoTrue
+ * - Auto-linking of walk-in records & customer vehicles
+ * - Persistent authentication cookies
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
-import { getPhoneVariants } from '@/lib/services/whatsapp';
+import { getPhoneVariants, normalizePhone, extractTenDigitPhone } from '@/lib/phone';
+import { verifyDjangoPbkdf2 } from '@/lib/authCrypto';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -14,7 +23,7 @@ export const revalidate = 0;
 export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
 
     const {
       phone,
@@ -24,8 +33,10 @@ export async function POST(request: NextRequest) {
       password,
     } = body;
 
-    const rawIdentifier = (email_or_phone || phone || email || username || '').trim();
-    const rawPassword = (password || '').trim();
+    // 1. Input Sanitization
+    const rawIdentifier = String(email_or_phone || phone || email || username || '').trim();
+    const rawPassword = String(password ?? '').trim();
+    const untrimmedPassword = String(password ?? '');
 
     if (!rawIdentifier || !rawPassword) {
       return NextResponse.json(
@@ -59,12 +70,14 @@ export async function POST(request: NextRequest) {
       idLower.startsWith('admin@');
 
     const isMatchedAdminPassword =
-      rawPassword === ADMIN_DEFAULT_PASS || rawPassword === 'Kallayi@2026';
+      rawPassword === ADMIN_DEFAULT_PASS ||
+      rawPassword === 'Kallayi@2026' ||
+      untrimmedPassword === ADMIN_DEFAULT_PASS ||
+      untrimmedPassword === 'Kallayi@2026';
 
     if ((isMatchedAdminPhone || isMatchedAdminEmailOrUser) && isMatchedAdminPassword) {
       let resolvedAdminId = ADMIN_UID;
 
-      // Check if admin is already registered in staff_profiles with another UUID
       try {
         const { data: adminStaff } = await supabase
           .from('staff_profiles')
@@ -76,7 +89,6 @@ export async function POST(request: NextRequest) {
         if (adminStaff && adminStaff.user_id) {
           resolvedAdminId = adminStaff.user_id;
         } else {
-          // Upsert admin profile into staff_profiles immediately
           await supabase.from('staff_profiles').upsert(
             {
               user_id: ADMIN_UID,
@@ -128,214 +140,189 @@ export async function POST(request: NextRequest) {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // 2. ENHANCED IDENTIFIER RESOLUTION & MATCHING (DB TABLES + AUTH USERS)
+    // 2. MULTI-RECORD RESOLUTION (Prioritizes registered account over empty walk-in)
     // ─────────────────────────────────────────────────────────────────────────────
     let targetEmail = isEmail ? rawIdentifier.toLowerCase() : '';
-    let targetPhone = e164 || (!isEmail ? rawIdentifier : '');
     let matchedUserId: string | null = null;
     let matchedAuthUser: any = null;
 
     if (!isEmail) {
-      // Step 2a: Check in staff_profiles by all phone variants & 10-digit endsWith
+      // Step 2a: Check in staff_profiles by phone variants
       if (variants.length > 0) {
         const { data: staffList } = await supabase
           .from('staff_profiles')
           .select('user_id, phone_number, role')
           .in('phone_number', variants)
-          .limit(1);
+          .limit(5);
 
         if (staffList && staffList.length > 0) {
-          matchedUserId = staffList[0].user_id;
+          const validStaff = staffList.find(
+            (s) => s.user_id && s.user_id !== '00000000-0000-0000-0000-000000000000'
+          );
+          if (validStaff) {
+            matchedUserId = validStaff.user_id;
+          }
         }
       }
 
       // Step 2b: Check in customers table by phone variants
+      // Fetch ALL matching rows and specifically prioritize registered customer rows!
       if (!matchedUserId && variants.length > 0) {
         const { data: custList } = await supabase
           .from('customers')
-          .select('user_id, phone_number')
-          .in('phone_number', variants)
-          .limit(1);
+          .select('id, user_id, phone_number, name')
+          .in('phone_number', variants);
 
         if (custList && custList.length > 0) {
-          matchedUserId = custList[0].user_id;
+          // Find the customer record that has a valid user_id (not null and not dummy uuid)
+          const registeredCustomer = custList.find(
+            (c) =>
+              c.user_id &&
+              c.user_id !== '00000000-0000-0000-0000-000000000000' &&
+              c.user_id.length > 10
+          );
+
+          if (registeredCustomer) {
+            matchedUserId = registeredCustomer.user_id;
+          }
         }
       }
 
-      // Fallback: Check customers table by partial digit matching if tenDigit is valid
-      if (!matchedUserId && tenDigit && tenDigit.length === 10) {
-        const { data: allCust } = await supabase
-          .from('customers')
-          .select('user_id, phone_number')
-          .limit(500);
-
-        const match = allCust?.find((c) => {
-          const cDigits = (c.phone_number || '').replace(/\D/g, '');
-          return cDigits.endsWith(tenDigit);
-        });
-
-        if (match) {
-          matchedUserId = match.user_id;
-        }
-      }
-
-      // Step 2c: If matched user ID found in DB tables, resolve email & phone from auth.users
+      // Step 2c: If matched user ID found in DB tables, resolve email & auth data
       if (matchedUserId) {
         try {
           const { data: userRes } = await supabase.auth.admin.getUserById(matchedUserId);
           if (userRes?.user) {
             matchedAuthUser = userRes.user;
-            if (userRes.user.email) targetEmail = userRes.user.email;
-            if (userRes.user.phone) targetPhone = userRes.user.phone;
+            if (userRes.user.email) {
+              targetEmail = userRes.user.email;
+            }
           }
-        } catch {
-          // Continue
+        } catch (err) {
+          console.warn('[User Fetch Warning]:', err);
         }
       }
     }
 
-    // Step 2d: Direct Auth User Lookup via Supabase Admin API with full digit normalization
-    if (!matchedAuthUser) {
+    // Step 2d: Direct resolution by email if identifier is email
+    if (isEmail && !matchedAuthUser) {
       try {
-        const { data: adminUsers } = await supabase.auth.admin.listUsers({
-          page: 1,
-          perPage: 1000,
+        const { data: linkData } = await supabase.auth.admin.generateLink({
+          type: 'magiclink',
+          email: rawIdentifier.toLowerCase(),
         });
-
-        const found = adminUsers?.users?.find((u) => {
-          // Direct email match
-          const emailMatch =
-            (isEmail && u.email?.toLowerCase() === rawIdentifier.toLowerCase()) ||
-            (targetEmail && u.email?.toLowerCase() === targetEmail.toLowerCase());
-
-          // Direct ID match
-          const idMatch = Boolean(matchedUserId && u.id === matchedUserId);
-
-          // Deep phone match across phone column and all metadata keys
-          let phoneMatch = false;
-          if (!isEmail && tenDigit && tenDigit.length === 10) {
-            const userPhoneRaw = u.phone || '';
-            const metaPhoneRaw =
-              u.user_metadata?.phone ||
-              u.user_metadata?.phone_number ||
-              u.user_metadata?.mobile ||
-              u.user_metadata?.phoneNumber ||
-              '';
-
-            const userPhoneDigits = userPhoneRaw.replace(/\D/g, '');
-            const metaPhoneDigits = String(metaPhoneRaw).replace(/\D/g, '');
-
-            if (
-              userPhoneDigits.endsWith(tenDigit) ||
-              metaPhoneDigits.endsWith(tenDigit) ||
-              (variants.length > 0 && (variants.includes(userPhoneRaw) || variants.includes(metaPhoneRaw)))
-            ) {
-              phoneMatch = true;
-            }
-
-            // Also check if email is virtual phone email (e.g. 919207320065@kallayi.internal)
-            if (u.email && u.email.includes(tenDigit)) {
-              phoneMatch = true;
-            }
-          }
-
-          return emailMatch || phoneMatch || idMatch;
-        });
-
-        if (found) {
-          matchedAuthUser = found;
-          matchedUserId = found.id;
-          if (found.email) targetEmail = found.email;
-          if (found.phone) targetPhone = found.phone;
+        if (linkData?.user) {
+          matchedAuthUser = linkData.user;
+          matchedUserId = linkData.user.id;
+          targetEmail = linkData.user.email || rawIdentifier.toLowerCase();
         }
-      } catch (err) {
-        console.warn('[Admin ListUsers Warning]:', err);
+      } catch {
+        // Continue
       }
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // 3. MULTI-ATTEMPT AUTHENTICATION PIPELINE
+    // 3. DJANGO PBKDF2 PASSWORD VERIFICATION FALLBACK & AUTO-UPGRADE
+    // ─────────────────────────────────────────────────────────────────────────────
+    let isDjangoPbkdf2Verified = false;
+
+    if (matchedAuthUser) {
+      const storedPbkdf2 =
+        matchedAuthUser.user_metadata?.django_password ||
+        matchedAuthUser.user_metadata?.password_hash ||
+        matchedAuthUser.user_metadata?.hash ||
+        '';
+
+      if (storedPbkdf2 && storedPbkdf2.startsWith('pbkdf2_sha256$')) {
+        const matchesTrimmed = verifyDjangoPbkdf2(rawPassword, storedPbkdf2);
+        const matchesUntrimmed = !matchesTrimmed && untrimmedPassword !== rawPassword
+          ? verifyDjangoPbkdf2(untrimmedPassword, storedPbkdf2)
+          : false;
+
+        if (matchesTrimmed || matchesUntrimmed) {
+          isDjangoPbkdf2Verified = true;
+          // Automatically upgrade the user to GoTrue's native bcrypt password!
+          try {
+            await supabase.auth.admin.updateUserById(matchedAuthUser.id, {
+              password: matchesUntrimmed ? untrimmedPassword : rawPassword,
+              user_metadata: {
+                ...matchedAuthUser.user_metadata,
+                django_password: null, // clear old hash
+                password_migrated: true,
+                password_migrated_at: new Date().toISOString(),
+              },
+            });
+          } catch (upgradeErr) {
+            console.warn('[Password Auto-Upgrade Warning]:', upgradeErr);
+          }
+        }
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 4. MULTI-ATTEMPT AUTHENTICATION PIPELINE (GoTrue Sign-In)
     // ─────────────────────────────────────────────────────────────────────────────
     let authUser: any = null;
     let sessionToken = '';
     let lastSignInError: any = null;
 
-    // Attempt A: Sign in with resolved targetEmail if present (and not internal dummy email)
-    if (targetEmail && !targetEmail.endsWith('@kallayi.internal')) {
-      try {
-        const { data: emailSignIn, error: emailErr } = await supabase.auth.signInWithPassword({
-          email: targetEmail,
-          password: rawPassword,
-        });
+    if (isDjangoPbkdf2Verified && matchedAuthUser) {
+      authUser = matchedAuthUser;
+      sessionToken = `supabase_${authUser.id}_${Date.now()}`;
+    } else {
+      // Build candidate emails to authenticate against
+      const candidateEmails: string[] = [];
 
-        if (!emailErr && emailSignIn?.user) {
-          authUser = emailSignIn.user;
-          sessionToken = emailSignIn.session?.access_token || '';
-        } else if (emailErr) {
-          lastSignInError = emailErr;
-        }
-      } catch (err) {
-        lastSignInError = err;
+      if (targetEmail) {
+        candidateEmails.push(targetEmail);
       }
-    }
-
-    // Attempt B: Try phone login if phone is available
-    const phoneToTry = targetPhone || (!isEmail ? e164 : '');
-    if (!authUser && phoneToTry) {
-      try {
-        const { data: phoneSignIn, error: phoneErr } = await supabase.auth.signInWithPassword({
-          phone: phoneToTry,
-          password: rawPassword,
-        });
-
-        if (!phoneErr && phoneSignIn?.user) {
-          authUser = phoneSignIn.user;
-          sessionToken = phoneSignIn.session?.access_token || '';
-        } else if (phoneErr) {
-          lastSignInError = phoneErr;
-        }
-      } catch (err) {
-        lastSignInError = err;
+      if (matchedAuthUser?.email) {
+        candidateEmails.push(matchedAuthUser.email);
       }
-    }
+      if (!isEmail) {
+        if (twelveDigit) candidateEmails.push(`${twelveDigit}@kallayi.internal`);
+        if (tenDigit) candidateEmails.push(`${tenDigit}@kallayi.internal`);
+        if (digits) candidateEmails.push(`${digits}@kallayi.internal`);
+      }
 
-    // Attempt C: Virtual Email login fallbacks
-    if (!authUser && !isEmail && (twelveDigit || tenDigit)) {
-      const virtualEmails = [
-        twelveDigit ? `${twelveDigit}@kallayi.internal` : '',
-        tenDigit ? `${tenDigit}@kallayi.internal` : '',
-        digits ? `${digits}@kallayi.internal` : '',
-        targetEmail,
-      ].filter((e) => Boolean(e && e.includes('@')));
+      const uniqueEmails = Array.from(new Set(candidateEmails.filter((e) => e && e.includes('@'))));
 
-      const uniqueVirtuals = Array.from(new Set(virtualEmails));
-      for (const vEmail of uniqueVirtuals) {
+      const passwordsToTry = [rawPassword];
+      if (untrimmedPassword !== rawPassword) {
+        passwordsToTry.push(untrimmedPassword);
+      }
+
+      for (const emailToTry of uniqueEmails) {
         if (authUser) break;
-        try {
-          const { data: vSignIn, error: vErr } = await supabase.auth.signInWithPassword({
-            email: vEmail,
-            password: rawPassword,
-          });
-          if (!vErr && vSignIn?.user) {
-            authUser = vSignIn.user;
-            sessionToken = vSignIn.session?.access_token || '';
-            break;
-          } else if (vErr) {
-            lastSignInError = vErr;
+        for (const passToTry of passwordsToTry) {
+          if (authUser) break;
+          try {
+            const { data: signInRes, error: signInErr } = await supabase.auth.signInWithPassword({
+              email: emailToTry,
+              password: passToTry,
+            });
+
+            if (!signInErr && signInRes?.user) {
+              authUser = signInRes.user;
+              sessionToken = signInRes.session?.access_token || '';
+              break;
+            } else if (signInErr) {
+              lastSignInError = signInErr;
+            }
+          } catch (err) {
+            lastSignInError = err;
           }
-        } catch (err) {
-          lastSignInError = err;
         }
       }
     }
 
-    // If still no authenticated user found, log error and return 400
+    // If still no authenticated user found, return 400 with helpful message
     if (!authUser) {
       console.error('[Login Error Detail]: User authentication failed:', {
         identifier: rawIdentifier,
         resolvedEmail: targetEmail,
-        resolvedPhone: targetPhone,
-        lastError: lastSignInError,
+        matchedUserId,
+        lastError: lastSignInError?.message || lastSignInError,
       });
 
       return NextResponse.json(
@@ -349,7 +336,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // 4. ROLE RESOLUTION & DATABASE INTEGRITY SYNC
+    // 5. ROLE RESOLUTION & DATABASE INTEGRITY SYNC
     // ─────────────────────────────────────────────────────────────────────────────
     const userId = authUser.id;
     let role = 'CUSTOMER';
@@ -357,38 +344,78 @@ export async function POST(request: NextRequest) {
     let isStaff = false;
     let redirect = '/customer/dashboard';
 
-    // Step 4a: Check staff_profiles table
-    const { data: staffProfile } = await supabase
+    // Build phone variants from authUser or login identifier
+    const userPhone = authUser.phone || authUser.user_metadata?.phone || (!isEmail ? e164 : '') || rawIdentifier;
+    const userPhoneVariants = getPhoneVariants(userPhone).variants;
+
+    // Check staff_profiles table by user_id OR by phone variants
+    let staffProfile: any = null;
+    const { data: staffById } = await supabase
       .from('staff_profiles')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
 
+    if (staffById) {
+      staffProfile = staffById;
+    } else if (userPhoneVariants.length > 0) {
+      const { data: staffByPhone } = await supabase
+        .from('staff_profiles')
+        .select('*')
+        .in('phone_number', userPhoneVariants)
+        .limit(1)
+        .maybeSingle();
+
+      if (staffByPhone) {
+        staffProfile = staffByPhone;
+        // Auto-link staff_profiles.user_id to authUser.id if not already linked
+        await supabase
+          .from('staff_profiles')
+          .update({ user_id: userId })
+          .eq('id', staffByPhone.id);
+      }
+    }
+
     if (staffProfile) {
-      const staffRole = (staffProfile.role || '').toUpperCase();
-      role = staffRole || 'STAFF';
-      if (staffRole === 'ADMIN' || staffRole === 'MANAGER') {
+      const staffTradeRole = (staffProfile.role || '').toUpperCase();
+      if (staffTradeRole === 'ADMIN' || staffTradeRole === 'MANAGER') {
+        role = 'ADMIN';
         isAdmin = true;
         isStaff = true;
         redirect = '/admin/dashboard';
       } else {
+        role = 'STAFF';
         isAdmin = false;
         isStaff = true;
-        redirect = '/staff/dashboard';
+        redirect = '/staff/queue';
+      }
+
+      // Ensure user_metadata.role is strictly synchronized in GoTrue as STAFF
+      if (authUser.user_metadata?.role !== role) {
+        try {
+          await supabase.auth.admin.updateUserById(userId, {
+            user_metadata: {
+              ...authUser.user_metadata,
+              role,
+              staff_role: staffProfile.role,
+            },
+          });
+        } catch (syncErr) {
+          console.warn('[Staff Meta Sync Warning]:', syncErr);
+        }
       }
     } else {
-      // Step 4b: Check user_metadata or default to customer
       const metaRole = (authUser.user_metadata?.role || '').toUpperCase();
       if (metaRole === 'ADMIN' || metaRole === 'MANAGER') {
-        role = metaRole;
+        role = 'ADMIN';
         isAdmin = true;
         isStaff = true;
         redirect = '/admin/dashboard';
-      } else if (['WASHER', 'DRIVER', 'TECHNICIAN'].includes(metaRole)) {
-        role = metaRole;
+      } else if (metaRole === 'STAFF' || ['WASHER', 'DRIVER', 'TECHNICIAN'].includes(metaRole)) {
+        role = 'STAFF';
         isAdmin = false;
         isStaff = true;
-        redirect = '/staff/dashboard';
+        redirect = '/staff/queue';
       } else {
         role = 'CUSTOMER';
         isAdmin = false;
@@ -397,7 +424,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 4c: Auto-heal missing `public.customers` row or name if user logged in as customer
+    // Auto-heal missing `public.customers` row and claim any unlinked walk-in records
     if (role === 'CUSTOMER') {
       try {
         const customerFullName =
@@ -408,35 +435,85 @@ export async function POST(request: NextRequest) {
 
         const { data: existingCust } = await supabase
           .from('customers')
-          .select('id, name')
+          .select('id, name, user_id')
           .eq('user_id', userId)
           .maybeSingle();
 
         if (!existingCust) {
-          await supabase.from('customers').upsert(
-            {
-              user_id: userId,
-              name: customerFullName,
-              phone_number: authUser.phone || targetPhone || e164 || rawIdentifier,
-              address: '',
-              loyalty_points: 0,
-              outstanding_balance: 0.0,
-              credit_limit: 5000.0,
-            },
-            { onConflict: 'user_id' }
-          );
+          // Check if an unlinked walk-in row exists for this phone
+          let claimed = false;
+          if (variants.length > 0) {
+            const { data: unlinkedCusts } = await supabase
+              .from('customers')
+              .select('id')
+              .in('phone_number', variants)
+              .or('user_id.is.null,user_id.eq.00000000-0000-0000-0000-000000000000')
+              .limit(1);
+
+            if (unlinkedCusts && unlinkedCusts.length > 0) {
+              await supabase
+                .from('customers')
+                .update({
+                  user_id: userId,
+                  name: customerFullName,
+                  phone_number: e164 || rawIdentifier,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', unlinkedCusts[0].id);
+              claimed = true;
+            }
+          }
+
+          if (!claimed) {
+            await supabase.from('customers').upsert(
+              {
+                user_id: userId,
+                name: customerFullName,
+                phone_number: e164 || rawIdentifier,
+                address: '',
+                loyalty_points: 0,
+                outstanding_balance: 0.0,
+                credit_limit: 5000.0,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id' }
+            );
+          }
         } else if (!existingCust.name || existingCust.name === 'Guest Customer') {
           await supabase
             .from('customers')
             .update({ name: customerFullName, updated_at: new Date().toISOString() })
             .eq('id', existingCust.id);
         }
+
+        // Claim unassigned vehicles belonging to this customer's bookings
+        const { data: myCust } = await supabase
+          .from('customers')
+          .select('id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (myCust) {
+          const { data: bookings } = await supabase
+            .from('bookings')
+            .select('vehicle_id')
+            .eq('customer_id', myCust.id);
+
+          const vIds = (bookings || []).map((b) => b.vehicle_id).filter(Boolean);
+          if (vIds.length > 0) {
+            await supabase
+              .from('customer_vehicles')
+              .update({ user_id: userId })
+              .in('id', vIds)
+              .or('user_id.is.null,user_id.eq.00000000-0000-0000-0000-000000000000');
+          }
+        }
       } catch (healErr) {
         console.warn('[Customer Auto-heal Warning]:', healErr);
       }
     }
 
-    // Step 4d: Assemble User Information
+    // Assemble User Information
     const firstName =
       authUser.user_metadata?.first_name ||
       authUser.user_metadata?.name ||
@@ -452,7 +529,7 @@ export async function POST(request: NextRequest) {
     const responseUser = {
       id: userId,
       email: authUser.email || targetEmail || '',
-      phone: authUser.phone || targetPhone || (!isEmail ? e164 : '') || rawIdentifier,
+      phone: authUser.phone || (!isEmail ? e164 : '') || rawIdentifier,
       first_name: firstName,
       name: fullName,
       full_name: fullName,
@@ -466,7 +543,7 @@ export async function POST(request: NextRequest) {
     const finalToken = sessionToken || `supabase_${userId}_${Date.now()}`;
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // 5. TOKEN & COOKIE RESPONSE
+    // 6. TOKEN & COOKIE RESPONSE
     // ─────────────────────────────────────────────────────────────────────────────
     const response = NextResponse.json({
       success: true,
@@ -489,4 +566,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
-

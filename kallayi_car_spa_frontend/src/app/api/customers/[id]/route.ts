@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { normalizePhone } from '@/lib/phone';
 import { CustomerRow } from '@/types/database';
 
 export const dynamic = 'force-dynamic';
@@ -72,7 +73,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const updatePayload: Partial<CustomerRow> = {};
     if (body.name !== undefined) updatePayload.name = String(body.name).trim();
-    if (body.phone_number !== undefined) updatePayload.phone_number = String(body.phone_number).trim();
+    if (body.phone_number !== undefined) updatePayload.phone_number = normalizePhone(String(body.phone_number));
     if (body.address !== undefined) updatePayload.address = String(body.address);
     if (body.credit_limit !== undefined) updatePayload.credit_limit = parseFloat(String(body.credit_limit));
     if (body.outstanding_balance !== undefined) updatePayload.outstanding_balance = parseFloat(String(body.outstanding_balance));

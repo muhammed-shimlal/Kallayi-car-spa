@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import { VehicleType } from '@/types/database';
+import { normalizeVehicleType, getVehicleBodyType } from '@/lib/vehicleCatalog';
 
 export async function GET(request: NextRequest) {
   try {
@@ -84,7 +85,9 @@ export async function POST(request: NextRequest) {
     const rawPlate = (plate_number || plate || '').trim().toUpperCase();
     const cleanMake = (make || 'Standard').trim();
     const cleanModel = (model || 'Vehicle').trim();
-    const vType: VehicleType = (vehicle_type as VehicleType) || 'CAR';
+    const vType: VehicleType = vehicle_type
+      ? normalizeVehicleType(vehicle_type)
+      : getVehicleBodyType(`${cleanMake} ${cleanModel}`);
 
     if (!rawPlate) {
       return NextResponse.json(

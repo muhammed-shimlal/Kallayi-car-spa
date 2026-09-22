@@ -13,10 +13,14 @@ export default function MobileNavigation() {
     
     if (!uiState) return null;
     
-    const { activeTab, financeSubTab, setActiveTab } = uiState;
+    const { activeTab, financeSubTab, setActiveTab, setIsEODModalOpen } = uiState;
     
     const handleTabClick = (tab: string, subTab?: string) => {
-        setActiveTab(tab, subTab);
+        if (tab === 'eod') {
+            setIsEODModalOpen?.(true);
+        } else {
+            setActiveTab(tab, subTab);
+        }
         setIsDrawerOpen(false);
     };
 

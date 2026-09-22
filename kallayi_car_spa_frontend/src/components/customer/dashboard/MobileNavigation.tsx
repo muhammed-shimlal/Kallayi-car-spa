@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Car, Plus, Calendar, Wallet } from 'lucide-react';
+import { Activity, Car, Plus, Calendar, Wallet, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface MobileNavigationProps {
@@ -10,11 +10,11 @@ interface MobileNavigationProps {
 export function MobileNavigation({ activeTab, setActiveTab }: MobileNavigationProps) {
     const navItems = [
         { id: 'overview', icon: Activity, label: 'Overview' },
-        { id: 'garage', icon: Car, label: 'Garage' },
-        // Use 'booking' or whatever state triggers the Booking Wizard. We'll pass an ID of 'booking' for now.
+        { id: 'services', icon: Sparkles, label: 'Services' },
+        // Primary Action Button (Floating in center thumb zone)
         { id: 'booking', icon: Plus, label: 'Book', isPrimary: true }, 
-        { id: 'history', icon: Calendar, label: 'History' },
-        { id: 'ledger', icon: Wallet, label: 'Ledger' },
+        { id: 'garage', icon: Car, label: 'Garage' },
+        { id: 'ledger', icon: Wallet, label: 'Khata' },
     ];
 
     return (

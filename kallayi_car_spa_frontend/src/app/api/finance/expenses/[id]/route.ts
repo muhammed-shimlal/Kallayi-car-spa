@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
 import { GeneralExpenseRow, ExpenseType, ExpenseStatus, PaymentMethod, ExpenseTransactionType } from '@/types/database';
+import { uploadFileToStorage } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -72,11 +73,20 @@ async function handleUpdateExpense(
     }
 
     let body: any = {};
+    let receiptFile: File | Blob | null = null;
     const contentType = request.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
       formData.forEach((value, key) => {
-        body[key] = value;
+        if (key === 'receipt_image' || key === 'file' || key === 'receipt') {
+          if (typeof value === 'object' && value && 'size' in value && (value as any).size > 0) {
+            receiptFile = value as unknown as File;
+          } else if (typeof value === 'string' && value.trim() !== '') {
+            body[key] = value;
+          }
+        } else {
+          body[key] = value;
+        }
       });
     } else {
       body = await request.json().catch(() => ({}));
@@ -113,7 +123,15 @@ async function handleUpdateExpense(
     if (date !== undefined && date !== null && String(date).trim() !== '') {
       updates.date = String(date).trim();
     }
-    if (receipt_image !== undefined) {
+    let finalReceiptUrl = updates.receipt_image;
+    if (receiptFile) {
+      try {
+        finalReceiptUrl = await uploadFileToStorage(receiptFile, 'receipts');
+        updates.receipt_image = finalReceiptUrl;
+      } catch (uploadErr: any) {
+        console.warn('[Receipt Update Upload Warning]:', uploadErr.message);
+      }
+    } else if (receipt_image !== undefined) {
       if (typeof receipt_image === 'string') {
         const trimmed = receipt_image.trim();
         updates.receipt_image = (trimmed !== '' && trimmed !== '[object File]' && trimmed !== 'null' && trimmed !== 'undefined') ? trimmed : null;
