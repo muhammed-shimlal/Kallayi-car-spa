@@ -569,7 +569,10 @@ export function normalizeVehicleType(type?: string | null): VehicleType {
     stripped === 'TUKTUK' ||
     stripped === 'APE' ||
     stripped === 'TREO' ||
-    stripped === 'ALFA'
+    stripped === 'ALFA' ||
+    stripped.includes('PASSENGERAUTO') ||
+    stripped.includes('GOODSCARRIER') ||
+    stripped.includes('ERICKSHAW')
   ) {
     return 'AUTO';
   }
@@ -581,7 +584,12 @@ export function normalizeVehicleType(type?: string | null): VehicleType {
     stripped.includes('2WHEEL') ||
     stripped.includes('TWOWHEEL') ||
     stripped === 'MOPED' ||
-    stripped === 'TWO_WHEELER'
+    stripped === 'TWO_WHEELER' ||
+    stripped.includes('COMMUTER') ||
+    stripped.includes('CRUISER') ||
+    stripped.includes('ADVENTURE') ||
+    stripped.includes('SUPERBIKE') ||
+    stripped.includes('SPORTSBIKE')
   ) {
     return 'BIKE';
   }
@@ -614,7 +622,11 @@ export function normalizeVehicleType(type?: string | null): VehicleType {
 
   if (
     stripped.includes('VAN') ||
-    stripped.includes('MINIVAN')
+    stripped.includes('MINIVAN') ||
+    stripped.includes('TRAVELLER') ||
+    stripped.includes('PASSENGERTRAVELLER') ||
+    stripped.includes('BUS') ||
+    stripped.includes('TEMPO')
   ) {
     return 'VAN';
   }
@@ -633,7 +645,9 @@ export function normalizeVehicleType(type?: string | null): VehicleType {
   if (
     stripped.includes('TRUCK') ||
     stripped.includes('PICKUP') ||
-    stripped.includes('COMMERCIAL')
+    stripped.includes('COMMERCIAL') ||
+    stripped.includes('MINITRUCK') ||
+    stripped.includes('PICKUPTRUCK')
   ) {
     return 'TRUCK';
   }

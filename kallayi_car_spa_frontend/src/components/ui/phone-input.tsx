@@ -64,7 +64,7 @@ export function CinematicPhoneInput({
   return (
     <div className={`w-full flex flex-col group ${className}`}>
       <div
-        className={`relative flex items-center bg-[#07080a] border rounded-2xl transition-all duration-200 ${
+        className={`relative flex items-center min-h-[48px] sm:min-h-[52px] bg-[#07080a] border rounded-2xl transition-all duration-200 ${
           error
             ? 'border-red-500/80 shadow-[0_0_15px_rgba(239,68,68,0.25)]'
             : isValid
@@ -74,7 +74,7 @@ export function CinematicPhoneInput({
       >
         {/* Fixed Non-Editable Country Code Badge */}
         <div
-          className="flex items-center gap-1.5 px-3.5 py-3 select-none flex-shrink-0 bg-white/[0.03] border-r border-white/10 rounded-l-2xl text-neutral-300"
+          className="flex items-center gap-1.5 px-3 sm:px-3.5 py-3 select-none flex-shrink-0 bg-white/[0.03] border-r border-white/10 rounded-l-2xl text-neutral-300"
           aria-hidden="true"
         >
           <span className="text-base leading-none" role="img" aria-label="India Flag">
@@ -85,14 +85,14 @@ export function CinematicPhoneInput({
           </span>
         </div>
 
-        {/* 10-Digit Numeric Phone Input */}
+        {/* 10-Digit Numeric Phone Input - flex-1 min-w-0 ensures no horizontal clipping on mobile */}
         <input
           id={inputId}
           name={name}
           type="tel"
           inputMode="numeric"
           pattern="[0-9]*"
-          maxLength={10}
+          maxLength={16}
           value={displayDigits}
           onChange={handleChange}
           onBlur={onBlur}
@@ -101,28 +101,29 @@ export function CinematicPhoneInput({
           autoFocus={autoFocus}
           required={required}
           autoComplete="tel-national"
-          className="w-full bg-transparent text-white font-mono text-base tracking-widest px-3.5 py-3 outline-none placeholder:text-neutral-600 placeholder:font-sans placeholder:tracking-normal"
+          className="flex-1 min-w-0 w-full bg-transparent text-white font-mono text-base tracking-wider sm:tracking-widest px-3 sm:px-3.5 py-3 outline-none placeholder:text-neutral-600 placeholder:font-sans placeholder:tracking-normal"
         />
 
         {/* Action / Validation Indicator Icons */}
-        <div className="flex items-center gap-2 pr-3.5 flex-shrink-0">
-          {/* Clear button when typed */}
+        <div className="flex items-center gap-1.5 sm:gap-2 pr-2 sm:pr-3 flex-shrink-0">
+          {/* Clear button when typed - Minimum 40-44px touch target */}
           {isFilled && !disabled && (
             <button
               type="button"
               onClick={handleClear}
-              className="text-neutral-500 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+              className="text-neutral-500 hover:text-white min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 transition-colors cursor-pointer"
               title="Clear phone number"
+              aria-label="Clear phone number"
               tabIndex={-1}
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
           )}
 
           {/* Valid 10-Digit Indian Mobile Indicator */}
           {isComplete && (
             <div
-              className={`w-5 h-5 rounded-full flex items-center justify-center transition-all ${
+              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all ${
                 isValid
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                   : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'

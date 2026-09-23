@@ -249,17 +249,35 @@ class KhataLedger(models.Model):
         ('CHARGE', 'Charge to Khata'),
         ('SETTLEMENT', 'Settlement Payment'),
     ]
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PARTIALLY_PAID', 'Partially Paid'),
+        ('SETTLED', 'Settled'),
+    ]
 
     customer = models.ForeignKey('customers.Customer', on_delete=models.CASCADE, related_name='khata_entries')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     transaction_type = models.CharField(max_length=15, choices=TRANSACTION_TYPES)
     description = models.CharField(max_length=255)
     related_booking = models.ForeignKey(Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name='khata_charges')
+    invoice = models.ForeignKey('finance.Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='khata_entries')
     number_plate_image = models.ImageField(upload_to='khata_proofs/', null=True, blank=True)
+    transaction_date = models.DateTimeField(default=timezone.now, db_index=True)
+    due_date = models.DateTimeField(null=True, blank=True, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', db_index=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+    last_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    reminder_count = models.IntegerField(default=0)
+    customer_phone = models.CharField(max_length=25, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['status', 'due_date'], name='idx_khata_due_status_django'),
+        ]
+
     def __str__(self):
-        return f"{self.transaction_type} of ₹{self.amount} for {self.customer}"
+        return f"{self.transaction_type} of ₹{self.amount} for {self.customer} ({self.status})"
 
 class DailyRegisterAudit(models.Model):
     """

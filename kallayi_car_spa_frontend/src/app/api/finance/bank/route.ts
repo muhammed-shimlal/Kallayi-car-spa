@@ -220,6 +220,21 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    const user = await getAuthUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Authentication required to manage bank transactions.' },
+        { status: 401 }
+      );
+    }
+    const role = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+    if (role === 'CUSTOMER') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Insufficient privileges for banking operations.' },
+        { status: 403 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     const contentType = request.headers.get('content-type') || '';
 

@@ -58,7 +58,9 @@ export async function getAuthUserFromRequest(request: {
   try {
     const supabase = getSupabaseAdmin();
     const authHeader = request.headers.get('authorization') || '';
-    const cookieToken = request.cookies.get('auth_token')?.value;
+    const cookieToken =
+      request.cookies.get('auth_token')?.value ||
+      request.cookies.get('access_token')?.value;
     const token = authHeader.replace(/^Bearer\s+|^Token\s+/i, '').trim() || cookieToken;
 
     if (!token) return null;
@@ -77,7 +79,17 @@ export async function getAuthUserFromRequest(request: {
       }
       try {
         const { data: userRecord } = await supabase.auth.admin.getUserById(userId);
-        if (userRecord?.user) return userRecord.user;
+        if (userRecord?.user) {
+          const metaRole = (userRecord.user.user_metadata?.role || (userRecord.user as any).role || 'STAFF').toUpperCase();
+          return {
+            ...userRecord.user,
+            role: metaRole,
+            user_metadata: {
+              ...userRecord.user.user_metadata,
+              role: metaRole,
+            },
+          } as any;
+        }
       } catch {
         // Continue
       }
@@ -91,8 +103,8 @@ export async function getAuthUserFromRequest(request: {
         return {
           id: staff.user_id,
           phone: staff.phone_number || '+919876543210',
-          role: staff.role || 'ADMIN',
-          user_metadata: { role: staff.role || 'ADMIN' },
+          role: (staff.role || 'STAFF').toUpperCase(),
+          user_metadata: { role: (staff.role || 'STAFF').toUpperCase() },
         } as any;
       }
       // Check customers
@@ -105,13 +117,24 @@ export async function getAuthUserFromRequest(request: {
         return {
           id: cust.user_id || cust.id,
           phone: cust.phone_number,
+          role: 'CUSTOMER',
           user_metadata: { name: cust.name, role: 'CUSTOMER' },
         } as any;
       }
     } else {
       try {
         const { data: userData } = await supabase.auth.getUser(token);
-        if (userData?.user) return userData.user;
+        if (userData?.user) {
+          const metaRole = (userData.user.user_metadata?.role || (userData.user as any).role || 'STAFF').toUpperCase();
+          return {
+            ...userData.user,
+            role: metaRole,
+            user_metadata: {
+              ...userData.user.user_metadata,
+              role: metaRole,
+            },
+          } as any;
+        }
       } catch {
         // Continue
       }
@@ -130,7 +153,17 @@ export async function getAuthUserFromRequest(request: {
       }
       try {
         const { data: directUser } = await supabase.auth.admin.getUserById(token);
-        if (directUser?.user) return directUser.user;
+        if (directUser?.user) {
+          const metaRole = (directUser.user.user_metadata?.role || (directUser.user as any).role || 'STAFF').toUpperCase();
+          return {
+            ...directUser.user,
+            role: metaRole,
+            user_metadata: {
+              ...directUser.user.user_metadata,
+              role: metaRole,
+            },
+          } as any;
+        }
       } catch {
         // Continue
       }

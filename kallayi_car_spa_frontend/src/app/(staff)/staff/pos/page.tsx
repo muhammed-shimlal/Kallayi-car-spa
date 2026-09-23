@@ -6,15 +6,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { 
   Loader2, LogOut, Search, User, Phone, Sparkles, AlertCircle, X, Check, 
-  ArrowLeft, Printer, Share2, CheckCircle2, CreditCard, ShieldCheck, Tag, Layers, RefreshCw, IndianRupee,
-  QrCode, MessageCircle, ExternalLink
+  ArrowLeft, ArrowRight, CheckCircle2, CreditCard, ShieldCheck, Tag, Layers, RefreshCw, IndianRupee,
+  LayoutDashboard
 } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
 import { isValidIndianMobile } from "@/lib/phone";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import api from "@/lib/api";
+import api, { createExpressWalkinBooking, ExpressWalkinPayload } from "@/lib/api";
 import { UnifiedSearchResult } from "@/types/admin";
 
 import { SmartVehicleSelector } from "@/components/ui/smart-vehicle-selector";
@@ -118,6 +117,32 @@ export default function ExpressPOSPage() {
 
   // Post-Intake Confirmation Modal State
   const [completedReceipt, setCompletedReceipt] = useState<any | null>(null);
+
+  // Authenticated Staff User Session State
+  const [staffUser, setStaffUser] = useState<any>(null);
+
+  useEffect(() => {
+    const loadStaffProfile = async () => {
+      try {
+        const cached = localStorage.getItem("user");
+        if (cached) {
+          try {
+            setStaffUser(JSON.parse(cached));
+          } catch {
+            // ignore
+          }
+        }
+        const res = await api.get("/auth/me").catch(() => null);
+        if (res?.data?.user) {
+          setStaffUser(res.data.user);
+          localStorage.setItem("user", JSON.stringify(res.data.user));
+        }
+      } catch (err) {
+        console.warn("[POS] Could not load staff profile:", err);
+      }
+    };
+    loadStaffProfile();
+  }, []);
 
   // UNIFIED LIVE SEARCH STATE
   const [universalSearchQuery, setUniversalSearchQuery] = useState("");
@@ -281,8 +306,8 @@ export default function ExpressPOSPage() {
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await api.get(`/customers/search?q=${encodeURIComponent(q)}`);
-        const list = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.results) ? res.data.results : []);
+        const res = await api.get(`/search/universal?q=${encodeURIComponent(q)}`);
+        const list = Array.isArray(res.data?.results) ? res.data.results : (Array.isArray(res.data) ? res.data : []);
         setSearchResults(list);
         setShowSearchDropdown(list.length > 0);
       } catch (err) {
@@ -347,7 +372,7 @@ export default function ExpressPOSPage() {
 
     const timer = setTimeout(async () => {
       try {
-        const res = await api.get(`/customer-vehicles/lookup?plate=${encodeURIComponent(plateNumber)}`);
+        const res = await api.get(`/search/universal?plate=${encodeURIComponent(plateNumber)}`);
         if (res.data) {
           applyVehicleToForm(res.data);
           toast.success(`Found Vehicle: ${res.data.make || ''} ${res.data.model || ''}`);
@@ -404,49 +429,55 @@ export default function ExpressPOSPage() {
     try {
       const realMake = data.make === "Other" ? (customMake || "Custom Make") : (data.make || "Standard");
       const realModel = (data.make === "Other" || data.model === "Other") ? (customModel || "Custom Model") : (data.model || "Vehicle");
-      const realType = data.vehicle_type === "Other" ? (customType || category) : (data.vehicle_type || category);
+      const rawSelectedType = data.vehicle_type === "Other" ? customType : data.vehicle_type;
+      const realType =
+        rawSelectedType && rawSelectedType.trim()
+          ? rawSelectedType.trim()
+          : (category || (selectedPackage?.vehicle_type && selectedPackage.vehicle_type !== "ALL" ? selectedPackage.vehicle_type : "Hatchback"));
       const realColor = data.color === "Other" ? (customColor || "Other") : (data.color || "White");
 
       const cleanPhone = (data.phone || (data as any).phoneNumber || (data as any).phone_number || "").trim();
-      const cleanPlate = ((data as any).licensePlate || data.plate_number || (data as any).vehicle_number || "").trim().toUpperCase();
+      const cleanPlate = ((data as any).licensePlate || data.plate_number || (data as any).vehicle_number || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9\s\-]/g, '');
 
-      const finalPriceNumber = showAdvanceDiscount && !isNaN(finalAgreedPrice) && finalAgreedPrice > 0 ? finalAgreedPrice : baseCatalogPrice;
-      const discountAmt = showAdvanceDiscount ? calculatedDiscountAmt : 0;
+      const finalPriceNumber = showAdvanceDiscount && !isNaN(finalAgreedPrice) && finalAgreedPrice > 0 ? Number(finalAgreedPrice) : Number(baseCatalogPrice);
+      const discountAmt = showAdvanceDiscount ? Number(calculatedDiscountAmt) : 0;
       const discountPct = showAdvanceDiscount ? parseFloat(calculatedDiscountPct) : 0;
-      const discountRsn = showAdvanceDiscount && discountReason.trim() ? discountReason.trim() : undefined;
+      const discountRsn = showAdvanceDiscount && discountReason.trim() ? discountReason.trim() : "";
 
-      const payload = {
-        ...data,
-        customer_name: data.customer_name?.trim() || "Walk-In Customer",
-        name: data.customer_name?.trim() || "Walk-In Customer",
-        phone_number: cleanPhone,
-        phone: cleanPhone,
-        customer_phone: cleanPhone,
-        license_plate: cleanPlate,
+      const currentStaffId = staffUser?.id || staffUser?.user_id || undefined;
+      const currentBranchId = staffUser?.branch_id || staffUser?.branchId || 1;
+
+      const payload: ExpressWalkinPayload = {
         plate_number: cleanPlate,
-        vehicle_number: cleanPlate,
-        brand: realMake,
+        customer_phone: cleanPhone,
+        customer_name: data.customer_name?.trim() || "Walk-In Customer",
+        package_id: Number(data.package_id || selectedPackage?.id),
         make: realMake,
         model: realModel,
         vehicle_type: realType,
         color: realColor,
-        service_package_id: data.package_id || selectedPackage?.id,
-        package_id: data.package_id || selectedPackage?.id,
-        bay_assignment: "AUTO",
-        status: "WAITING",
+        bay_assignment: "Bay 1",
         notes: (data as any).notes || "",
-        discount_reason: discountRsn || "",
-        discount_amount: Number(discountAmt) || 0,
+        discount_reason: discountRsn,
+        discount_amount: discountAmt,
         discount_percentage: discountPct,
-        base_price: baseCatalogPrice,
-        final_price: finalPriceNumber,
-        customer_id: selectedCustomerId && selectedCustomerId !== "undefined" ? selectedCustomerId : undefined,
-        vehicle_id: selectedVehicleId && !isNaN(Number(selectedVehicleId)) ? Number(selectedVehicleId) : undefined,
+        base_price: Number(baseCatalogPrice || 0),
+        final_price: Number(finalPriceNumber),
+        advance_amount: 0,
+        customer_id: selectedCustomerId && selectedCustomerId !== "undefined" ? selectedCustomerId : null,
+        vehicle_id: selectedVehicleId && !isNaN(Number(selectedVehicleId)) ? Number(selectedVehicleId) : null,
+        staff_id: currentStaffId,
+        technician_id: currentStaffId,
+        branch_id: currentBranchId,
+        payment_method: "CASH",
         is_paid: false,
+        time_slot: new Date().toISOString(),
       };
 
-      const res = await api.post("/bookings/express-walkin", payload);
-      const bookingData = res.data;
+      const bookingData = await createExpressWalkinBooking(payload);
 
       const resolvedBookingId = bookingData?.booking_id || bookingData?.booking?.id || bookingData?.data?.id || "NEW";
 
@@ -465,8 +496,8 @@ export default function ExpressPOSPage() {
         vehicle_make_model: `${realMake} ${realModel}`,
         vehicle_type: realType,
         service_name: selectedPackage?.name || "Walk-In Wash",
-        base_price: baseCatalogPrice,
-        final_price: finalPriceNumber,
+        base_price: Number(baseCatalogPrice || 0),
+        final_price: Number(finalPriceNumber),
         discount_amount: discountAmt,
         discount_percentage: discountPct,
         discount_reason: discountRsn,
@@ -474,8 +505,22 @@ export default function ExpressPOSPage() {
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       });
     } catch (error: any) {
-      console.error('Validation error:', error.response?.data || error);
-      toast.error(error.response?.data?.error || "Error processing walk-in.");
+      const errResponse = error.response?.data;
+      const detailsMsg = errResponse?.details
+        ? Object.entries(errResponse.details)
+            .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+            .join(' | ')
+        : null;
+
+      const displayMessage =
+        errResponse?.error ||
+        detailsMsg ||
+        errResponse?.message ||
+        error.message ||
+        "Error processing walk-in.";
+
+      console.error('Validation error:', JSON.stringify(errResponse || error, null, 2));
+      toast.error(displayMessage);
     }
   };
 
@@ -1040,174 +1085,36 @@ export default function ExpressPOSPage() {
                 </div>
               </div>
 
-              {/* Customer Live Tracking QR Code */}
-              {(() => {
-                const trackingUrl = typeof window !== 'undefined'
-                  ? `${window.location.origin}/track/${completedReceipt.booking_id}`
-                  : `http://localhost:3000/track/${completedReceipt.booking_id}`;
+              {/* Streamlined Staff Navigation Actions */}
+              <div className="space-y-3 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/staff/queue')}
+                    className="flex items-center justify-center gap-2.5 py-4 px-4 rounded-2xl bg-[#01FFFF] hover:bg-[#01FFFF]/90 text-black font-syncopate font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_25px_rgba(1,255,255,0.35)] hover:shadow-[0_0_35px_rgba(1,255,255,0.5)] active:scale-98 cursor-pointer"
+                  >
+                    <Layers className="w-4 h-4" />
+                    <span>Go to Live Queue</span>
+                  </button>
 
-                const cleanPhoneDigits = (completedReceipt.phone || '').replace(/\D/g, '');
-                const waPhone = cleanPhoneDigits.length === 10 ? `91${cleanPhoneDigits}` : cleanPhoneDigits;
-                const waText = encodeURIComponent(
-                  `Hello ${completedReceipt.customer_name}! 🚗\nYour vehicle *${completedReceipt.plate_number}* is now in queue for *${completedReceipt.service_name}* at Kallayi Car Spa.\n\nTrack real-time wash progress live on your mobile (No login needed):\n${trackingUrl}`
-                );
-                const waUrl = waPhone.length >= 10 ? `https://wa.me/${waPhone}?text=${waText}` : null;
+                  <button
+                    type="button"
+                    onClick={handleNextVehicle}
+                    className="flex items-center justify-center gap-2.5 py-4 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-syncopate font-bold text-xs uppercase tracking-wider transition-all border border-white/15 hover:border-white/30 active:scale-98 cursor-pointer"
+                  >
+                    <RefreshCw className="w-4 h-4 text-[#01FFFF]" />
+                    <span>Add Another Vehicle</span>
+                  </button>
+                </div>
 
-                const handlePrintSlip = () => {
-                  const printWindow = window.open('', '_blank', 'width=380,height=600');
-                  if (!printWindow) {
-                    window.print();
-                    return;
-                  }
-                  printWindow.document.write(`
-                    <!DOCTYPE html>
-                    <html>
-                      <head>
-                        <title>Job Token #${completedReceipt.booking_id} - Kallayi Car Spa</title>
-                        <style>
-                          @page { size: 80mm auto; margin: 4mm; }
-                          body { font-family: monospace; font-size: 12px; margin: 0; padding: 12px; color: #000; text-align: center; }
-                          .header { font-size: 16px; font-weight: 900; margin-bottom: 2px; text-transform: uppercase; }
-                          .sub { font-size: 9px; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-                          .divider { border-top: 1px dashed #000; margin: 8px 0; }
-                          .token { font-size: 13px; font-weight: bold; margin: 4px 0; }
-                          .plate { font-size: 24px; font-weight: 900; letter-spacing: 2px; margin: 6px 0; border: 2px solid #000; padding: 4px 0; }
-                          .row { display: flex; justify-content: space-between; font-size: 11px; margin: 3px 0; }
-                          .qr-box { margin: 12px auto; display: flex; justify-content: center; }
-                          .footer { font-size: 9px; color: #444; margin-top: 8px; }
-                        </style>
-                      </head>
-                      <body>
-                        <div class="header">KALLAYI CAR SPA</div>
-                        <div class="sub">Auto Care & Detail Lounge</div>
-                        <div class="divider"></div>
-                        <div class="token">JOB TOKEN: #${completedReceipt.booking_id}</div>
-                        <div class="plate">${completedReceipt.plate_number}</div>
-                        <div style="font-weight: bold; font-size: 12px;">${completedReceipt.vehicle_make_model} (${completedReceipt.vehicle_type})</div>
-                        <div class="divider"></div>
-                        <div class="row"><span>Service:</span><span><strong>${completedReceipt.service_name}</strong></span></div>
-                        <div class="row"><span>Bay:</span><span><strong>${completedReceipt.bay_assignment || 'Bay 1'}</strong></span></div>
-                        <div class="row"><span>Customer:</span><span>${completedReceipt.customer_name}</span></div>
-                        <div class="row"><span>Time:</span><span>${completedReceipt.timestamp}</span></div>
-                        <div class="divider"></div>
-                        <div style="font-size: 10px; font-weight: bold; margin-bottom: 6px;">SCAN TO TRACK LIVE WASH PROGRESS</div>
-                        <div class="qr-box" id="qrcode"></div>
-                        <div class="footer">No login required • Real-time wash updates</div>
-                        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-                        <script>
-                          new QRCode(document.getElementById("qrcode"), {
-                            text: "${trackingUrl}",
-                            width: 130,
-                            height: 130
-                          });
-                          setTimeout(() => { window.print(); window.close(); }, 500);
-                        </script>
-                      </body>
-                    </html>
-                  `);
-                  printWindow.document.close();
-                };
-
-                return (
-                  <div className="space-y-4">
-                    {/* QR Code Container */}
-                    <div className="p-4 rounded-2xl bg-gradient-to-b from-[#101217] to-[#07080a] border border-[#01FFFF]/40 flex flex-col items-center justify-center text-center space-y-3 shadow-[0_0_30px_rgba(1,255,255,0.15)]">
-                      <div className="text-[10px] uppercase font-bold tracking-[0.2em] text-[#01FFFF] flex items-center gap-1.5">
-                        <QrCode className="w-3.5 h-3.5 text-[#01FFFF]" />
-                        <span>Customer Live Tracking QR Code</span>
-                      </div>
-                      
-                      <div className="p-3 bg-white rounded-2xl shadow-lg border-2 border-white flex items-center justify-center">
-                        <QRCodeSVG
-                          value={trackingUrl}
-                          size={140}
-                          level="M"
-                          includeMargin={false}
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-xs text-white font-bold tracking-wide">
-                          Customer Scans with Phone Camera
-                        </p>
-                        <p className="text-[11px] text-zinc-400 font-mono">
-                          Track wash progress live on mobile • No login required
-                        </p>
-                        <a 
-                          href={trackingUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] text-[#01FFFF] hover:underline font-mono font-bold mt-1"
-                        >
-                          <span>{trackingUrl}</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons: Print Slip & WhatsApp */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <button
-                        type="button"
-                        onClick={handlePrintSlip}
-                        className="py-3 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer shadow-sm hover:border-white/20 active:scale-98"
-                      >
-                        <Printer className="w-4 h-4 text-[#01FFFF]" />
-                        <span>Print Token Slip</span>
-                      </button>
-
-                      {waUrl ? (
-                        <a
-                          href={waUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="py-3 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-emerald-500/30 transition-all cursor-pointer shadow-sm active:scale-98"
-                        >
-                          <MessageCircle className="w-4 h-4 text-emerald-400" />
-                          <span>WhatsApp Link</span>
-                        </a>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled
-                          className="py-3 px-3 rounded-xl bg-white/5 text-zinc-600 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-white/5 cursor-not-allowed"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                          <span>No Phone for WA</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Navigation Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => router.push('/staff/queue')}
-                  className="w-full sm:w-1/2 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#01FFFF] hover:bg-[#01FFFF]/90 text-black font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(1,255,255,0.4)] cursor-pointer"
-                >
-                  <Layers className="w-4 h-4" />
-                  Go to Live Queue
-                </button>
-                <button
-                  type="button"
-                  onClick={handleNextVehicle}
-                  className="w-full sm:w-1/2 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-wider transition-all border border-white/10 cursor-pointer"
-                >
-                  <RefreshCw className="w-4 h-4 text-[#01FFFF]" />
-                  Add Another Vehicle
-                </button>
-              </div>
-
-              <div className="text-center">
                 <button
                   type="button"
                   onClick={() => router.push("/staff/dashboard")}
-                  className="text-xs text-zinc-400 hover:text-white font-bold underline underline-offset-4 transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] text-zinc-300 hover:text-white font-bold text-xs tracking-wide transition-all border border-white/10 hover:border-white/20 cursor-pointer"
                 >
-                  View in Staff Dashboard →
+                  <LayoutDashboard className="w-4 h-4 text-[#01FFFF]" />
+                  <span>View in Staff Dashboard</span>
+                  <ArrowRight className="w-3.5 h-3.5 ml-0.5 text-zinc-500" />
                 </button>
               </div>
             </div>

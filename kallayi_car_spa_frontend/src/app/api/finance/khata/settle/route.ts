@@ -5,15 +5,33 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import { calculateKhataBalance } from '@/lib/logic/finance';
 import { WhatsAppService } from '@/lib/services/whatsapp';
+import { normalizePhone } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function POST(request: NextRequest) {
   try {
+    // 1. Verify caller has staff / admin authorization
+    const user = await getAuthUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Staff or Admin authentication required.' },
+        { status: 401 }
+      );
+    }
+
+    const userRole = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+    if (userRole === 'CUSTOMER') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Customers cannot self-settle credit balances.' },
+        { status: 403 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 
@@ -59,17 +77,42 @@ export async function POST(request: NextRequest) {
       numericAmount
     );
 
-    // 3. Insert Settlement record into Khata Ledgers
-    const { data: newLedger, error: ledgerErr } = await supabase
+    // 3. Insert Settlement record into Khata Ledgers with strict timestamps & audit fields
+    const nowIso = new Date().toISOString();
+    const sanitizedPhone = customer.phone_number ? normalizePhone(customer.phone_number) : null;
+
+    const settlePayload: Record<string, any> = {
+      customer_id: customer.id,
+      amount: numericAmount,
+      transaction_type: 'SETTLEMENT',
+      description,
+      transaction_date: nowIso,
+      status: 'SETTLED',
+      settled_at: nowIso,
+      customer_phone: sanitizedPhone,
+    };
+
+    let { data: newLedger, error: ledgerErr } = await supabase
       .from('khata_ledgers')
-      .insert({
-        customer_id: customer.id,
-        amount: numericAmount,
-        transaction_type: 'SETTLEMENT',
-        description,
-      })
+      .insert(settlePayload)
       .select('*')
       .single();
+
+    if (ledgerErr && (ledgerErr.code === 'PGRST204' || ledgerErr.code === '42703')) {
+      const basicPayload = {
+        customer_id: customer.id,
+        amount: numericAmount,
+        transaction_type: 'SETTLEMENT' as const,
+        description,
+      };
+      const retryRes = await supabase
+        .from('khata_ledgers')
+        .insert(basicPayload)
+        .select('*')
+        .single();
+      newLedger = retryRes.data;
+      ledgerErr = retryRes.error;
+    }
 
     if (ledgerErr || !newLedger) {
       console.error('[Khata Settle Insert Error]:', ledgerErr);
@@ -86,6 +129,39 @@ export async function POST(request: NextRequest) {
         outstanding_balance: balanceResult.newBalance,
       })
       .eq('id', customer.id);
+
+    // 5. Update status of prior pending charge ledgers for this customer
+    try {
+      if (balanceResult.newBalance <= 0) {
+        await supabase
+          .from('khata_ledgers')
+          .update({
+            status: 'SETTLED',
+            settled_at: nowIso,
+          })
+          .eq('customer_id', customer.id)
+          .in('status', ['PENDING', 'PARTIALLY_PAID']);
+      } else {
+        // Find oldest pending charge and mark partially paid
+        const { data: oldestPending } = await supabase
+          .from('khata_ledgers')
+          .select('id')
+          .eq('customer_id', customer.id)
+          .eq('status', 'PENDING')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (oldestPending?.id) {
+          await supabase
+            .from('khata_ledgers')
+            .update({ status: 'PARTIALLY_PAID' })
+            .eq('id', oldestPending.id);
+        }
+      }
+    } catch {
+      // Non-blocking status sync
+    }
 
     // 5. WhatsApp Confirmation (Non-blocking safe execution)
     try {

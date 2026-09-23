@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { X, Copy, Check, QrCode, ExternalLink, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { fetchBusinessSettings } from '@/lib/api';
 
 export interface UpiQrModalProps {
   isOpen: boolean;
@@ -32,16 +33,29 @@ export function UpiQrModal({
 }: UpiQrModalProps) {
   const [copiedId, setCopiedId] = useState(false);
   const [timeLeft, setTimeLeft] = useState(300); // 5 min session timer
+  const [resolvedUpiId, setResolvedUpiId] = useState<string>((propUpiId || process.env.NEXT_PUBLIC_UPI_ID || '').trim());
+  const [resolvedShopName, setResolvedShopName] = useState<string>((propShopName || process.env.NEXT_PUBLIC_MERCHANT_NAME || 'Kallayi Car Spa').trim());
+
+  useEffect(() => {
+    if (!propUpiId) {
+      fetchBusinessSettings()
+        .then((s) => {
+          if (s?.upi_id) setResolvedUpiId(s.upi_id.trim());
+          if (s?.business_name || s?.merchant_name) setResolvedShopName((s.business_name || s.merchant_name).trim());
+        })
+        .catch(() => {});
+    }
+  }, [propUpiId]);
 
   const handleConfirm = onConfirm || onPaymentConfirmed;
 
-  // Strictly resolve UPI ID and Merchant Name (NO hardcoded fallback IDs)
-  const upiId = (propUpiId || process.env.NEXT_PUBLIC_UPI_ID || "").trim();
-  const shopName = (propShopName || process.env.NEXT_PUBLIC_MERCHANT_NAME || "Kallayi Car Spa").trim();
+  // Strictly resolve UPI ID and Merchant Name
+  const upiId = resolvedUpiId;
+  const shopName = resolvedShopName;
 
   // Build standard UPI intent string
   const formattedAmount = Number(amount || 0).toFixed(2);
-  const note = bookingId ? `Kallayi Wash #${bookingId}` : `Kallayi Car Spa Payment`;
+  const note = bookingId ? `Wash Bill #${bookingId}` : `Kallayi Car Spa Payment`;
   const upiUrl = upiId ? `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(shopName)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(note)}` : "";
 
   useEffect(() => {
@@ -75,14 +89,14 @@ export function UpiQrModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-[fadeIn_0.2s_ease-out]">
-      <div className="bg-[#0c0d10] border border-white/10 rounded-[2.5rem] w-full max-w-md shadow-[0_0_90px_rgba(1,255,255,0.18)] flex flex-col max-h-[90vh] sm:max-h-[95vh] overflow-y-auto scrollbar-hide [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden relative my-auto">
+    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-2xl flex items-center justify-center p-3 sm:p-6 overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+      <div className="bg-[#0c0d10] border border-white/10 rounded-[2rem] sm:rounded-[2.5rem] w-full max-w-md shadow-[0_0_90px_rgba(1,255,255,0.18)] flex flex-col max-h-[90dvh] overflow-hidden relative my-auto">
         
         {/* Ambient Top Glow Line */}
         <div className="h-1.5 w-full bg-gradient-to-r from-[#01FFFF] via-[#FF2A6D] to-[#01FFFF] shrink-0" />
 
         {/* Header */}
-        <div className="p-6 border-b border-white/10 flex justify-between items-center bg-black/40 shrink-0">
+        <div className="p-4 sm:p-5 border-b border-white/10 flex justify-between items-center bg-black/40 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-[#01FFFF]/10 border border-[#01FFFF]/30 text-[#01FFFF]">
               <QrCode className="w-5 h-5" />
@@ -95,20 +109,20 @@ export function UpiQrModal({
 
           <button
             onClick={onClose}
-            className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition"
+            className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
             aria-label="Close Modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Body Container */}
-        <div className="p-6 flex flex-col items-center justify-center text-center space-y-5 bg-gradient-to-b from-[#12141a]/60 to-[#08090c] shrink-0">
+        {/* Scrollable Body Container */}
+        <div className="p-4 sm:p-6 flex-1 overflow-y-auto flex flex-col items-center justify-start text-center space-y-4 sm:space-y-5 bg-gradient-to-b from-[#12141a]/60 to-[#08090c] overscroll-contain">
           
           {/* Amount Badge */}
           <div className="bg-black/60 border border-white/10 rounded-2xl px-6 py-3 shadow-inner text-center w-full">
             <span className="text-[10px] text-zinc-400 font-mono uppercase tracking-[0.2em] block mb-0.5">Total Payable Amount</span>
-            <div className="text-3xl font-syncopate font-black text-[#01FFFF] tracking-tight">
+            <div className="text-2xl sm:text-3xl font-syncopate font-black text-[#01FFFF] tracking-tight">
               ₹{formattedAmount}
             </div>
             {customerName && (
@@ -118,10 +132,10 @@ export function UpiQrModal({
 
           {/* QR Code Card or Missing Env Warning */}
           {upiId ? (
-            <div className="relative p-5 bg-white rounded-3xl shadow-[0_0_40px_rgba(1,255,255,0.25)] border-4 border-[#01FFFF] transition-transform hover:scale-[1.02]">
+            <div className="relative p-3.5 bg-white rounded-2xl shadow-[0_0_40px_rgba(1,255,255,0.25)] border-4 border-[#01FFFF] transition-transform hover:scale-[1.02]">
               <QRCodeSVG
                 value={upiUrl}
-                size={210}
+                size={165}
                 level="H"
                 bgColor="#ffffff"
                 fgColor="#0a0a0d"
@@ -129,8 +143,8 @@ export function UpiQrModal({
                   src: logoUrl,
                   x: undefined,
                   y: undefined,
-                  height: 44,
-                  width: 44,
+                  height: 36,
+                  width: 36,
                   excavate: true,
                 }}
               />
@@ -169,7 +183,7 @@ export function UpiQrModal({
               <button
                 type="button"
                 onClick={handleCopyUpiId}
-                className="text-[10px] text-[#01FFFF] hover:text-white flex items-center gap-1 font-bold uppercase transition"
+                className="text-[10px] text-[#01FFFF] hover:text-white flex items-center gap-1 font-bold uppercase transition min-h-[36px] cursor-pointer"
               >
                 {copiedId ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                 {copiedId ? 'Copied!' : 'Copy ID'}
@@ -181,20 +195,20 @@ export function UpiQrModal({
           </div>
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-6 border-t border-white/10 bg-black/60 flex flex-col gap-3 shrink-0">
+        {/* Footer Actions - Sticky Bottom */}
+        <div className="p-4 sm:p-5 border-t border-white/10 bg-[#0c0d10]/95 backdrop-blur-md flex flex-col gap-2.5 shrink-0 sticky bottom-0 z-10">
           <a
             href={upiUrl}
-            className="w-full py-3 bg-white/10 border border-white/20 hover:border-[#01FFFF] hover:bg-[#01FFFF]/10 text-white font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 active:scale-95 text-center"
+            className="w-full min-h-[44px] py-2.5 bg-white/10 border border-white/20 hover:border-[#01FFFF] hover:bg-[#01FFFF]/10 text-white font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 active:scale-95 text-center"
           >
             <ExternalLink className="w-4 h-4 text-[#01FFFF]" /> Open in Mobile UPI App
           </a>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <button
               type="button"
               onClick={onClose}
-              className="w-1/3 py-3.5 bg-white/5 border border-white/10 text-zinc-300 hover:text-white font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl transition hover:bg-white/10 active:scale-95"
+              className="w-1/3 min-h-[44px] py-3 bg-white/5 border border-white/10 text-zinc-300 hover:text-white font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl transition hover:bg-white/10 active:scale-95 cursor-pointer"
             >
               Cancel
             </button>
@@ -207,7 +221,7 @@ export function UpiQrModal({
                 }
                 onClose();
               }}
-              className="flex-1 py-3.5 bg-[#00FF9D] text-slate-950 font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-white transition shadow-[0_0_25px_rgba(0,255,157,0.4)] flex items-center justify-center gap-2 active:scale-95"
+              className="flex-1 min-h-[44px] py-3 bg-[#00FF9D] text-slate-950 font-syncopate font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-white transition shadow-[0_0_25px_rgba(0,255,157,0.4)] flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" /> Confirm Payment Received
             </button>

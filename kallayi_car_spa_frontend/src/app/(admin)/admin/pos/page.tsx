@@ -289,7 +289,7 @@ export default function AdminExpressPOSPage() {
       setIsSearching(true);
       try {
         const token = typeof window !== 'undefined' ? localStorage.getItem("auth_token") : null;
-        const res = await fetch(`/api/customer-vehicles/lookup?q=${encodeURIComponent(q)}`, {
+        const res = await fetch(`/api/search/universal?q=${encodeURIComponent(q)}`, {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
         if (res.ok) {
@@ -359,7 +359,7 @@ export default function AdminExpressPOSPage() {
     const timer = setTimeout(async () => {
       try {
         const token = localStorage.getItem("auth_token");
-        const res = await fetch(`/api/customer-vehicles/lookup?plate=${encodeURIComponent(plateNumber.trim())}`, {
+        const res = await fetch(`/api/search/universal?plate=${encodeURIComponent(plateNumber.trim())}`, {
           headers: token ? { Authorization: `Token ${token}` } : {},
         });
 

@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import { calculateKhataBalance } from '@/lib/logic/finance';
 import { uploadFileToStorage } from '@/lib/storage';
 import { normalizePhone, getPhoneVariants } from '@/lib/phone';
@@ -126,6 +126,23 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // 1. Verify caller has staff / admin authorization
+    const user = await getAuthUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Staff or Admin authentication required.' },
+        { status: 401 }
+      );
+    }
+
+    const userRole = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+    if (userRole === 'CUSTOMER') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Customers cannot create credit ledger entries.' },
+        { status: 403 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
 
     let payload: any = {};
@@ -267,19 +284,53 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Insert into Khata Ledger
-    const { data: newLedger, error: ledgerErr } = await supabase
+    // 4. Insert into Khata Ledger with strict timestamps and due dates
+    const nowIso = new Date().toISOString();
+    const defaultDueDateIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const canonicalPhone = customer.phone_number ? normalizePhone(customer.phone_number) : null;
+    const bookingIdNum = related_booking_id ? parseInt(String(related_booking_id), 10) : null;
+    const invoiceIdNum = payload.invoice_id ? parseInt(String(payload.invoice_id), 10) : null;
+
+    const khataPayload: Record<string, any> = {
+      customer_id: customer.id,
+      amount: numericAmount,
+      transaction_type: 'CHARGE',
+      description: description || 'Manual Khata Entry',
+      related_booking_id: bookingIdNum,
+      booking_id: bookingIdNum,
+      invoice_id: invoiceIdNum,
+      number_plate_image: finalProofUrl,
+      transaction_date: nowIso,
+      due_date: payload.due_date ? new Date(payload.due_date).toISOString() : defaultDueDateIso,
+      status: 'PENDING',
+      reminder_count: 0,
+      customer_phone: canonicalPhone,
+    };
+
+    let { data: newLedger, error: ledgerErr } = await supabase
       .from('khata_ledgers')
-      .insert({
-        customer_id: customer.id,
-        amount: numericAmount,
-        transaction_type: 'CHARGE',
-        description: description || 'Manual Khata Entry',
-        related_booking_id: related_booking_id ? parseInt(String(related_booking_id), 10) : null,
-        number_plate_image: finalProofUrl,
-      })
+      .insert(khataPayload)
       .select('*')
       .single();
+
+    // Fallback gracefully if schema not yet reloaded on live DB
+    if (ledgerErr && (ledgerErr.code === 'PGRST204' || ledgerErr.code === '42703')) {
+      const basicPayload = {
+        customer_id: customer.id,
+        amount: numericAmount,
+        transaction_type: 'CHARGE' as const,
+        description: description || 'Manual Khata Entry',
+        related_booking_id: bookingIdNum,
+        number_plate_image: finalProofUrl,
+      };
+      const retryRes = await supabase
+        .from('khata_ledgers')
+        .insert(basicPayload)
+        .select('*')
+        .single();
+      newLedger = retryRes.data;
+      ledgerErr = retryRes.error;
+    }
 
     if (ledgerErr || !newLedger) {
       console.error('[Khata Ledger Error]:', ledgerErr);

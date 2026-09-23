@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -300,6 +300,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
+    const user = await getAuthUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Authentication required.' },
+        { status: 401 }
+      );
+    }
+    const role = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+    if (role !== 'ADMIN' && role !== 'MANAGER') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Only Admin or Manager can execute payroll payouts.' },
+        { status: 403 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     const { id } = await context.params;
     const staffProfile = await resolveStaffProfile(supabase, id);

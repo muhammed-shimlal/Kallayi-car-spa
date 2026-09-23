@@ -6,6 +6,9 @@
 import { NextResponse } from 'next/server';
 import { GET as getOverview } from '@/app/api/dashboard/overview/route';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET() {
   const res = await getOverview();
   const json = await res.json();

@@ -5,11 +5,29 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import { roundToTwoDecimals } from '@/lib/logic/booking';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   try {
+    const user = await getAuthUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Authentication required.' },
+        { status: 401 }
+      );
+    }
+    const role = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+    if (role === 'CUSTOMER') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Insufficient privileges.' },
+        { status: 403 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
 
@@ -118,6 +136,21 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getAuthUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Authentication required.' },
+        { status: 401 }
+      );
+    }
+    const role = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+    if (role === 'CUSTOMER') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Customers cannot close daily registers.' },
+        { status: 403 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 

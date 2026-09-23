@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import {
   deriveInvoicePricing,
   validateSplitPayment,
@@ -95,6 +95,21 @@ async function resolveStaffProfile(supabase: any, paramId: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await getAuthUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Staff or Admin authentication required.' },
+        { status: 401 }
+      );
+    }
+    const role = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+    if (role === 'CUSTOMER') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Customers cannot execute POS counter checkout.' },
+        { status: 403 }
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     let payload: any = {};
     let proofFile: File | Blob | null = null;
@@ -378,15 +393,50 @@ export async function POST(request: NextRequest) {
       const targetPlate = plate_number || vehicle?.plate_number || (rawBooking as any).plate_number || 'Vehicle';
       const ledgerDescription = description || notes || `POS Credit for Booking #${bookingIdNum} (${targetPlate})`;
 
-      // Record in double-entry khata ledger
-      const { data: newLedger, error: khataInsertErr } = await supabase.from('khata_ledgers').insert({
+      const nowIso = new Date().toISOString();
+      const defaultDueDateIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const sanitizedPhone = customer.phone_number ? normalizePhone(customer.phone_number) : null;
+
+      // Record in double-entry khata ledger with strict timestamps, due date, status and audit fields
+      const khataPayload: Record<string, any> = {
         customer_id: customer.id,
         amount: splitKhataNum,
         transaction_type: 'CHARGE',
         description: ledgerDescription,
         related_booking_id: bookingIdNum,
+        booking_id: bookingIdNum,
         number_plate_image: proofUrl,
-      }).select('*').single();
+        transaction_date: nowIso,
+        due_date: defaultDueDateIso,
+        status: 'PENDING',
+        reminder_count: 0,
+        customer_phone: sanitizedPhone,
+      };
+
+      let { data: newLedger, error: khataInsertErr } = await supabase
+        .from('khata_ledgers')
+        .insert(khataPayload)
+        .select('*')
+        .single();
+
+      // Graceful fallback if new schema columns are not yet present in live cache
+      if (khataInsertErr && (khataInsertErr.code === 'PGRST204' || khataInsertErr.code === '42703')) {
+        const basicPayload = {
+          customer_id: customer.id,
+          amount: splitKhataNum,
+          transaction_type: 'CHARGE' as const,
+          description: ledgerDescription,
+          related_booking_id: bookingIdNum,
+          number_plate_image: proofUrl,
+        };
+        const retryRes = await supabase
+          .from('khata_ledgers')
+          .insert(basicPayload)
+          .select('*')
+          .single();
+        newLedger = retryRes.data;
+        khataInsertErr = retryRes.error;
+      }
 
       if (khataInsertErr) {
         console.error('[POS Khata Error]:', khataInsertErr);
@@ -551,6 +601,18 @@ export async function POST(request: NextRequest) {
         );
       }
       invoiceResult = newInvoice;
+    }
+
+    // Link invoice_id back to recorded khata ledger entry if credit was involved
+    if (recordedKhataLedger?.id && invoiceResult?.id) {
+      try {
+        await supabase
+          .from('khata_ledgers')
+          .update({ invoice_id: invoiceResult.id })
+          .eq('id', recordedKhataLedger.id);
+      } catch (linkErr: any) {
+        console.warn('[POS Khata Invoice Link Warning]:', linkErr?.message);
+      }
     }
 
     // 8. Explicitly mark booking as COMPLETED, set end_time, and sync final price

@@ -85,6 +85,20 @@ export async function GET(request: NextRequest) {
     let totalRevenueToday = 0;
     let laborCostCommission = 0;
 
+    // Fallback batch resolution for any bookings where vehicle is null
+    const missingVehicleIds = bookingsList
+      .filter((b: any) => !b.vehicle && b.vehicle_id)
+      .map((b: any) => b.vehicle_id);
+
+    const vehicleFallbackMap = new Map();
+    if (missingVehicleIds.length > 0) {
+      const { data: vFallback } = await supabase
+        .from('customer_vehicles')
+        .select('*')
+        .in('id', missingVehicleIds);
+      (vFallback || []).forEach((v: any) => vehicleFallbackMap.set(v.id, v));
+    }
+
     const completedVehicles = completedBookings.map((b: any) => {
       // Strictly use final_price (the counter discounted collected amount)
       const finalPrice = Number(b.final_price ?? b.service_package?.price ?? b.base_price ?? 0);
@@ -94,7 +108,7 @@ export async function GET(request: NextRequest) {
       const commissionEarned = Math.round((finalPrice * (commissionRate / 100)) * 100) / 100;
       laborCostCommission += commissionEarned;
 
-      const v = b.vehicle;
+      const v = b.vehicle || vehicleFallbackMap.get(b.vehicle_id);
       const plate = v?.plate_number || v?.registration_number || 'N/A';
       const make = v?.make || '';
       const model = v?.model || 'Vehicle';
@@ -123,62 +137,127 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // 6. Calculate Cash in Hand awaiting reconciliation
-    // Increment a staff member's cash_in_hand ONLY when:
-    // payment_method == 'CASH' (or split cash) AND cash_collected_by_staff_id matches this staff member!
-    // Cash collected at counter/admin directly goes to the shop register till and does not inflate staff balance.
-    const { data: todayInvoices } = await supabase
+    // 6. Calculate Cash in Hand (Customer cash collected minus staff handovers)
+    // Includes cash physically collected by this staff member
+    const { data: allCollectedInvoices } = await supabase
       .from('invoices')
-      .select('id, booking_id, amount, base_price, final_price, payment_method, split_cash, split_online, split_khata, is_paid, cash_collected_by_staff_id, collector_type')
-      .gte('created_at', istStartUtc)
-      .lte('created_at', istEndUtc);
+      .select('id, amount, final_price, payment_method, split_cash, is_paid, cash_collected_by_staff_id, collector_type')
+      .in('cash_collected_by_staff_id', staffIds)
+      .eq('is_paid', true);
 
-    let cashInHand = 0;
-    (todayInvoices || []).forEach((inv: any) => {
-      if (inv.is_paid) {
-        const collectorId = inv.cash_collected_by_staff_id;
-        const isCollectedByThisStaff = collectorId && staffIds.includes(collectorId) && inv.collector_type !== 'ADMIN';
-
-        if (isCollectedByThisStaff) {
-          if (inv.payment_method === 'CASH') {
-            cashInHand += Number(inv.final_price ?? inv.amount ?? 0);
-          } else if (inv.payment_method === 'SPLIT' && inv.split_cash) {
-            cashInHand += Number(inv.split_cash);
-          }
+    let totalCashCollected = 0;
+    (allCollectedInvoices || []).forEach((inv: any) => {
+      // For staff members, any cash invoice assigned to them as collector counts as cash collected
+      if (staffProfile?.role !== 'ADMIN' || inv.collector_type !== 'ADMIN') {
+        if (inv.payment_method === 'CASH') {
+          totalCashCollected += Number(inv.final_price ?? inv.amount ?? 0);
+        } else if (inv.payment_method === 'SPLIT' && inv.split_cash) {
+          totalCashCollected += Number(inv.split_cash);
         }
       }
     });
 
-    // Deduct any handovers made by this staff today
-    const { data: handovers } = await supabase
+    // Deduct all staff cash handovers submitted to till/admin
+    const { data: handovers, error: hErr } = await supabase
       .from('staff_cash_handovers')
       .select('amount')
-      .in('staff_id', staffIds)
-      .gte('created_at', istStartUtc);
+      .in('staff_id', staffIds);
 
-    const totalHandedOver = (handovers || []).reduce((sum: number, h: any) => sum + Number(h.amount || 0), 0);
-    cashInHand = Math.max(0, cashInHand - totalHandedOver);
-
-    // 7. Calculate Unsettled Commission / Salary Balance (Receivable by Staff)
-    let receivableByStaff = Math.round(laborCostCommission * 100) / 100;
-    try {
-      const { data: unsettledPayroll } = await supabase
-        .from('payroll_entries')
-        .select('commission_earned, base_wage')
-        .in('staff_user_id', staffIds);
-
-      if (unsettledPayroll && unsettledPayroll.length > 0) {
-        const totalEarnings = unsettledPayroll.reduce(
-          (sum: number, p: any) => sum + Number(p.commission_earned || 0) + Number(p.base_wage || 0),
-          0
-        );
-        receivableByStaff = Math.max(receivableByStaff, Math.round(totalEarnings * 100) / 100);
-      }
-    } catch {
-      // Fallback to today's commission
+    let totalHandedOver = 0;
+    if (!hErr && handovers) {
+      totalHandedOver = handovers.reduce((sum: number, h: any) => sum + Number(h.amount || 0), 0);
+    } else {
+      const { data: expHandovers } = await supabase
+        .from('general_expenses')
+        .select('amount')
+        .in('staff_id', staffIds)
+        .ilike('description', '%[STAFF_CASH_HANDOVER%');
+      totalHandedOver = (expHandovers || []).reduce((sum: number, h: any) => sum + Number(h.amount || 0), 0);
     }
 
-    const payableByStaff = Math.round(cashInHand * 100) / 100;
+    const cashInHand = Math.max(0, Math.round((totalCashCollected - totalHandedOver) * 100) / 100);
+
+    // 7. Calculate Unsettled Staff Advances (Borrowings owed back to shop)
+    let totalUnsettledAdvances = 0;
+    const { data: advances, error: advErr } = await supabase
+      .from('staff_advances')
+      .select('amount')
+      .in('staff_id', staffIds)
+      .eq('is_settled', false);
+
+    if (!advErr && advances) {
+      totalUnsettledAdvances = advances.reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+    } else {
+      const { data: expAdvances } = await supabase
+        .from('general_expenses')
+        .select('amount')
+        .in('staff_id', staffIds)
+        .ilike('description', '%[STAFF_ADVANCE:UNSETTLED%');
+      totalUnsettledAdvances = (expAdvances || []).reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0);
+    }
+
+    // Receivable from staff (Cash in Hand to submit + pending advance balance)
+    const receivableFromStaff = Math.round((cashInHand + totalUnsettledAdvances) * 100) / 100;
+
+    // 8. Calculate Payable to Staff (Shop owes staff: Unsettled commission + wage retention + today's commission)
+    let unsettledPayrollSum = 0;
+    let hasTodayPayrollRow = false;
+
+    const { data: unsettledPayroll } = await supabase
+      .from('payroll_entries')
+      .select('*')
+      .or(`staff_id.in.(${staffIds.join(',')}),staff_user_id.in.(${staffIds.join(',')})`)
+      .eq('is_settled', false);
+
+    (unsettledPayroll || []).forEach((p: any) => {
+      const pDate = p.date ? String(p.date).split('T')[0] : '';
+      if (pDate === todayStr) {
+        hasTodayPayrollRow = true;
+      }
+      const netPayable = p.net_payable !== undefined && p.net_payable !== null
+        ? Number(p.net_payable)
+        : Number(p.commission_earned || p.commission_amount || 0) + Number(p.base_wage || 0) + Number(p.tips_earned || 0) - Number(p.advance_deducted || 0);
+
+      unsettledPayrollSum += Math.max(0, netPayable);
+    });
+
+    // Previous retained wage balance (from staff profile)
+    const retainedBalance = Math.max(0, Number(staffProfile?.retained_balance || 0));
+
+    // If today's payroll entry hasn't been generated yet, include today's live earned commission
+    const todayUnrecordedCommission = hasTodayPayrollRow ? 0 : laborCostCommission;
+
+    // Pending approved expense reimbursements owed to staff
+    const { data: pendingReimbursementsData } = await supabase
+      .from('general_expenses')
+      .select('amount')
+      .in('staff_id', staffIds)
+      .eq('expense_type', 'STAFF')
+      .eq('status', 'APPROVED');
+
+    const totalReimbursements = (pendingReimbursementsData || []).reduce(
+      (sum: number, r: any) => sum + Number(r.amount || 0),
+      0
+    );
+
+    const payableToStaff = Math.max(
+      0,
+      Math.round((unsettledPayrollSum + retainedBalance + todayUnrecordedCommission + totalReimbursements) * 100) / 100
+    );
+
+    const financialSummary = {
+      payableToStaff,
+      receivableFromStaff,
+      currency: 'INR',
+      details: {
+        todayCommission: Math.round(laborCostCommission * 100) / 100,
+        unsettledPayroll: Math.round(unsettledPayrollSum * 100) / 100,
+        retainedWages: retainedBalance,
+        cashInHand,
+        pendingAdvances: totalUnsettledAdvances,
+        reimbursements: totalReimbursements,
+      },
+    };
 
     return NextResponse.json({
       success: true,
@@ -190,9 +269,13 @@ export async function GET(request: NextRequest) {
       completed_vehicles: completedVehicles,
       total_revenue_today: Math.round(totalRevenueToday * 100) / 100,
       labor_cost_commission: Math.round(laborCostCommission * 100) / 100,
-      receivable_by_staff: receivableByStaff,
-      payable_by_staff: payableByStaff,
-      cash_in_hand: payableByStaff,
+      payable_to_staff: payableToStaff,
+      receivable_from_staff: receivableFromStaff,
+      receivable_by_staff: payableToStaff, // What staff receives
+      payable_by_staff: receivableFromStaff, // What staff submits
+      cash_in_hand: cashInHand,
+      financialSummary,
+      financial_summary: financialSummary,
       completed_count: completedCount,
       in_progress_count: inProgressCount,
     });

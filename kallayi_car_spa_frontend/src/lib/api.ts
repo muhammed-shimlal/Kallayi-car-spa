@@ -171,6 +171,13 @@ export async function updateBookingStatus(
   }
 }
 
+export interface BusinessSettings {
+  upi_id: string;
+  business_name: string;
+  merchant_name: string;
+  phone?: string;
+}
+
 export interface POSCheckoutPayload {
   booking_id: number;
   split_cash?: number;
@@ -186,6 +193,8 @@ export interface POSCheckoutPayload {
   cash_collected_by_staff_id?: string | null;
   collected_by_staff_id?: string | null;
   collector_type?: 'ADMIN' | 'STAFF' | string;
+  transaction_id?: string;
+  notes?: string;
 }
 
 export interface POSCheckoutResponse {
@@ -202,6 +211,30 @@ export interface POSCheckoutResponse {
     };
   };
   error?: string;
+}
+
+/**
+ * Fetches merchant/business settings (UPI ID, merchant name)
+ */
+export async function fetchBusinessSettings(): Promise<BusinessSettings> {
+  try {
+    const res = await api.get<{ success: boolean; settings: BusinessSettings }>('/settings');
+    if (res.data?.success && res.data.settings) {
+      return res.data.settings;
+    }
+    return {
+      upi_id: process.env.NEXT_PUBLIC_UPI_ID || 'kabeerkallayi2020-1@oksbi',
+      business_name: process.env.NEXT_PUBLIC_MERCHANT_NAME || 'Kallayi Car Spa',
+      merchant_name: process.env.NEXT_PUBLIC_MERCHANT_NAME || 'Kallayi Car Spa',
+    };
+  } catch (err) {
+    console.warn('[fetchBusinessSettings] Falling back to default settings:', err);
+    return {
+      upi_id: process.env.NEXT_PUBLIC_UPI_ID || 'kabeerkallayi2020-1@oksbi',
+      business_name: process.env.NEXT_PUBLIC_MERCHANT_NAME || 'Kallayi Car Spa',
+      merchant_name: process.env.NEXT_PUBLIC_MERCHANT_NAME || 'Kallayi Car Spa',
+    };
+  }
 }
 
 /**
@@ -659,6 +692,20 @@ export interface CompletedVehicleDossier {
   commission_earned: number;
 }
 
+export interface StaffFinancialSummary {
+  payableToStaff: number;
+  receivableFromStaff: number;
+  currency?: string;
+  details?: {
+    todayCommission?: number;
+    unsettledPayroll?: number;
+    retainedWages?: number;
+    cashInHand?: number;
+    pendingAdvances?: number;
+    reimbursements?: number;
+  };
+}
+
 export interface StaffDashboardStatsResponse {
   cars_washed_today: {
     count: number;
@@ -670,9 +717,13 @@ export interface StaffDashboardStatsResponse {
   labor_cost_commission: number;
   receivable_by_staff?: number;
   payable_by_staff?: number;
+  payable_to_staff?: number;
+  receivable_from_staff?: number;
   cash_in_hand: number;
   completed_count: number;
   in_progress_count: number;
+  financialSummary?: StaffFinancialSummary;
+  financial_summary?: StaffFinancialSummary;
 }
 
 /**
@@ -703,6 +754,44 @@ export async function changeUserPassword(payload: {
     console.error('[changeUserPassword] Error:', err);
     throw new Error(extractErrorMessage(err));
   }
+}
+
+/**
+ * Express Walk-in booking payload interface
+ */
+export interface ExpressWalkinPayload {
+  plate_number: string;
+  customer_phone?: string;
+  customer_name?: string;
+  package_id: number;
+  make?: string;
+  model?: string;
+  vehicle_type?: string;
+  color?: string;
+  bay_assignment?: string;
+  notes?: string;
+  discount_reason?: string;
+  discount_amount?: number;
+  discount_percentage?: number;
+  base_price?: number;
+  final_price?: number;
+  advance_amount?: number;
+  customer_id?: string | null;
+  vehicle_id?: number | null;
+  staff_id?: string | null;
+  technician_id?: string | null;
+  branch_id?: string | number | null;
+  payment_method?: string;
+  is_paid?: boolean;
+  time_slot?: string;
+}
+
+/**
+ * Creates an Express Walk-in booking via POST /api/bookings/express-walkin
+ */
+export async function createExpressWalkinBooking(payload: ExpressWalkinPayload) {
+  const res = await api.post('/bookings/express-walkin', payload);
+  return res.data;
 }
 
 export default api;

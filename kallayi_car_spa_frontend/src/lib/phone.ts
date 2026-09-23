@@ -165,13 +165,14 @@ export function cleanPhoneInput(val: string): string {
   if (!val) return '';
   let digits = val.replace(/\D/g, '');
 
-  // If user pasted a full number with country code
-  if (digits.length >= 12 && digits.startsWith('91')) {
+  // If user pasted a full number with country code (91) or leading trunk zero (0)
+  if (digits.length >= 11 && digits.startsWith('91')) {
     digits = digits.slice(2);
   } else if (digits.length === 11 && digits.startsWith('0')) {
     digits = digits.slice(1);
   }
 
+  // Cap at the first 10 digits so additional typed digits are ignored and leading digits preserved
   return digits.slice(0, 10);
 }
 

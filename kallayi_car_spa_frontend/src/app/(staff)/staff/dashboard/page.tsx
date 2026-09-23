@@ -19,7 +19,10 @@ import {
   Clock,
   ShieldCheck,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowUpRight,
+  HandCoins,
 } from "lucide-react";
 import api, {
   fetchStaffDashboardStats,
@@ -193,6 +196,22 @@ export default function StaffDashboardPage() {
       : stats?.cars_washed_today?.list) ||
     [];
 
+  // Financial balance extractions (Staff vs Shop)
+  const payableToStaff = Number(
+    stats?.financialSummary?.payableToStaff ??
+    stats?.payable_to_staff ??
+    stats?.receivable_by_staff ??
+    0
+  );
+
+  const receivableFromStaff = Number(
+    stats?.financialSummary?.receivableFromStaff ??
+    stats?.receivable_from_staff ??
+    stats?.payable_by_staff ??
+    stats?.cash_in_hand ??
+    0
+  );
+
   // ─────────────────────────────────────────────────────────────────────────────
   // LOADING SKELETON
   // ─────────────────────────────────────────────────────────────────────────────
@@ -336,53 +355,73 @@ export default function StaffDashboardPage() {
       ───────────────────────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Card 1: Cash in Hand (Amber Accent - Staff owes shop) */}
-        <div className="bg-gradient-to-br from-[#16130C]/90 via-[#0B0C0E]/90 to-[#050507] border border-amber-500/30 hover:border-amber-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(245,158,11,0.06)] group">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-wider text-amber-300/90 font-bold">
-              Cash in Hand
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
-              <Wallet className="w-4 h-4" />
+        {/* Card 1: Payable to You (Emerald Accent - Shop owes staff) */}
+        <div className="bg-gradient-to-br from-[#0B1510]/95 via-[#0B0C0E]/90 to-[#050507] border border-emerald-500/30 hover:border-emerald-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(16,185,129,0.06)] hover:shadow-[0_0_25px_rgba(16,185,129,0.14)] group relative overflow-hidden">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-col">
+              <span className="font-mono text-[11px] sm:text-xs uppercase tracking-wider text-emerald-400 font-bold">
+                Payable to You
+              </span>
+              <span className="text-[10px] text-emerald-400/70 font-sans tracking-normal leading-tight mt-0.5">
+                നിങ്ങൾക്ക് ലഭിക്കാനുള്ളത്
+              </span>
             </div>
-          </div>
-          <div>
-            <div className="font-mono text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">
-              ₹{(stats?.cash_in_hand ?? stats?.payable_by_staff ?? 0).toLocaleString()}
-            </div>
-            <p className="text-[11px] font-mono text-neutral-400 mt-1">
-              Cash collected to hand over
-            </p>
-          </div>
-        </div>
-
-        {/* Card 2: Payout Due (Emerald Accent - Owner owes staff) */}
-        <div className="bg-gradient-to-br from-[#0E1512]/90 via-[#0B0C0E]/90 to-[#050507] border border-emerald-500/30 hover:border-emerald-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(34,197,94,0.06)] group">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-wider text-emerald-400 font-bold">
-              Payout Due
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
-              <Coins className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform shadow-[0_0_12px_rgba(16,185,129,0.15)] shrink-0">
+              <ArrowDownLeft className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="font-mono text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">
-              ₹{(stats?.receivable_by_staff ?? (stats as any)?.unsettled_commission ?? 0).toLocaleString()}
+              ₹{payableToStaff.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
             </div>
             <p className="text-[11px] font-mono text-neutral-400 mt-1">
-              Earnings owed by shop
+              Pending Commission & Payout
+            </p>
+          </div>
+        </div>
+
+        {/* Card 2: Cash in Hand to Submit (Amber Accent - Staff owes shop) */}
+        <div className="bg-gradient-to-br from-[#181308]/95 via-[#0B0C0E]/90 to-[#050507] border border-amber-500/30 hover:border-amber-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(245,158,11,0.06)] hover:shadow-[0_0_25px_rgba(245,158,11,0.14)] group relative overflow-hidden">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-col">
+              <span className="font-mono text-[11px] sm:text-xs uppercase tracking-wider text-amber-300/90 font-bold">
+                Cash in Hand to Submit
+              </span>
+              <span className="text-[10px] text-amber-400/70 font-sans tracking-normal leading-tight mt-0.5">
+                ഷോപ്പിൽ ഏൽപ്പിക്കാനുള്ളത്
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform shadow-[0_0_12px_rgba(245,158,11,0.15)] shrink-0">
+              <HandCoins className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">
+              ₹{receivableFromStaff.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-[11px] font-mono text-neutral-400 mt-1 flex items-center justify-between">
+              <span>Unreconciled Cash Collected</span>
+              {stats?.financialSummary?.details?.pendingAdvances && stats.financialSummary.details.pendingAdvances > 0 ? (
+                <span className="text-[10px] text-amber-400/80">
+                  (incl. ₹{stats.financialSummary.details.pendingAdvances} adv)
+                </span>
+              ) : null}
             </p>
           </div>
         </div>
 
         {/* Card 3: Cars Washed Today (Blue Accent) */}
-        <div className="bg-gradient-to-br from-[#0C1217]/90 via-[#0B0C0E]/90 to-[#050507] border border-[#01FFFF]/30 hover:border-[#01FFFF]/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(1,255,255,0.06)] group">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-wider text-[#01FFFF] font-bold">
-              Cars Washed Today
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-[#01FFFF]/10 border border-[#01FFFF]/20 flex items-center justify-center text-[#01FFFF] group-hover:scale-105 transition-transform">
+        <div className="bg-gradient-to-br from-[#0C1217]/90 via-[#0B0C0E]/90 to-[#050507] border border-[#01FFFF]/30 hover:border-[#01FFFF]/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(1,255,255,0.06)] hover:shadow-[0_0_25px_rgba(1,255,255,0.12)] group">
+          <div className="flex items-start justify-between">
+            <div className="flex flex-col">
+              <span className="font-mono text-[11px] sm:text-xs uppercase tracking-wider text-[#01FFFF] font-bold">
+                Cars Washed Today
+              </span>
+              <span className="text-[10px] text-cyan-300/70 font-sans tracking-normal leading-tight mt-0.5">
+                ഇന്ന് സർവീസ് ചെയ്തത്
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-[#01FFFF]/10 border border-[#01FFFF]/20 flex items-center justify-center text-[#01FFFF] group-hover:scale-105 transition-transform shadow-[0_0_12px_rgba(1,255,255,0.15)] shrink-0">
               <Car className="w-4 h-4" />
             </div>
           </div>
@@ -401,18 +440,23 @@ export default function StaffDashboardPage() {
         </div>
 
         {/* Card 4: Today's Commission (Purple Accent) */}
-        <div className="bg-gradient-to-br from-[#130E1A]/90 via-[#0B0C0E]/90 to-[#050507] border border-purple-500/30 hover:border-purple-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(168,85,247,0.06)] group">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-wider text-purple-400 font-bold">
-              Today's Commission
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-105 transition-transform">
+        <div className="bg-gradient-to-br from-[#130E1A]/90 via-[#0B0C0E]/90 to-[#050507] border border-purple-500/30 hover:border-purple-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(168,85,247,0.06)] hover:shadow-[0_0_25px_rgba(168,85,247,0.12)] group">
+          <div className="flex items-start justify-between">
+            <div className="flex flex-col">
+              <span className="font-mono text-[11px] sm:text-xs uppercase tracking-wider text-purple-400 font-bold">
+                Today's Commission
+              </span>
+              <span className="text-[10px] text-purple-300/70 font-sans tracking-normal leading-tight mt-0.5">
+                ഇന്നത്തെ വരുമാനം
+              </span>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-105 transition-transform shadow-[0_0_12px_rgba(168,85,247,0.15)] shrink-0">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
           <div>
             <div className="font-mono text-2xl sm:text-3xl font-black text-purple-400 tracking-tight">
-              ₹{(stats?.labor_cost_commission || 0).toLocaleString()}
+              ₹{(stats?.labor_cost_commission || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
             </div>
             <p className="text-[11px] font-mono text-neutral-400 mt-1">
               Earned today

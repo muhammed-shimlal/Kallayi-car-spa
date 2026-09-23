@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Check, Banknote, Sparkles, Tag, ChevronDown, ChevronUp, QrCode, CreditCard, ShieldCheck } from 'lucide-react';
+import { 
+  X, Check, Banknote, Sparkles, Tag, ChevronDown, ChevronUp, QrCode, CreditCard, 
+  ShieldCheck, Copy, ExternalLink, AlertCircle, CheckCircle2 
+} from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
-import api, { checkoutPOS } from '@/lib/api';
+import api, { checkoutPOS, fetchBusinessSettings } from '@/lib/api';
 
 export interface PaymentPickupModalProps {
   isOpen: boolean;
@@ -41,10 +45,34 @@ export default function PaymentPickupModal({
   const [splitOnline, setSplitOnline] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Merchant UPI Settings State
+  const [upiSettings, setUpiSettings] = useState<{ upiId: string; businessName: string }>({
+    upiId: process.env.NEXT_PUBLIC_UPI_ID || '',
+    businessName: process.env.NEXT_PUBLIC_MERCHANT_NAME || 'Kallayi Car Spa',
+  });
+  const [copiedUpi, setCopiedUpi] = useState(false);
+  const [transactionId, setTransactionId] = useState('');
+
   // Cash collector attribution state (Defaults to Counter/Admin)
   const [collectorType, setCollectorType] = useState<'ADMIN' | 'STAFF'>('ADMIN');
   const [selectedStaffId, setSelectedStaffId] = useState<string>('');
   const [staffList, setStaffList] = useState<any[]>([]);
+
+  // Load business settings for UPI
+  useEffect(() => {
+    fetchBusinessSettings()
+      .then((res) => {
+        if (res?.upi_id) {
+          setUpiSettings({
+            upiId: res.upi_id.trim(),
+            businessName: (res.business_name || res.merchant_name || 'Kallayi Car Spa').trim(),
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load business settings for UPI:', err);
+      });
+  }, []);
 
   // Load staff list for collector dropdown
   useEffect(() => {
@@ -119,7 +147,7 @@ export default function PaymentPickupModal({
     setIsSubmitting(true);
     try {
       await checkoutPOS({
-        booking_id: booking.id,
+        booking_id: Number(booking.id),
         payment_method: paymentMode === 'ONLINE' ? 'ONLINE' : paymentMode,
         base_price: catalogBasePrice,
         final_price: currentPayable,
@@ -131,9 +159,11 @@ export default function PaymentPickupModal({
         cash_collected_by_staff_id: finalStaffId,
         collected_by_staff_id: finalStaffId,
         collector_type: isCashInvolved ? collectorType : 'ADMIN',
+        transaction_id: transactionId.trim() || undefined,
+        notes: transactionId.trim() ? `UPI Ref: ${transactionId.trim()}` : undefined,
       });
 
-      toast.success(`Vehicle Handover Complete! ₹${currentPayable} collected via ${paymentMode}.`);
+      toast.success(`Vehicle Handover Complete! ₹${currentPayable.toFixed(2)} collected via ${paymentMode === 'ONLINE' ? 'UPI' : paymentMode}.`);
       await onSuccess();
       onClose();
     } catch (err: any) {
@@ -144,19 +174,39 @@ export default function PaymentPickupModal({
     }
   };
 
+  const handleCopyUpi = () => {
+    if (!upiSettings.upiId) return;
+    navigator.clipboard.writeText(upiSettings.upiId);
+    setCopiedUpi(true);
+    toast.success('UPI ID copied to clipboard!');
+    setTimeout(() => setCopiedUpi(false), 2000);
+  };
+
   const plate = booking.vehicle?.plate_number || booking.plate_number || 'KL-XX-0000';
   const customerName = booking.customer?.name || booking.customer_name || 'Walk-In Customer';
   const customerPhone = booking.customer?.phone_number || booking.customer_phone || booking.phone || '';
   const serviceName = booking.service_package?.name || booking.service_name || 'Wash Service';
 
+  // Dynamic UPI Intent Calculation
+  const isOnlineActive = paymentMode === 'ONLINE' || (paymentMode === 'SPLIT' && parseFloat(splitOnline || '0') > 0);
+  const upiPayableAmount = paymentMode === 'ONLINE'
+    ? currentPayable
+    : Math.max(0, parseFloat(splitOnline || '0'));
+  const formattedUpiAmount = upiPayableAmount.toFixed(2);
+  const bookingToken = booking.id || booking.booking_id || '';
+  const upiNote = bookingToken ? `Wash Bill #${bookingToken}` : 'Kallayi Car Spa';
+  const upiUrl = upiSettings.upiId && upiPayableAmount > 0
+    ? `upi://pay?pa=${encodeURIComponent(upiSettings.upiId)}&pn=${encodeURIComponent(upiSettings.businessName || 'Kallayi Car Spa')}&am=${formattedUpiAmount}&cu=INR&tn=${encodeURIComponent(upiNote)}`
+    : '';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in">
-      <div className="bg-[#0E0F12] border border-white/10 rounded-3xl w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-hidden animate-in fade-in">
+      <div className="bg-[#0E0F12] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden my-auto max-h-[90dvh] flex flex-col">
         
-        {/* Header */}
-        <div className="p-5 sm:p-6 bg-[#141518] border-b border-white/5 flex items-center justify-between">
+        {/* Header - Fixed Top */}
+        <div className="p-4 sm:p-5 bg-[#141518] border-b border-white/5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400">
+            <div className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0">
               <Banknote className="w-5 h-5" />
             </div>
             <div>
@@ -170,14 +220,18 @@ export default function PaymentPickupModal({
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-neutral-400 hover:text-white rounded-full hover:bg-white/5 transition-colors"
+            className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-neutral-400 hover:text-white rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+            aria-label="Close Modal"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Body */}
-        <form onSubmit={handleSubmitCheckout} className="p-5 sm:p-6 space-y-5">
+        {/* Content Body - Form with flex-col */}
+        <form onSubmit={handleSubmitCheckout} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          
+          {/* Scrollable Content Container */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 overscroll-contain">
           
           {/* Booking Summary Box */}
           <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2.5 text-xs font-mono">
@@ -319,7 +373,7 @@ export default function PaymentPickupModal({
                         setSplitOnline('0');
                       }
                     }}
-                    className={`py-3 px-2 rounded-xl border flex flex-col items-center justify-center gap-1 font-bold transition-all ${
+                    className={`min-h-[48px] py-2.5 px-2 rounded-xl border flex flex-col items-center justify-center gap-1 font-bold transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-amber-400 text-[#050507] border-amber-400 shadow-md scale-[1.02]'
                         : 'bg-white/5 text-neutral-400 border-white/10 hover:text-white hover:bg-white/10'
@@ -360,6 +414,113 @@ export default function PaymentPickupModal({
               </div>
             )}
           </div>
+
+          {/* ── DYNAMIC UPI QR CODE SECTION (WHEN UPI / ONLINE IS ACTIVE) ── */}
+          {isOnlineActive && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#141518] to-[#0a0a0d] border border-[#01FFFF]/40 shadow-[0_0_40px_rgba(1,255,255,0.12)] space-y-4 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#01FFFF]/15 border border-[#01FFFF]/30 flex items-center justify-center text-[#01FFFF]">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-syncopate text-xs font-bold uppercase tracking-wider text-white block">
+                      Customer UPI QR Code
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-mono">
+                      Scan with any UPI app (GPay / PhonePe / Paytm / BHIM)
+                    </span>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-bold text-[#01FFFF] bg-[#01FFFF]/10 border border-[#01FFFF]/30 px-2.5 py-0.5 rounded-full">
+                  ₹{formattedUpiAmount}
+                </span>
+              </div>
+
+              {/* Conditional QR Canvas / Fallbacks */}
+              {upiPayableAmount <= 0 ? (
+                <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-center text-xs text-zinc-400 font-mono">
+                  Payable amount is ₹0.00 — No UPI collection required.
+                </div>
+              ) : !upiSettings.upiId ? (
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5">
+                  <AlertCircle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+                  <div>
+                    <strong className="block text-white font-bold">UPI ID Not Configured</strong>
+                    <span>Please set up the Merchant UPI ID in Admin Settings or <code className="text-[#01FFFF]">NEXT_PUBLIC_UPI_ID</code> in .env.local.</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center space-y-3">
+                  {/* Clean Quiet-Zone Container - Compact 160px */}
+                  <div className="p-3 bg-white rounded-xl shadow-lg border border-white flex items-center justify-center transition-transform hover:scale-[1.02]">
+                    <QRCodeSVG
+                      value={upiUrl}
+                      size={160}
+                      level="M"
+                      includeMargin={false}
+                    />
+                  </div>
+
+                  {/* Amount & Payee Info */}
+                  <div className="space-y-0.5">
+                    <div className="text-xl sm:text-2xl font-syncopate font-black text-[#01FFFF] tracking-tight">
+                      ₹{formattedUpiAmount}
+                    </div>
+                    <div className="text-[11px] text-zinc-400 font-mono">
+                      Payee: <strong className="text-white">{upiSettings.businessName}</strong>
+                    </div>
+                  </div>
+
+                  {/* Verified UPI VPA Bar with Copy */}
+                  <div className="w-full bg-black/60 border border-white/10 rounded-xl p-2.5 flex items-center justify-between text-xs font-mono">
+                    <div className="truncate pr-2 text-left">
+                      <span className="text-[9px] uppercase tracking-wider text-zinc-500 block">Configured UPI ID</span>
+                      <span className="text-white font-bold text-[11px] truncate block">{upiSettings.upiId}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyUpi}
+                      className="min-h-[36px] flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-[#01FFFF] font-bold text-[10px] transition-colors uppercase shrink-0 cursor-pointer"
+                    >
+                      {copiedUpi ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedUpi ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+
+                  {/* Supported Apps List */}
+                  <div className="flex items-center justify-center gap-2 text-[10px] text-zinc-400 font-mono tracking-wider uppercase">
+                    <span>GPay</span> • <span>PhonePe</span> • <span>Paytm</span> • <span>BHIM</span>
+                  </div>
+
+                  {/* Mobile Deep Link Trigger */}
+                  {upiUrl && (
+                    <a
+                      href={upiUrl}
+                      className="w-full min-h-[44px] py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#01FFFF]/40 text-[#01FFFF] hover:text-white font-mono text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all active:scale-98"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open in Mobile UPI App</span>
+                    </a>
+                  )}
+
+                  {/* Optional UTR / Reference ID Field */}
+                  <div className="w-full text-left pt-1">
+                    <label className="text-[10px] text-zinc-400 font-mono uppercase tracking-wider block mb-1">
+                      UPI Ref / UTR Number (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={transactionId}
+                      onChange={(e) => setTransactionId(e.target.value)}
+                      placeholder="e.g. 423871294821 (12 digits)"
+                      className="w-full bg-[#141518] border border-white/10 focus:border-[#01FFFF] rounded-xl px-3 py-2 text-xs font-mono text-white placeholder:text-zinc-600 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ── CASH COLLECTOR SELECTION (WHEN CASH IS INVOLVED) ── */}
           {(paymentMode === 'CASH' || (paymentMode === 'SPLIT' && (parseFloat(splitCash || '0') > 0 || !splitCash))) && (
@@ -452,7 +613,7 @@ export default function PaymentPickupModal({
                   <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-start gap-2">
                     <span className="text-base shrink-0 leading-none">⚠️</span>
                     <span>
-                      Cash Custody Alert: ₹{paymentMode === 'CASH' ? currentPayable : parseFloat(splitCash || '0')} will be assigned to{' '}
+                      Cash Custody Alert: ₹{paymentMode === 'CASH' ? currentPayable.toFixed(2) : parseFloat(splitCash || '0').toFixed(2)} will be assigned to{' '}
                       <strong>
                         {staffList.find((s: any) => String(s.id) === String(selectedStaffId))?.name ||
                          staffList.find((s: any) => String(s.id) === String(selectedStaffId))?.full_name ||
@@ -467,23 +628,37 @@ export default function PaymentPickupModal({
             </div>
           )}
 
-          {/* Action CTAs */}
-          <div className="flex gap-3 pt-2">
+          </div>
+
+          {/* Sticky Action Footer - Always visible above screen fold */}
+          <div className="sticky bottom-0 bg-[#0E0F12]/95 backdrop-blur-md border-t border-white/10 p-3 sm:p-4 shrink-0 flex items-center gap-2.5 sm:gap-3 z-10 shadow-[0_-10px_25px_rgba(0,0,0,0.6)]">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 py-3.5 rounded-xl font-mono text-xs text-neutral-300 uppercase tracking-wider font-bold transition-colors"
+              className="flex-1 min-h-[44px] bg-white/5 border border-white/10 hover:bg-white/10 py-3 rounded-xl font-mono text-xs text-neutral-300 uppercase tracking-wider font-bold transition-colors cursor-pointer flex items-center justify-center"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="flex-2 flex-[2] bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-[#050507] font-mono font-black py-3.5 px-4 rounded-xl text-xs uppercase tracking-wider transition-all shadow-[0_0_25px_rgba(245,158,11,0.25)] flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+              disabled={isSubmitting || (paymentMode === 'ONLINE' && upiPayableAmount > 0 && !upiSettings.upiId)}
+              className={`flex-[2] min-h-[44px] py-3 px-4 rounded-xl font-mono text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 cursor-pointer ${
+                paymentMode === 'ONLINE'
+                  ? 'bg-[#01FFFF] hover:bg-[#01FFFF]/90 text-black font-black shadow-[0_0_25px_rgba(1,255,255,0.4)]'
+                  : 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-[#050507] font-black shadow-[0_0_25px_rgba(245,158,11,0.25)]'
+              }`}
             >
-              <Check className="w-4 h-4" />
-              <span>
-                {isSubmitting ? 'Recording Handover...' : `Complete Payment (₹${currentPayable})`}
+              {paymentMode === 'ONLINE' ? (
+                <Sparkles className="w-4 h-4 text-black shrink-0" />
+              ) : (
+                <Check className="w-4 h-4 shrink-0" />
+              )}
+              <span className="truncate">
+                {isSubmitting
+                  ? 'Recording Handover...'
+                  : paymentMode === 'ONLINE'
+                  ? `Confirm Payment (₹${currentPayable.toFixed(2)})`
+                  : `Complete Payment (₹${currentPayable.toFixed(2)})`}
               </span>
             </button>
           </div>

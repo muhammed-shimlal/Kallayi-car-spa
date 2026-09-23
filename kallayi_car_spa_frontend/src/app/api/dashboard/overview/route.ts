@@ -7,6 +7,9 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export async function GET() {
@@ -33,11 +36,15 @@ export async function GET() {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
     const sevenDaysAgoUtc = sevenDaysAgo.toISOString();
 
-    const { data: weekInvoices } = await supabase
+    const { data: weekInvoices, error: weekInvErr } = await supabase
       .from('invoices')
       .select('*')
       .gte('created_at', sevenDaysAgoUtc)
       .lte('created_at', istEndUtc);
+
+    if (weekInvErr) {
+      console.error('[Dashboard Overview] weekInvoices query error:', weekInvErr);
+    }
 
     const revenueByDayMap = new Map<string, number>();
     const chartData = [];
@@ -87,7 +94,7 @@ export async function GET() {
     // ─────────────────────────────────────────────────────────────────────────────
     // 3. FETCH TODAY'S WASHED VEHICLES & QUEUE (IST)
     // ─────────────────────────────────────────────────────────────────────────────
-    const { data: todayBookings } = await supabase
+    const { data: todayBookings, error: bTodayErr } = await supabase
       .from('bookings')
       .select(`
         *,
@@ -98,6 +105,10 @@ export async function GET() {
       .or(`created_at.gte.${istStartUtc},time_slot.gte.${istStartUtc}`)
       .lte('created_at', istEndUtc)
       .order('created_at', { ascending: false });
+
+    if (bTodayErr) {
+      console.error('[Dashboard Overview] todayBookings query error:', bTodayErr);
+    }
 
     // Fetch staff directory in memory to resolve technician names without schema relationship errors
     const { data: staffList } = await supabase
@@ -112,10 +123,37 @@ export async function GET() {
 
     const rawTodayBookings = (todayBookings || []) as any[];
 
+    // Fallback batch resolution for any bookings where vehicle or customer relations returned null
+    const missingVehicleIds = rawTodayBookings
+      .filter((b) => !b.vehicle && b.vehicle_id)
+      .map((b) => b.vehicle_id);
+
+    const missingCustomerIds = rawTodayBookings
+      .filter((b) => !b.customer && b.customer_id)
+      .map((b) => b.customer_id);
+
+    const vehicleFallbackMap = new Map();
+    if (missingVehicleIds.length > 0) {
+      const { data: vFallback } = await supabase
+        .from('customer_vehicles')
+        .select('*')
+        .in('id', missingVehicleIds);
+      (vFallback || []).forEach((v: any) => vehicleFallbackMap.set(v.id, v));
+    }
+
+    const customerFallbackMap = new Map();
+    if (missingCustomerIds.length > 0) {
+      const { data: cFallback } = await supabase
+        .from('customers')
+        .select('*')
+        .in('id', missingCustomerIds);
+      (cFallback || []).forEach((c: any) => customerFallbackMap.set(c.id, c));
+    }
+
     const todayWashedVehicles = await Promise.all(
       rawTodayBookings.map(async (b) => {
-        const customer = b.customer;
-        const vehicle = b.vehicle;
+        const customer = b.customer || customerFallbackMap.get(b.customer_id);
+        const vehicle = b.vehicle || vehicleFallbackMap.get(b.vehicle_id);
         const pkg = b.service_package;
         const techProfile = b.technician_id ? staffMap.get(b.technician_id) : null;
 
@@ -157,8 +195,8 @@ export async function GET() {
           date: timeFormatted,
           time: timeFormatted,
           is_today: true,
-          plate_number: vehicle?.plate_number || 'UNKNOWN',
-          vehicle_plate: vehicle?.plate_number || 'UNKNOWN',
+          plate_number: vehicle?.plate_number || vehicle?.registration_number || 'UNKNOWN',
+          vehicle_plate: vehicle?.plate_number || vehicle?.registration_number || 'UNKNOWN',
           vehicle_model: vehicle ? `${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Standard Car' : 'Standard Car',
           customer_name: customerName,
           customer_phone: customer?.phone_number || '',
@@ -173,7 +211,7 @@ export async function GET() {
     );
 
     // Active Queue Bookings for Kanban/List
-    const { data: queueBookings } = await supabase
+    const { data: queueBookings, error: qbErr } = await supabase
       .from('bookings')
       .select(`
         *,
@@ -185,19 +223,27 @@ export async function GET() {
       .order('time_slot', { ascending: false })
       .limit(30);
 
-    const recentBookings = ((queueBookings || []) as any[]).map((b) => ({
-      id: b.id,
-      customer_name: b.customer?.name || (b.customer?.phone_number ? `Customer (${b.customer.phone_number.slice(-4)})` : 'Walk-In'),
-      customer_phone: b.customer?.phone_number || '',
-      vehicle_plate: b.vehicle?.plate_number || 'UNKNOWN',
-      vehicle_type: b.vehicle?.vehicle_type || 'CAR',
-      service_package_name: b.service_package?.name || 'Standard Wash',
-      status: b.status,
-      bay_assignment: b.bay_assignment,
-      time_slot: b.time_slot,
-      base_price: Number(b.base_price || 0),
-      final_price: Number(b.final_price || 0),
-    }));
+    if (qbErr) {
+      console.error('[Dashboard Overview] queueBookings query error:', qbErr);
+    }
+
+    const recentBookings = ((queueBookings || []) as any[]).map((b) => {
+      const v = b.vehicle || vehicleFallbackMap.get(b.vehicle_id);
+      const c = b.customer || customerFallbackMap.get(b.customer_id);
+      return {
+        id: b.id,
+        customer_name: c?.name || (c?.phone_number ? `Customer (${c.phone_number.slice(-4)})` : 'Walk-In'),
+        customer_phone: c?.phone_number || '',
+        vehicle_plate: v?.plate_number || v?.registration_number || 'UNKNOWN',
+        vehicle_type: v?.vehicle_type || 'CAR',
+        service_package_name: b.service_package?.name || 'Standard Wash',
+        status: b.status,
+        bay_assignment: b.bay_assignment,
+        time_slot: b.time_slot,
+        base_price: Number(b.base_price || 0),
+        final_price: Number(b.final_price || 0),
+      };
+    });
 
     // ─────────────────────────────────────────────────────────────────────────────
     // 4. REAL-TIME FINANCIAL KPI AGGREGATIONS (IST TODAY)
@@ -210,11 +256,15 @@ export async function GET() {
     const washedToday = completedWashes.length > 0 ? completedWashes.length : rawTodayBookings.length;
 
     // (B) Today's Revenue & Invoiced Khata Credit
-    const { data: todayInvoices } = await supabase
+    const { data: todayInvoices, error: todayInvErr } = await supabase
       .from('invoices')
       .select('*')
       .gte('created_at', istStartUtc)
       .lte('created_at', istEndUtc);
+
+    if (todayInvErr) {
+      console.error('[Dashboard Overview] todayInvoices query error:', todayInvErr);
+    }
 
     let todayRevenue = 0;
     let todayInvoiceCredit = 0;

@@ -460,6 +460,8 @@ export type StaffCashHandoverRow = {
   created_at?: string;
 };
 
+export type KhataStatus = 'PENDING' | 'PARTIALLY_PAID' | 'SETTLED';
+
 export type KhataLedgerRow = {
   id: number;
   customer_id: string;
@@ -467,7 +469,16 @@ export type KhataLedgerRow = {
   transaction_type: KhataTransactionType;
   description: string;
   related_booking_id: number | null;
+  booking_id?: number | null;
+  invoice_id?: number | null;
   number_plate_image: string | null;
+  transaction_date?: string;
+  due_date?: string;
+  status?: KhataStatus;
+  settled_at?: string | null;
+  last_reminder_sent_at?: string | null;
+  reminder_count?: number;
+  customer_phone?: string | null;
   created_at: string;
 };
 
@@ -920,6 +931,12 @@ export type Database = {
             referencedColumns: ['id'];
           }
         ];
+      };
+      khata_ledger: {
+        Row: KhataLedgerRow;
+        Insert: Partial<KhataLedgerRow> & { customer_id: string; amount: number; transaction_type: KhataTransactionType; description: string };
+        Update: Partial<KhataLedgerRow>;
+        Relationships: [];
       };
       daily_register_audits: {
         Row: DailyRegisterAuditRow;

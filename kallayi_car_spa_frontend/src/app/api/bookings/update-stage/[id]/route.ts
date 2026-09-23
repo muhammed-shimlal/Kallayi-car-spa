@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseServer';
+import { getSupabaseAdmin, getAuthUserFromRequest } from '@/lib/supabaseServer';
 import { BookingStatus, BookingRow } from '@/types/database';
 import { WhatsAppService } from '@/lib/services/whatsapp';
 
@@ -64,6 +64,21 @@ function normalizeStageStatus(rawStatus: string): { status: BookingStatus; defau
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
+    const user = await getAuthUserFromRequest(request);
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Staff or Admin authentication required.' },
+        { status: 401 }
+      );
+    }
+    const role = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+    if (role === 'CUSTOMER') {
+      return NextResponse.json(
+        { success: false, error: 'Forbidden: Customers cannot alter booking bay stages.' },
+        { status: 403 }
+      );
+    }
+
     const resolvedParams = await Promise.resolve(context.params);
     const rawId = resolvedParams?.id;
     const bookingId = parseInt(String(rawId), 10);

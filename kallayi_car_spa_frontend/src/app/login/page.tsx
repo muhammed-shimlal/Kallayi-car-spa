@@ -134,13 +134,13 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#070709] text-white flex flex-col lg:flex-row overflow-hidden relative font-sans">
       
       {/* LEFT COLUMN: NEUMORPHIC AUTHORIZATION FORM (50% Desktop Width) */}
-      <div className="w-full lg:w-1/2 min-h-screen flex flex-col justify-between p-6 sm:p-12 lg:p-16 relative z-10">
+      <div className="w-full lg:w-1/2 min-h-screen flex flex-col justify-between p-4 sm:p-8 lg:p-16 relative z-10">
         
         {/* Top Header & Navigation */}
         <div className="flex items-center justify-between">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors uppercase tracking-widest group"
+            className="inline-flex items-center gap-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors uppercase tracking-widest group min-h-[44px]"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             <span>KALLAYI CAR SPA</span>
@@ -152,13 +152,13 @@ export default function LoginPage() {
         </div>
 
         {/* Form Container Wrapper */}
-        <div className="max-w-md w-full mx-auto my-auto py-10">
+        <div className="max-w-md w-full mx-auto my-auto py-6 sm:py-10">
           
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="space-y-8"
+            className="space-y-6 sm:space-y-8"
           >
             {/* Header Text */}
             <div className="space-y-2">
@@ -175,7 +175,7 @@ export default function LoginPage() {
             </div>
 
             {/* NEUMORPHIC FORM CARD */}
-            <div className="bg-[#0b0c0f] shadow-[-14px_-14px_30px_rgba(255,255,255,0.02),14px_14px_35px_rgba(0,0,0,0.95)] border border-white/5 rounded-3xl p-8 sm:p-10 space-y-6">
+            <div className="bg-[#0b0c0f] shadow-[-14px_-14px_30px_rgba(255,255,255,0.02),14px_14px_35px_rgba(0,0,0,0.95)] border border-white/5 rounded-3xl p-5 sm:p-8 lg:p-10 space-y-6">
               
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 
@@ -207,7 +207,7 @@ export default function LoginPage() {
                     </label>
                     <Link
                       href="/forgot-password"
-                      className="text-[10px] text-[#01FFFF] hover:text-white transition-colors uppercase tracking-wider font-mono"
+                      className="text-[10px] text-[#01FFFF] hover:text-white transition-colors uppercase tracking-wider font-mono py-1"
                     >
                       Forgot Password?
                     </Link>
@@ -223,13 +223,14 @@ export default function LoginPage() {
                       placeholder="Enter password..."
                       className={`w-full bg-[#08080a] shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),inset_-2px_-2px_5px_rgba(255,255,255,0.03)] border ${
                         errors.password ? 'border-red-500/80' : 'border-white/5 focus:border-white/30'
-                      } py-3.5 pl-11 pr-11 rounded-2xl text-white text-sm focus:outline-none focus:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),0_0_14px_rgba(255,255,255,0.12)] transition-all placeholder:text-neutral-600`}
+                      } py-3.5 pl-11 pr-12 rounded-2xl text-white text-sm focus:outline-none focus:shadow-[inset_3px_3px_6px_rgba(0,0,0,0.95),0_0_14px_rgba(255,255,255,0.12)] transition-all placeholder:text-neutral-600`}
                     />
                     <button
                       type="button"
-                      className="absolute inset-y-0 right-0 pr-4 flex items-center text-neutral-500 hover:text-white transition-colors"
+                      className="absolute inset-y-0 right-0 pr-3 sm:pr-4 min-w-[44px] min-h-[44px] flex items-center justify-center text-neutral-500 hover:text-white transition-colors cursor-pointer"
                       onClick={() => setShowPassword(!showPassword)}
                       tabIndex={-1}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>

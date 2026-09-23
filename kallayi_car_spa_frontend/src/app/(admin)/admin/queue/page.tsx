@@ -567,11 +567,12 @@ export default function AdminQueueBoard() {
         const timer = setTimeout(async () => {
             setIsSearchingKhata(true);
             try {
-                const res = await fetch(`/api/customers/search?search=${encodeURIComponent(khataSearchInput.trim())}`).catch(() => null);
+                const res = await fetch(`/api/search/universal?q=${encodeURIComponent(khataSearchInput.trim())}`).catch(() => null);
                 if (res && res.ok) {
                     const data = await res.json();
-                    setKhataSearchResults(Array.isArray(data) ? data : (data.results || data.data || []));
-                    setIsDropdownOpen(true);
+                    const list = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : (data?.data || []));
+                    setKhataSearchResults(list);
+                    setIsDropdownOpen(list.length > 0);
                 }
             } catch (e) {
                 console.error('[KhataSearch] API error:', e);
@@ -1390,11 +1391,11 @@ export default function AdminQueueBoard() {
 
             {/* ── CHECKOUT MODAL ────────────────────────────────────────────── */}
             {checkoutModal.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-                    <div className="bg-[#141518] border border-white/10 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-[0_0_50px_rgba(0,0,0,0.5)]">
-                        <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#0C0D0F]">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 animate-in fade-in overflow-hidden">
+                    <div className="bg-[#141518] border border-white/10 rounded-2xl sm:rounded-3xl w-full max-w-md max-h-[90dvh] flex flex-col overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] my-auto">
+                        <div className="p-4 sm:p-5 border-b border-white/5 flex justify-between items-center bg-[#0C0D0F] shrink-0">
                             <div>
-                                <h2 className="font-syncopate font-black text-base sm:text-lg tracking-widest text-emerald-400">
+                                <h2 className="font-syncopate font-black text-sm sm:text-base tracking-widest text-emerald-400">
                                     CHECKOUT &amp; SETTLEMENT
                                 </h2>
                                 <p className="text-[10px] text-[#8E939B] uppercase tracking-widest mt-1">
@@ -1403,13 +1404,14 @@ export default function AdminQueueBoard() {
                             </div>
                             <button 
                                 onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))} 
-                                className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-2 rounded-full hover:bg-white/5"
+                                className="text-[#8E939B] hover:text-[#FF2A6D] transition-colors p-2 rounded-full hover:bg-white/5 min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+                                aria-label="Close Modal"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
 
-                        <div className="p-6 space-y-5">
+                        <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 flex-1 overflow-y-auto overscroll-contain">
                             {/* Negotiated Price & Concession Card */}
                             <div className="p-4 rounded-2xl bg-[#181a1f] border border-[#01FFFF]/30 space-y-3">
                                 <div className="flex items-center justify-between">
@@ -1865,7 +1867,7 @@ export default function AdminQueueBoard() {
                             )}
                         </div>
 
-                        <div className="p-6 bg-[#0B0C10] border-t border-white/5 flex items-center justify-between gap-4">
+                        <div className="p-4 sm:p-5 bg-[#0B0C10]/95 backdrop-blur-md border-t border-white/10 flex items-center justify-between gap-3 sm:gap-4 shrink-0 sticky bottom-0 z-10 shadow-[0_-10px_25px_rgba(0,0,0,0.6)]">
                             {(() => {
                                 const totalKhata = checkoutModal.khata || (checkoutModal.method === 'KHATA' ? checkoutModal.totalAmount : 0);
                                 const sum = (checkoutModal.cash || 0) + (checkoutModal.upi || 0) + totalKhata;
@@ -1875,7 +1877,7 @@ export default function AdminQueueBoard() {
                                     return (
                                         <div className="flex flex-col">
                                             <span className="text-[10px] font-bold text-[#8E939B] uppercase tracking-wider">Remaining</span>
-                                            <span className="text-xl font-black text-white transition-colors font-mono">
+                                            <span className="text-lg sm:text-xl font-black text-white transition-colors font-mono">
                                                 ₹{diff.toFixed(2)}
                                             </span>
                                         </div>
@@ -1884,7 +1886,7 @@ export default function AdminQueueBoard() {
                                     return (
                                         <div className="flex flex-col">
                                             <span className="text-[10px] font-bold text-[#FF2A6D] uppercase tracking-wider animate-pulse">Change (Give Back)</span>
-                                            <span className="text-xl font-black text-[#FF2A6D] transition-colors shadow-red-500/50 drop-shadow-md font-mono">
+                                            <span className="text-lg sm:text-xl font-black text-[#FF2A6D] transition-colors shadow-red-500/50 drop-shadow-md font-mono">
                                                 ₹{Math.abs(diff).toFixed(2)}
                                             </span>
                                         </div>
@@ -1893,7 +1895,7 @@ export default function AdminQueueBoard() {
                                     return (
                                         <div className="flex flex-col">
                                             <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Balance</span>
-                                            <span className="text-xl font-black text-emerald-400 transition-colors font-mono">
+                                            <span className="text-lg sm:text-xl font-black text-emerald-400 transition-colors font-mono">
                                                 Exact (₹0.00)
                                             </span>
                                         </div>
@@ -1901,19 +1903,21 @@ export default function AdminQueueBoard() {
                                 }
                             })()}
                             
-                            <div className="flex gap-3">
+                            <div className="flex items-center gap-2 sm:gap-3">
                                 <button 
+                                    type="button"
                                     onClick={() => setCheckoutModal(prev => ({...prev, isOpen: false}))}
-                                    className="px-4 py-3 rounded-xl font-bold text-xs text-[#8E939B] hover:text-white hover:bg-white/5 transition-colors uppercase tracking-wider"
+                                    className="px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px] rounded-xl font-bold text-xs text-[#8E939B] hover:text-white hover:bg-white/5 transition-colors uppercase tracking-wider cursor-pointer"
                                 >
                                     Cancel
                                 </button>
                                 <button 
+                                    type="button"
                                     onClick={() => submitPayment(false)}
                                     disabled={
                                         ((checkoutModal.cash || 0) + (checkoutModal.upi || 0) + (checkoutModal.khata || (checkoutModal.method === 'KHATA' ? checkoutModal.totalAmount : (checkoutModal.method === 'UPI' ? checkoutModal.totalAmount : 0)))) < checkoutModal.totalAmount
                                     }
-                                    className={`px-5 py-3 rounded-xl font-bold text-xs transition-all active:scale-95 touch-manipulation disabled:opacity-20 disabled:cursor-not-allowed flex items-center gap-2 uppercase tracking-wider ${
+                                    className={`px-4 sm:px-5 py-2.5 sm:py-3 min-h-[44px] rounded-xl font-bold text-xs transition-all active:scale-95 touch-manipulation disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer ${
                                         checkoutModal.method === 'KHATA' || checkoutModal.khata > 0
                                             ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-[0_0_20px_rgba(147,51,234,0.4)]'
                                             : 'bg-emerald-500 text-black hover:bg-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]'

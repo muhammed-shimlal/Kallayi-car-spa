@@ -146,13 +146,17 @@ export async function POST(request: NextRequest) {
     let matchedUserId: string | null = null;
     let matchedAuthUser: any = null;
 
+    const searchPhoneVariants = Array.from(
+      new Set([rawIdentifier, digits, tenDigit, twelveDigit, e164, ...(variants || [])])
+    ).filter(Boolean);
+
     if (!isEmail) {
       // Step 2a: Check in staff_profiles by phone variants
-      if (variants.length > 0) {
+      if (searchPhoneVariants.length > 0) {
         const { data: staffList } = await supabase
           .from('staff_profiles')
           .select('user_id, phone_number, role')
-          .in('phone_number', variants)
+          .in('phone_number', searchPhoneVariants)
           .limit(5);
 
         if (staffList && staffList.length > 0) {
@@ -167,11 +171,11 @@ export async function POST(request: NextRequest) {
 
       // Step 2b: Check in customers table by phone variants
       // Fetch ALL matching rows and specifically prioritize registered customer rows!
-      if (!matchedUserId && variants.length > 0) {
+      if (!matchedUserId && searchPhoneVariants.length > 0) {
         const { data: custList } = await supabase
           .from('customers')
           .select('id, user_id, phone_number, name')
-          .in('phone_number', variants);
+          .in('phone_number', searchPhoneVariants);
 
         if (custList && custList.length > 0) {
           // Find the customer record that has a valid user_id (not null and not dummy uuid)
@@ -280,6 +284,9 @@ export async function POST(request: NextRequest) {
         candidateEmails.push(matchedAuthUser.email);
       }
       if (!isEmail) {
+        candidateEmails.push(`${rawIdentifier.toLowerCase()}@kallayi.internal`);
+        candidateEmails.push(`${rawIdentifier.toLowerCase()}@kallayi.com`);
+        candidateEmails.push(`${rawIdentifier.toLowerCase()}@example.com`);
         if (twelveDigit) candidateEmails.push(`${twelveDigit}@kallayi.internal`);
         if (tenDigit) candidateEmails.push(`${tenDigit}@kallayi.internal`);
         if (digits) candidateEmails.push(`${digits}@kallayi.internal`);
