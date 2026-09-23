@@ -1,11 +1,12 @@
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from staff.models import StaffProfile
 from .serializers import (
     UserSerializer, StaffProfileSerializer, StaffCreateSerializer,
-    PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer,
+    ChangePasswordSerializer
 )
 from .permissions import IsAdmin, IsStaffUser, IsOwnerOrAdmin, get_user_role
 
@@ -301,6 +302,41 @@ def password_reset_confirm(request):
 
     return Response({
         'message': 'Password has been updated successfully! You may now log in with your new password.'
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def change_password_view(request):
+    """
+    Endpoint: POST /api/v1/core/change-password/
+    Securely updates the authenticated user's password with old-password verification,
+    complexity validation, and session token renewal.
+    """
+    serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+    if not serializer.is_valid():
+        first_err = list(serializer.errors.values())[0]
+        if isinstance(first_err, list):
+            first_err = first_err[0]
+        return Response({
+            'success': False,
+            'error': str(first_err),
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    new_password = serializer.validated_data['new_password']
+    user = request.user
+    user.set_password(new_password)
+    user.save()
+
+    from rest_framework.authtoken.models import Token
+    Token.objects.filter(user=user).delete()
+    new_token = Token.objects.create(user=user)
+
+    return Response({
+        'success': True,
+        'message': 'Your password has been changed successfully.',
+        'token': new_token.key
     }, status=status.HTTP_200_OK)
 
 

@@ -196,6 +196,7 @@ export interface UnifiedSearchResult {
     vehicle_id?: number | string;
     plate_number: string;
     make: string;
+    brand?: string;
     model: string;
     vehicle_type?: string;
     color?: string;

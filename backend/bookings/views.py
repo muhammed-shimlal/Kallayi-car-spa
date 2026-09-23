@@ -318,15 +318,30 @@ class BookingViewSet(viewsets.ModelViewSet):
                 booking.vehicle.customer = target_customer.user
                 booking.vehicle.save()
 
-        raw_final_price = request.data.get('final_price') or request.data.get('collected_price') or request.data.get('agreed_price')
+        raw_final_price = request.data.get('custom_price') or request.data.get('final_price') or request.data.get('collected_price') or request.data.get('agreed_price')
+        raw_discount_amt = request.data.get('discount_amount')
+        discount_reason = (request.data.get('discount_reason') or '').strip()
+
+        from decimal import Decimal
+        base_price = Decimal(str(booking.base_price if (booking.base_price and booking.base_price > 0) else (booking.service_package.price if booking.service_package else 0)))
+
         if raw_final_price is not None and str(raw_final_price).strip() != '':
             try:
-                from decimal import Decimal
                 parsed_final = Decimal(str(raw_final_price))
                 if parsed_final >= Decimal('0.00'):
                     booking.final_price = parsed_final
             except Exception:
                 pass
+        elif raw_discount_amt is not None and str(raw_discount_amt).strip() != '':
+            try:
+                parsed_disc = Decimal(str(raw_discount_amt))
+                if parsed_disc >= Decimal('0.00'):
+                    booking.final_price = max(Decimal('0.00'), base_price - parsed_disc)
+            except Exception:
+                pass
+
+        if discount_reason:
+            booking.discount_reason = discount_reason
 
         booking.status = 'COMPLETED'
         booking.end_time = timezone.now()
@@ -358,6 +373,23 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         total_amount = booking.final_price if (booking.final_price and booking.final_price > 0) else (booking.service_package.price if booking.service_package else 0.0)
 
+        collector_type = str(request.data.get('collector_type', '')).upper()
+        staff_collector_id = request.data.get('cash_collected_by_staff_id') or request.data.get('collected_by_staff_id')
+        collector_user = None
+        if collector_type == 'STAFF' and staff_collector_id:
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            try:
+                collector_user = User.objects.filter(id=staff_collector_id).first()
+                if not collector_user:
+                    collector_user = User.objects.filter(staff_profile__id=staff_collector_id).first()
+            except Exception:
+                pass
+        else:
+            collector_type = 'ADMIN'
+
+        is_cash_payment = (amount_cash > 0 or payment_method == 'CASH')
+
         if not hasattr(booking, 'invoice'):
             from finance.models import Invoice
             Invoice.objects.create(
@@ -367,10 +399,13 @@ class BookingViewSet(viewsets.ModelViewSet):
                 final_price=booking.final_price,
                 discount_amount=booking.discount_amount,
                 discount_percentage=booking.discount_percentage,
+                discount_reason=booking.discount_reason,
                 split_cash=amount_cash,
                 split_online=amount_upi,
                 split_khata=amount_khata,
                 payment_method=payment_method,
+                cash_collected_by_staff=collector_user if is_cash_payment else None,
+                collector_type=collector_type if is_cash_payment else 'ADMIN',
                 is_paid=True
             )
         else:
@@ -380,10 +415,13 @@ class BookingViewSet(viewsets.ModelViewSet):
             inv.amount = total_amount
             inv.discount_amount = booking.discount_amount
             inv.discount_percentage = booking.discount_percentage
+            inv.discount_reason = booking.discount_reason
             inv.split_cash = amount_cash
             inv.split_online = amount_upi
             inv.split_khata = amount_khata
             inv.payment_method = payment_method
+            inv.cash_collected_by_staff = collector_user if is_cash_payment else None
+            inv.collector_type = collector_type if is_cash_payment else 'ADMIN'
             inv.is_paid = True
             inv.save()
             
@@ -534,17 +572,25 @@ def express_walkin(request):
     if not is_authorized:
         return Response({'error': 'Forbidden'}, status=403)
         
-    phone = request.data.get('phone')
-    plate_number = request.data.get('plate_number')
-    package_id = request.data.get('package_id')
+    phone = request.data.get('phone') or request.data.get('phone_number') or request.data.get('phoneNumber') or request.data.get('customer_phone') or '9999999999'
+    plate_number = request.data.get('plate_number') or request.data.get('license_plate') or request.data.get('vehicle_number') or request.data.get('plateNumber')
+    package_id = request.data.get('package_id') or request.data.get('service_package_id') or request.data.get('servicePackageId') or request.data.get('packageId')
     
-    if not phone or not plate_number or not package_id:
-        return Response({'error': 'Missing required fields'}, status=400)
+    if not plate_number:
+        return Response({'error': 'Missing required fields: license_plate or plate_number is required'}, status=400)
         
-    try:
-        package = ServicePackage.objects.get(id=package_id)
-    except ServicePackage.DoesNotExist:
-        return Response({'error': 'Invalid service package'}, status=400)
+    package = None
+    if package_id:
+        try:
+            package = ServicePackage.objects.get(id=package_id)
+        except (ServicePackage.DoesNotExist, ValueError):
+            package = None
+
+    if not package:
+        package = ServicePackage.objects.filter(is_active=True).first() or ServicePackage.objects.first()
+        
+    if not package:
+        return Response({'error': 'No service package found in system'}, status=400)
         
     make = (request.data.get('make') or request.data.get('vehicle_make') or '').strip()
     model = (request.data.get('model') or request.data.get('vehicle_model') or '').strip()
@@ -614,9 +660,20 @@ def express_walkin(request):
         if updated:
             vehicle.save()
 
-    # Price Derivation & Concession (Single-field final price entry)
+    # Price Derivation & Concession (Single-field final price entry with body-type tiered support)
     from decimal import Decimal
-    base_price = Decimal(str(package.price))
+    from bookings.models import ServicePackagePrice
+    spp = ServicePackagePrice.objects.filter(package=package, vehicle_type=vehicle_type).first()
+    if spp and spp.price:
+        base_price = Decimal(str(spp.price))
+    elif request.data.get('base_price'):
+        try:
+            base_price = Decimal(str(request.data.get('base_price')))
+        except Exception:
+            base_price = Decimal(str(package.price))
+    else:
+        base_price = Decimal(str(package.price))
+
     raw_final_price = request.data.get('final_price') or request.data.get('collected_price') or request.data.get('agreed_price')
     if raw_final_price is not None and str(raw_final_price).strip() != '':
         try:
@@ -629,35 +686,134 @@ def express_walkin(request):
             final_price = base_price
     else:
         final_price = base_price
+
+    # Bay Assignment & Initial Stage
+    raw_bay = request.data.get('bay_assignment') or request.data.get('bay') or ''
+    bay_assignment = None
+    booking_status = 'WAITING'
+    if raw_bay in ['Washing Bay 1', 'Bay 1', 'IN_BAY_1']:
+        bay_assignment = 'Washing Bay 1'
+        booking_status = 'IN_BAY_1'
+    elif raw_bay in ['Washing Bay 2', 'Bay 2', 'IN_BAY_2']:
+        bay_assignment = 'Washing Bay 2'
+        booking_status = 'IN_BAY_2'
+    elif raw_bay in ['Detailing Bay', 'Detailing', 'DETAILING']:
+        bay_assignment = 'Detailing Bay'
+        booking_status = 'DETAILING'
+    elif raw_bay:
+        bay_assignment = str(raw_bay).strip()
+
+    # Technician Assignment (default to logged in staff user)
+    technician = None
+    tech_id = request.data.get('technician_id') or request.data.get('assigned_technician_id')
+    if tech_id:
+        from django.contrib.auth.models import User
+        technician = User.objects.filter(id=tech_id, is_active=True).first()
+    if not technician and user.is_authenticated and not user.is_anonymous:
+        technician = user
     
     # Booking Creation (Bypass Slot Validations & Overlaps)
     current_time = timezone.now()
+    discount_reason = (request.data.get('discount_reason') or '').strip()
+
     booking = Booking.objects.create(
         customer=customer,
         vehicle=vehicle,
+        technician=technician,
         service_package=package,
         base_price=base_price,
         final_price=final_price,
-        status='WAITING',
+        discount_reason=discount_reason,
+        status=booking_status,
+        bay_assignment=bay_assignment,
         time_slot=current_time,
-        start_time=current_time,
+        start_time=current_time if booking_status != 'WAITING' else None,
         address='Kallayi Car Spa - Main Hub'
     )
     
-    # Generate Invoice immediately for POS walk-ins
+    # Payment & Invoice Generation for POS counter intake
+    payment_method = (request.data.get('payment_method') or 'CASH').upper().strip()
+    raw_is_paid = request.data.get('is_paid', True)
+    if isinstance(raw_is_paid, str):
+        is_paid = raw_is_paid.lower() in ['true', '1', 'yes']
+    else:
+        is_paid = bool(raw_is_paid)
+
+    split_cash = Decimal('0.00')
+    split_online = Decimal('0.00')
+    split_khata = Decimal('0.00')
+
+    if is_paid:
+        if payment_method == 'CASH':
+            split_cash = booking.final_price
+        elif payment_method in ['UPI', 'ONLINE', 'CARD']:
+            split_online = booking.final_price
+            payment_method = 'ONLINE'
+        elif payment_method == 'KHATA':
+            split_khata = booking.final_price
+            if customer:
+                from finance.models import KhataLedger
+                customer.outstanding_balance += split_khata
+                customer.save()
+                KhataLedger.objects.create(
+                    customer=customer,
+                    amount=split_khata,
+                    transaction_type='CHARGE',
+                    description=f'POS Walk-In service for {vehicle.plate_number}',
+                    related_booking=booking
+                )
+        elif payment_method == 'SPLIT':
+            split_cash = Decimal(str(request.data.get('split_cash') or 0))
+            split_online = Decimal(str(request.data.get('split_online') or 0))
+            split_khata = Decimal(str(request.data.get('split_khata') or 0))
+            if split_khata > Decimal('0.00') and customer:
+                from finance.models import KhataLedger
+                customer.outstanding_balance += split_khata
+                customer.save()
+                KhataLedger.objects.create(
+                    customer=customer,
+                    amount=split_khata,
+                    transaction_type='CHARGE',
+                    description=f'POS Walk-In split khata for {vehicle.plate_number}',
+                    related_booking=booking
+                )
+
     from finance.models import Invoice
-    Invoice.objects.create(
+    invoice = Invoice.objects.create(
         booking=booking,
         amount=booking.final_price,
         base_price=booking.base_price,
         final_price=booking.final_price,
         discount_amount=booking.discount_amount,
-        discount_percentage=booking.discount_percentage
+        discount_percentage=booking.discount_percentage,
+        discount_reason=discount_reason,
+        payment_method=payment_method if payment_method in ['CASH', 'CARD', 'ONLINE', 'SPLIT'] else 'CASH',
+        is_paid=is_paid,
+        split_cash=split_cash,
+        split_online=split_online,
+        split_khata=split_khata
     )
     
-    print(f"📱 MOCK SMS: Welcome to Kallayi! Track your car ({plate_number}) live: https://kallayi.com/track/{booking.id}")
+    print(f"[SMS] MOCK SMS: Welcome to Kallayi! Track your car ({plate_number}) live: https://kallayi.com/track/{booking.id}")
     
-    return Response({'status': 'success', 'booking_id': booking.id})
+    return Response({
+        'status': 'success',
+        'booking_id': booking.id,
+        'invoice_id': invoice.id,
+        'plate_number': vehicle.plate_number,
+        'customer_name': customer.name if hasattr(customer, 'name') and customer.name else (customer.user.get_full_name() if customer.user else 'Walk-In Customer'),
+        'service_name': package.name,
+        'vehicle_type': vehicle.vehicle_type,
+        'base_price': float(booking.base_price),
+        'final_price': float(booking.final_price),
+        'discount_amount': float(booking.discount_amount),
+        'discount_percentage': float(booking.discount_percentage),
+        'discount_reason': booking.discount_reason,
+        'bay_assignment': booking.bay_assignment or 'Waiting Queue',
+        'status_code': booking.status,
+        'payment_method': payment_method,
+        'is_paid': is_paid
+    })
 
 
 @api_view(['PATCH'])
@@ -836,7 +992,9 @@ def live_queue(request):
             'customer_name': str(b.customer) if b.customer else 'Walk-In',
             'customer_phone': customer_phone,
             'customer_id': b.customer.id if b.customer else None,
-            'price': float(b.service_package.price) if b.service_package else 0.0,
+            'price': float(b.final_price or (b.service_package.price if b.service_package else 0.0)),
+            'base_price': float(b.base_price or (b.service_package.price if b.service_package else 0.0)),
+            'final_price': float(b.final_price or (b.service_package.price if b.service_package else 0.0)),
             'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else None,
             'technician_id': b.technician.id if b.technician else None,
             'created_at': b.created_at.isoformat() if b.created_at else None,
@@ -1011,7 +1169,9 @@ def global_service_history(request):
     
     # Calculate stats
     total_services = bookings.count()
-    total_revenue = bookings.aggregate(total=Sum('service_package__price'))['total'] or 0
+    total_revenue = bookings.aggregate(total=Sum('final_price'))['total'] or 0
+    if not total_revenue:
+        total_revenue = bookings.aggregate(total=Sum('service_package__price'))['total'] or 0
     
     data = []
     
@@ -1047,7 +1207,7 @@ def global_service_history(request):
             'customer_phone': cust_phone,
             'service_package_name': b.service_package.name if b.service_package else 'Custom Service',
             'technician_name': b.technician.get_full_name() or b.technician.username if b.technician else 'Unassigned',
-            'price': float(b.service_package.price) if b.service_package else 0.0,
+            'price': float(b.final_price if b.final_price and b.final_price > 0 else (b.service_package.price if b.service_package else 0.0)),
         })
         
     return Response({

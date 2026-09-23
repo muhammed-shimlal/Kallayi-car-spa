@@ -117,6 +117,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const finalPrice = Number(invoice.final_price || invoice.amount || 0);
     const discountAmount = Number(invoice.discount_amount || 0);
     const discountPercentage = Number(invoice.discount_percentage || 0);
+    const discountReason = invoice.discount_reason || bookingData?.discount_reason || '';
 
     const paymentMethod = String(invoice.payment_method || 'CASH').toUpperCase();
     const isPaid = invoice.is_paid !== false;
@@ -353,7 +354,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     if (discountAmount > 0) {
       doc.setTextColor(16, 185, 129);
-      doc.text(`Discount (${discountPercentage}%):`, rightBoxX + 6, currentY + 18);
+      const discountLabel = discountReason
+        ? `Discount (${discountPercentage}% - ${discountReason.slice(0, 16)}):`
+        : `Discount (${discountPercentage}%):`;
+      doc.text(discountLabel, rightBoxX + 6, currentY + 18);
       doc.text(`-Rs. ${discountAmount.toFixed(2)}`, rightBoxX + halfWidth - 6, currentY + 18, { align: 'right' });
     } else {
       doc.setTextColor(100, 116, 139);

@@ -6,6 +6,7 @@ import { AnimatePresence } from 'framer-motion';
 import Cookies from 'js-cookie';
 
 import api from '@/lib/api';
+import { handleSignOut } from '@/lib/authClient';
 
 import { SidebarNavigation } from '@/components/customer/dashboard/SidebarNavigation';
 import { OverviewTab } from '@/components/customer/dashboard/OverviewTab';
@@ -52,7 +53,7 @@ export default function CustomerDashboard() {
                 let userOutstandingBalance = 0;
                 // Fetch User Profile for dynamic greeting & outstanding balance
                 try {
-                    const userRes = await api.get('/core/users/me/');
+                    const userRes = await api.get('/core/users/me');
                     const user = userRes.data;
                     const name = user.first_name || user.username || '';
                     if (name) {
@@ -65,9 +66,9 @@ export default function CustomerDashboard() {
                     console.warn("User profile request skipped or unavailable", uErr);
                 }
 
-                // Try fetching detailed customer profile from /customers/me/
+                // Try fetching detailed customer profile from /customers/me
                 try {
-                    const custRes = await api.get('/customers/me/');
+                    const custRes = await api.get('/customers/me');
                     if (custRes.data && custRes.data.outstanding_balance !== undefined) {
                         userOutstandingBalance = parseFloat(custRes.data.outstanding_balance) || 0;
                     }
@@ -76,7 +77,7 @@ export default function CustomerDashboard() {
                 // Fetch the logged-in customer's bookings
                 let bookings: any[] = [];
                 try {
-                    const bookingsRes = await api.get('/bookings/');
+                    const bookingsRes = await api.get('/bookings');
                     const rawBookings = bookingsRes.data;
                     bookings = Array.isArray(rawBookings)
                         ? rawBookings
@@ -90,7 +91,7 @@ export default function CustomerDashboard() {
 
                 // 1. Fetch Customer Vehicles natively
                 try {
-                    const vehiclesRes = await api.get('/customer-vehicles/');
+                    const vehiclesRes = await api.get('/customer-vehicles');
                     const rawVehicles = vehiclesRes.data;
                     const vehiclesList = Array.isArray(rawVehicles)
                         ? rawVehicles
@@ -143,12 +144,12 @@ export default function CustomerDashboard() {
                 try {
                     let ledgerRes;
                     try {
-                        ledgerRes = await api.get('/customer/khata');
+                        ledgerRes = await api.get('/customers/me/ledger');
                     } catch {
                         try {
-                            ledgerRes = await api.get('/finance/khata/my-ledger/');
+                            ledgerRes = await api.get('/customer/khata');
                         } catch {
-                            ledgerRes = await api.get('/customers/me/ledger/');
+                            ledgerRes = await api.get('/finance/khata/my-ledger');
                         }
                     }
 
@@ -215,10 +216,7 @@ export default function CustomerDashboard() {
         fetchDashboardData();
     }, []);
 
-    const handleLogout = () => {
-        localStorage.removeItem('auth_token');
-        router.push('/login');
-    };
+    const handleLogout = handleSignOut;
 
     if (isLoading) {
         return (

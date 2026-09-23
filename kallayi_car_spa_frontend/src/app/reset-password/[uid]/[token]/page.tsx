@@ -43,7 +43,7 @@ export default function ResetPasswordPage() {
         setIsLoading(true);
 
         try {
-            const res = await api.post("/password-reset-confirm/", {
+            const res = await api.post("/password-reset-confirm", {
                 uidb64: uid,
                 token: token,
                 new_password: newPassword,

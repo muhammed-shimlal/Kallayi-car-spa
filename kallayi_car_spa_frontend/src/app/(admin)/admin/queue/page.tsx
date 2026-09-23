@@ -7,7 +7,7 @@ import {
     Activity, Car, Clock, RefreshCw, 
     ChevronLeft, Droplets, Sparkles, CheckCircle, 
     AlertCircle, User, Wifi, WifiOff, LayoutDashboard,
-    Pencil, Trash2, X, LayoutGrid, Kanban, Filter, BookOpen, Phone, Search, Calendar, Camera, Image as ImageIcon, QrCode, FileText
+    Pencil, Trash2, X, LayoutGrid, Kanban, Filter, BookOpen, Phone, Search, Calendar, Camera, Image as ImageIcon, QrCode, FileText, ShieldCheck
 } from 'lucide-react';
 
 import toast from 'react-hot-toast';
@@ -362,10 +362,12 @@ export default function AdminQueueBoard() {
     const [checkoutModal, setCheckoutModal] = useState({ 
         isOpen: false, 
         bookingId: null as number | null, 
+        catalogPrice: 0,
         totalAmount: 0, 
         cash: 0, 
         upi: 0, 
         khata: 0, 
+        discountReason: '',
         customerName: '',
         customerId: null as number | null,
         phoneNumber: '',
@@ -373,6 +375,7 @@ export default function AdminQueueBoard() {
         plateNumber: '',
         isSplit: false,
         method: 'CASH' as 'CASH' | 'UPI' | 'KHATA',
+        collectorType: 'ADMIN' as 'ADMIN' | 'STAFF',
         cashCollectedByStaffId: '',
     });
 
@@ -730,19 +733,17 @@ export default function AdminQueueBoard() {
         let initialCustName = foundCard.customer_name || '';
         let initialCustId = foundCard.customer_id || null;
 
-        // Pre-select staff member for cash custody (assigned technician, or first active staff member)
-        let defaultStaffId = String((foundCard as any).technician_id || '');
-        if (!defaultStaffId && staffMembers.length > 0) {
-            defaultStaffId = String(staffMembers[0].id);
-        }
-
+        // Default to Counter / Admin direct deposit (DO NOT pre-select technician or staff member)
+        const catalogPrice = foundCard.price;
         setCheckoutModal({ 
             isOpen: true, 
             bookingId, 
-            totalAmount: foundCard.price, 
-            cash: foundCard.price, 
+            catalogPrice: catalogPrice,
+            totalAmount: catalogPrice, 
+            cash: catalogPrice, 
             upi: 0, 
             khata: 0, 
+            discountReason: '',
             customerName: initialCustName,
             customerId: initialCustId,
             phoneNumber: initialPhone,
@@ -750,7 +751,8 @@ export default function AdminQueueBoard() {
             plateNumber: foundCard.plate_number || '',
             isSplit: false,
             method: 'CASH',
-            cashCollectedByStaffId: defaultStaffId,
+            collectorType: 'ADMIN',
+            cashCollectedByStaffId: '',
         });
     };
 
@@ -794,9 +796,12 @@ export default function AdminQueueBoard() {
         }
 
         const isCashRequired = (!checkoutModal.isSplit && checkoutModal.method === 'CASH') || (checkoutModal.isSplit && finalCashAmount > 0);
-        let staffCustodyId = checkoutModal.cashCollectedByStaffId || '';
-        if (isCashRequired && !staffCustodyId && staffMembers.length > 0) {
-            staffCustodyId = String(staffMembers[0].id);
+        const collectorType = checkoutModal.collectorType || 'ADMIN';
+        const staffCustodyId = (isCashRequired && collectorType === 'STAFF') ? (checkoutModal.cashCollectedByStaffId || null) : null;
+
+        if (isCashRequired && collectorType === 'STAFF' && !staffCustodyId) {
+            toast.error('Please select the staff member who collected the physical cash.');
+            return;
         }
 
         try {
@@ -805,11 +810,20 @@ export default function AdminQueueBoard() {
             if (activePhotoFile) {
                 const formData = new FormData();
                 formData.append('booking_id', String(checkoutModal.bookingId!));
+                formData.append('base_price', String(checkoutModal.catalogPrice));
+                formData.append('final_price', String(checkoutModal.totalAmount));
+                formData.append('custom_price', String(checkoutModal.totalAmount));
+                formData.append('discount_amount', String(Math.max(0, checkoutModal.catalogPrice - checkoutModal.totalAmount)));
+                if (checkoutModal.discountReason) formData.append('discount_reason', checkoutModal.discountReason);
                 formData.append('split_cash', String(finalCashAmount));
                 formData.append('split_online', String(upiAmount));
                 formData.append('split_khata', String(totalKhata));
                 formData.append('payment_method', checkoutModal.isSplit ? 'SPLIT' : checkoutModal.method);
-                if (staffCustodyId) formData.append('cash_collected_by_staff_id', staffCustodyId);
+                formData.append('collector_type', collectorType);
+                if (staffCustodyId) {
+                    formData.append('cash_collected_by_staff_id', staffCustodyId);
+                    formData.append('collected_by_staff_id', staffCustodyId);
+                }
                 if (checkoutModal.customerId) formData.append('customer_id', String(checkoutModal.customerId));
                 if (checkoutModal.customerName) formData.append('customer_name', checkoutModal.customerName);
                 if (checkoutModal.phoneNumber) formData.append('customer_phone', checkoutModal.phoneNumber);
@@ -824,11 +838,18 @@ export default function AdminQueueBoard() {
             } else {
                 const payload = {
                     booking_id: Number(checkoutModal.bookingId!),
+                    base_price: checkoutModal.catalogPrice,
+                    final_price: checkoutModal.totalAmount,
+                    custom_price: checkoutModal.totalAmount,
+                    discount_amount: Math.max(0, checkoutModal.catalogPrice - checkoutModal.totalAmount),
+                    discount_reason: checkoutModal.discountReason || null,
                     split_cash: finalCashAmount,
                     split_online: upiAmount,
                     split_khata: totalKhata,
                     payment_method: checkoutModal.isSplit ? 'SPLIT' : checkoutModal.method,
+                    collector_type: collectorType,
                     cash_collected_by_staff_id: staffCustodyId || null,
+                    collected_by_staff_id: staffCustodyId || null,
                     customer_id: checkoutModal.customerId,
                     customer_name: checkoutModal.customerName,
                     customer_phone: checkoutModal.phoneNumber,
@@ -912,10 +933,12 @@ export default function AdminQueueBoard() {
             setCheckoutModal({ 
                 isOpen: false, 
                 bookingId: null, 
+                catalogPrice: 0,
                 totalAmount: 0, 
                 cash: 0, 
                 upi: 0, 
                 khata: 0, 
+                discountReason: '',
                 customerName: '', 
                 customerId: null, 
                 phoneNumber: '', 
@@ -923,6 +946,7 @@ export default function AdminQueueBoard() {
                 plateNumber: '', 
                 isSplit: false, 
                 method: 'CASH',
+                collectorType: 'ADMIN',
                 cashCollectedByStaffId: '',
             });
             fetchQueue(true);
@@ -934,7 +958,7 @@ export default function AdminQueueBoard() {
     const toggleSplit = () => {
         setCheckoutModal(prev => {
             if (!prev.isSplit) {
-                return { ...prev, isSplit: true };
+                return { ...prev, isSplit: true, cash: prev.totalAmount, upi: 0, khata: 0 };
             } else {
                 return { 
                     ...prev, 
@@ -1386,6 +1410,84 @@ export default function AdminQueueBoard() {
                         </div>
 
                         <div className="p-6 space-y-5">
+                            {/* Negotiated Price & Concession Card */}
+                            <div className="p-4 rounded-2xl bg-[#181a1f] border border-[#01FFFF]/30 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                                        Catalog Base Rate: <strong className="text-white font-mono">₹{checkoutModal.catalogPrice}</strong>
+                                    </span>
+                                    {checkoutModal.totalAmount < checkoutModal.catalogPrice && (
+                                        <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px] font-mono font-bold">
+                                            Discount: -₹{(checkoutModal.catalogPrice - checkoutModal.totalAmount).toFixed(2)} ({(((checkoutModal.catalogPrice - checkoutModal.totalAmount) / (checkoutModal.catalogPrice || 1)) * 100).toFixed(1)}% OFF)
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] uppercase tracking-wider font-bold text-[#01FFFF] block mb-1">
+                                        Payable Amount (₹)
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#01FFFF] font-bold text-base">₹</span>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={checkoutModal.totalAmount || ''}
+                                            onChange={(e) => {
+                                                const newTotal = parseFloat(e.target.value) || 0;
+                                                setCheckoutModal(prev => {
+                                                    const updated = { ...prev, totalAmount: newTotal };
+                                                    if (!prev.isSplit) {
+                                                        if (prev.method === 'CASH') updated.cash = newTotal;
+                                                        else if (prev.method === 'UPI') updated.upi = newTotal;
+                                                        else if (prev.method === 'KHATA') updated.khata = newTotal;
+                                                    } else {
+                                                        if ((prev.upi || 0) === 0) {
+                                                            updated.cash = newTotal;
+                                                        } else {
+                                                            updated.cash = Math.max(0, newTotal - (prev.upi || 0));
+                                                        }
+                                                    }
+                                                    return updated;
+                                                });
+                                            }}
+                                            className="w-full bg-black/50 border border-[#01FFFF]/40 focus:border-[#01FFFF] py-2.5 pl-8 pr-3 rounded-xl text-white font-mono text-base font-bold outline-none transition-all"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Discount Reason & Quick Chips */}
+                                <div>
+                                    <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-400 block mb-1">
+                                        Discount Reason {checkoutModal.totalAmount < checkoutModal.catalogPrice ? <strong className="text-amber-400">(Recommended)</strong> : ''}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={checkoutModal.discountReason}
+                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, discountReason: e.target.value }))}
+                                        placeholder="e.g. Regular Customer, Fleet Bargain..."
+                                        className="w-full bg-black/40 border border-white/10 focus:border-[#01FFFF] py-2 px-3 rounded-xl text-white font-mono text-xs outline-none transition-all placeholder:text-zinc-600"
+                                    />
+                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {["Customer Bargain", "Regular", "Regular Customer", "Fleet Bargain", "Dirtiness Concession"].map((chip) => (
+                                            <button
+                                                key={chip}
+                                                type="button"
+                                                onClick={() => setCheckoutModal(prev => ({ ...prev, discountReason: chip }))}
+                                                className={`text-[9px] font-bold px-2 py-0.5 rounded border transition-all ${
+                                                    checkoutModal.discountReason === chip
+                                                        ? "bg-[#01FFFF]/20 border-[#01FFFF] text-[#01FFFF]"
+                                                        : "bg-white/5 border-white/10 text-zinc-400 hover:text-white"
+                                                }`}
+                                            >
+                                                + {chip}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="flex items-center justify-between mb-2">
                                 <h3 className="text-sm font-bold uppercase tracking-widest text-white">Payment Method</h3>
                                 <label className="flex items-center gap-2 cursor-pointer group">
@@ -1477,31 +1579,103 @@ export default function AdminQueueBoard() {
 
                             {/* ── CASH CUSTODY SELECTOR (WHEN PAYMENT INCLUDES CASH) ───────────────── */}
                             {((!checkoutModal.isSplit && checkoutModal.method === 'CASH') || (checkoutModal.isSplit && (checkoutModal.cash || 0) > 0)) && (
-                                <div className="bg-emerald-950/20 border border-emerald-500/30 p-3.5 sm:p-4 rounded-2xl space-y-2 animate-in fade-in slide-in-from-top-2 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+                                <div className="bg-[#141518] border border-white/10 p-3.5 sm:p-4 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
                                     <div className="flex items-center justify-between">
-                                        <label className="text-[10px] text-emerald-400 uppercase font-bold tracking-[0.2em] flex items-center gap-1.5">
-                                            <span>💵 Cash Collected By (Staff Member) *</span>
+                                        <label className="text-[10px] text-neutral-300 uppercase font-bold tracking-[0.2em] flex items-center gap-1.5">
+                                            <span>💵 Cash Collection Target</span>
                                         </label>
-                                        <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider">
-                                            Custody
+                                        <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider">
+                                            Physical Tender
                                         </span>
                                     </div>
-                                    <select
-                                        required
-                                        value={checkoutModal.cashCollectedByStaffId || ''}
-                                        onChange={(e) => setCheckoutModal(prev => ({ ...prev, cashCollectedByStaffId: e.target.value }))}
-                                        className="w-full bg-[#141518] border border-emerald-500/40 py-3 px-4 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 cursor-pointer"
-                                    >
-                                        <option value="" className="bg-[#141518] text-[#8E939B]">-- Select Staff Member Who Took Cash --</option>
-                                        {staffMembers.map((s: any) => (
-                                            <option key={String(s.id)} value={String(s.id)} className="bg-[#141518] text-white">
-                                                {s.first_name || s.name || s.username || `Staff #${s.id}`} ({s.role || 'Staff'})
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <p className="text-[10px] text-neutral-400 italic">
-                                        This cash amount will be linked to the selected staff member's cash-in-hand custody until handed over to admin.
-                                    </p>
+
+                                    {/* Dual Option Toggle Buttons */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCheckoutModal(prev => ({ ...prev, collectorType: 'ADMIN', cashCollectedByStaffId: '' }))}
+                                            className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                                                checkoutModal.collectorType === 'ADMIN'
+                                                    ? 'bg-emerald-500/15 border-emerald-500/50 text-white shadow-sm'
+                                                    : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-white/10'
+                                            }`}
+                                        >
+                                            <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                                                checkoutModal.collectorType === 'ADMIN' ? 'border-emerald-400 bg-emerald-500' : 'border-neutral-500'
+                                            }`}>
+                                                {checkoutModal.collectorType === 'ADMIN' && <span className="w-1.5 h-1.5 rounded-full bg-[#050507]" />}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-white text-xs">Collected at Counter / Directly by Admin</div>
+                                                <div className="text-[10px] text-neutral-400">Direct register till deposit</div>
+                                            </div>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setCheckoutModal(prev => ({
+                                                ...prev,
+                                                collectorType: 'STAFF',
+                                                cashCollectedByStaffId: prev.cashCollectedByStaffId || (staffMembers.length > 0 ? String(staffMembers[0].id) : '')
+                                            }))}
+                                            className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                                                checkoutModal.collectorType === 'STAFF'
+                                                    ? 'bg-amber-500/15 border-amber-500/50 text-white shadow-sm'
+                                                    : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-white/10'
+                                            }`}
+                                        >
+                                            <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                                                checkoutModal.collectorType === 'STAFF' ? 'border-amber-400 bg-amber-500' : 'border-neutral-500'
+                                            }`}>
+                                                {checkoutModal.collectorType === 'STAFF' && <span className="w-1.5 h-1.5 rounded-full bg-[#050507]" />}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-white text-xs">Collected by Staff Member (at Bay/Floor)</div>
+                                                <div className="text-[10px] text-neutral-400">Worker cash custody</div>
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                    {/* Option 1: Green Badge */}
+                                    {checkoutModal.collectorType === 'ADMIN' && (
+                                        <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+                                            <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
+                                            <span>✓ Direct Shop Till Deposit (No staff handover required)</span>
+                                        </div>
+                                    )}
+
+                                    {/* Option 2: Staff Dropdown & Alert */}
+                                    {checkoutModal.collectorType === 'STAFF' && (
+                                        <div className="space-y-2 pt-1 animate-in fade-in">
+                                            <select
+                                                required
+                                                value={checkoutModal.cashCollectedByStaffId || ''}
+                                                onChange={(e) => setCheckoutModal(prev => ({ ...prev, cashCollectedByStaffId: e.target.value }))}
+                                                className="w-full bg-[#141518] border border-amber-500/40 py-2.5 px-3 rounded-xl text-white text-xs font-semibold focus:outline-none focus:border-amber-400 cursor-pointer"
+                                            >
+                                                <option value="" className="text-neutral-400">-- Select Staff Member Who Took Cash --</option>
+                                                {staffMembers.map((s: any) => (
+                                                    <option key={String(s.id)} value={String(s.id)} className="bg-[#141518] text-white">
+                                                        {s.first_name || s.name || s.full_name || s.username || `Staff #${s.id}`} ({s.role || 'Staff'})
+                                                    </option>
+                                                ))}
+                                            </select>
+
+                                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-start gap-2">
+                                                <span className="text-base shrink-0 leading-none">⚠️</span>
+                                                <span>
+                                                    Cash Custody Alert: ₹{checkoutModal.isSplit ? (checkoutModal.cash || 0) : checkoutModal.totalAmount} will be assigned to{' '}
+                                                    <strong>
+                                                        {staffMembers.find((s: any) => String(s.id) === String(checkoutModal.cashCollectedByStaffId))?.name ||
+                                                         staffMembers.find((s: any) => String(s.id) === String(checkoutModal.cashCollectedByStaffId))?.first_name ||
+                                                         staffMembers.find((s: any) => String(s.id) === String(checkoutModal.cashCollectedByStaffId))?.username ||
+                                                         'Selected Staff'}
+                                                    </strong>
+                                                    &apos;s &quot;Cash in Hand&quot; and must be handed over during EOD reconciliation.
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

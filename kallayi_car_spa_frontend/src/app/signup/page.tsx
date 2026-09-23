@@ -157,7 +157,7 @@ export default function SignupPage() {
                 };
             }
 
-            const res = await api.post('/customers/register/', payload);
+            const res = await api.post('/customers/register', payload);
             const token = res.data?.token;
 
             if (!token) {
@@ -191,7 +191,7 @@ export default function SignupPage() {
             if (isAdmin) {
                 router.replace('/admin/dashboard');
             } else if (isStaff) {
-                router.replace('/staff/queue');
+                router.replace('/staff/dashboard');
             } else {
                 router.replace(res.data?.redirect || '/customer/dashboard');
             }

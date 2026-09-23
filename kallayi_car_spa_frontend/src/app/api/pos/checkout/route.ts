@@ -125,7 +125,9 @@ export async function POST(request: NextRequest) {
       payment_method,
       base_price,
       final_price,
+      custom_price,
       discount_amount,
+      discount_reason,
       revenue_category_id,
       customer_id,
       customer_name,
@@ -136,8 +138,15 @@ export async function POST(request: NextRequest) {
       notes,
       description,
       cash_collected_by_staff_id = null,
+      collected_by_staff_id = null,
+      collector_type = null,
+      collected_by = null,
       staff_id = null,
     } = payload;
+
+    if (custom_price !== undefined && custom_price !== null && custom_price !== '') {
+      final_price = Number(custom_price);
+    }
 
     const rawBookingId = booking_id;
     if (!rawBookingId && rawBookingId !== 0) {
@@ -187,6 +196,7 @@ export async function POST(request: NextRequest) {
       final_price: number;
       discount_amount: number;
       discount_percentage: number;
+      discount_reason?: string | null;
       status: string;
       technician_id: string | null;
       customer?: {
@@ -415,54 +425,37 @@ export async function POST(request: NextRequest) {
       finalPaymentMethod = 'CASH';
     }
 
-    // Resolve Cash Custody Staff ID with Graceful Fallbacks (Never abort with 400 or fail UUID type)
+    // Resolve Cash Custody Staff ID & Collector Type
     let resolvedCashStaffId: string | null = null;
+    let resolvedCollectorType: 'ADMIN' | 'STAFF' = 'ADMIN';
     const isCashInvolved = splitCashNum > 0 || finalPaymentMethod === 'CASH';
 
-    if (isCashInvolved) {
-      const candidateId = String(cash_collected_by_staff_id || staff_id || '').trim();
+    const rawCollectorType = String(
+      collector_type ||
+      collected_by ||
+      (cash_collected_by_staff_id || collected_by_staff_id ? 'STAFF' : 'ADMIN')
+    ).toUpperCase();
+
+    if (isCashInvolved && rawCollectorType === 'STAFF') {
+      const candidateId = String(
+        cash_collected_by_staff_id ||
+        collected_by_staff_id ||
+        staff_id ||
+        ''
+      ).trim();
+
       if (candidateId) {
         const staff = await resolveStaffProfile(supabase, candidateId);
         if (staff?.id) {
           resolvedCashStaffId = staff.id;
+          resolvedCollectorType = 'STAFF';
         }
       }
-
-      // Fallback 1: booking's assigned technician
-      if (!resolvedCashStaffId && rawBooking.technician_id) {
-        const techStaff = await resolveStaffProfile(supabase, String(rawBooking.technician_id));
-        if (techStaff?.id) {
-          resolvedCashStaffId = techStaff.id;
-        }
-      }
-
-      // Fallback 2: first active staff member
-      if (!resolvedCashStaffId) {
-        const { data: firstActiveStaff } = await supabase
-          .from('staff_profiles')
-          .select('id')
-          .eq('is_active', true)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (firstActiveStaff?.id) {
-          resolvedCashStaffId = firstActiveStaff.id;
-        }
-      }
-
-      // Fallback 3: any staff profile
-      if (!resolvedCashStaffId) {
-        const { data: anyStaff } = await supabase
-          .from('staff_profiles')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
-
-        if (anyStaff?.id) {
-          resolvedCashStaffId = anyStaff.id;
-        }
-      }
+    } else {
+      // Counter / Directly by Admin (Default):
+      // Cash goes directly to shop register till and MUST NOT be attributed to staff
+      resolvedCashStaffId = null;
+      resolvedCollectorType = 'ADMIN';
     }
 
     // 7. Upsert / Create Invoice Record (Safe against unique booking_id constraint)
@@ -475,26 +468,38 @@ export async function POST(request: NextRequest) {
     let invoiceResult = null;
 
     if (existingInvoice) {
-      const { data: updatedInv, error: updateInvErr } = await supabase
+      const invPayload: any = {
+        amount: invoicePricing.amount,
+        base_price: invoicePricing.basePrice,
+        final_price: invoicePricing.finalPrice,
+        discount_amount: invoicePricing.discountAmount,
+        discount_percentage: invoicePricing.discountPercentage,
+        discount_reason: discount_reason || (rawBooking as any).discount_reason || null,
+        revenue_category_id: revenue_category_id || null,
+        is_deferred: false,
+        is_paid: true,
+        payment_method: finalPaymentMethod,
+        split_cash: splitCashNum,
+        split_online: splitOnlineNum,
+        split_khata: splitKhataNum,
+        cash_collected_by_staff_id: (splitCashNum > 0 || finalPaymentMethod === 'CASH') ? resolvedCashStaffId : null,
+        collector_type: (splitCashNum > 0 || finalPaymentMethod === 'CASH') ? resolvedCollectorType : 'ADMIN',
+      };
+
+      let { data: updatedInv, error: updateInvErr } = await supabase
         .from('invoices')
-        .update({
-          amount: invoicePricing.amount,
-          base_price: invoicePricing.basePrice,
-          final_price: invoicePricing.finalPrice,
-          discount_amount: invoicePricing.discountAmount,
-          discount_percentage: invoicePricing.discountPercentage,
-          revenue_category_id: revenue_category_id || null,
-          is_deferred: false,
-          is_paid: true,
-          payment_method: finalPaymentMethod,
-          split_cash: splitCashNum,
-          split_online: splitOnlineNum,
-          split_khata: splitKhataNum,
-          cash_collected_by_staff_id: (splitCashNum > 0 || finalPaymentMethod === 'CASH') ? resolvedCashStaffId : null,
-        })
+        .update(invPayload)
         .eq('id', existingInvoice.id)
         .select('*')
         .single();
+
+      if (updateInvErr && (updateInvErr.message?.includes('discount_reason') || updateInvErr.message?.includes('collector_type') || updateInvErr.code === '42703')) {
+        delete invPayload.discount_reason;
+        delete invPayload.collector_type;
+        const retry = await supabase.from('invoices').update(invPayload).eq('id', existingInvoice.id).select('*').single();
+        updatedInv = retry.data;
+        updateInvErr = retry.error;
+      }
 
       if (updateInvErr || !updatedInv) {
         console.error('[POS Update Invoice Error]:', updateInvErr);
@@ -505,26 +510,38 @@ export async function POST(request: NextRequest) {
       }
       invoiceResult = updatedInv;
     } else {
-      const { data: newInvoice, error: invError } = await supabase
+      const newInvPayload: any = {
+        booking_id: bookingIdNum,
+        amount: invoicePricing.amount,
+        base_price: invoicePricing.basePrice,
+        final_price: invoicePricing.finalPrice,
+        discount_amount: invoicePricing.discountAmount,
+        discount_percentage: invoicePricing.discountPercentage,
+        discount_reason: discount_reason || (rawBooking as any).discount_reason || null,
+        revenue_category_id: revenue_category_id || null,
+        is_deferred: false,
+        is_paid: true,
+        payment_method: finalPaymentMethod,
+        split_cash: splitCashNum,
+        split_online: splitOnlineNum,
+        split_khata: splitKhataNum,
+        cash_collected_by_staff_id: (splitCashNum > 0 || finalPaymentMethod === 'CASH') ? resolvedCashStaffId : null,
+        collector_type: (splitCashNum > 0 || finalPaymentMethod === 'CASH') ? resolvedCollectorType : 'ADMIN',
+      };
+
+      let { data: newInvoice, error: invError } = await supabase
         .from('invoices')
-        .insert({
-          booking_id: bookingIdNum,
-          amount: invoicePricing.amount,
-          base_price: invoicePricing.basePrice,
-          final_price: invoicePricing.finalPrice,
-          discount_amount: invoicePricing.discountAmount,
-          discount_percentage: invoicePricing.discountPercentage,
-          revenue_category_id: revenue_category_id || null,
-          is_deferred: false,
-          is_paid: true,
-          payment_method: finalPaymentMethod,
-          split_cash: splitCashNum,
-          split_online: splitOnlineNum,
-          split_khata: splitKhataNum,
-          cash_collected_by_staff_id: (splitCashNum > 0 || finalPaymentMethod === 'CASH') ? resolvedCashStaffId : null,
-        })
+        .insert(newInvPayload)
         .select('*')
         .single();
+
+      if (invError && (invError.message?.includes('discount_reason') || invError.message?.includes('collector_type') || invError.code === '42703')) {
+        delete newInvPayload.discount_reason;
+        delete newInvPayload.collector_type;
+        const retry = await supabase.from('invoices').insert(newInvPayload).select('*').single();
+        newInvoice = retry.data;
+        invError = retry.error;
+      }
 
       if (invError || !newInvoice) {
         console.error('[POS Create Invoice Error]:', invError);
@@ -539,18 +556,28 @@ export async function POST(request: NextRequest) {
     // 8. Explicitly mark booking as COMPLETED, set end_time, and sync final price
     const wasAlreadyCompleted = rawBooking.status === 'COMPLETED';
     const completionTimestamp = new Date().toISOString();
-    const { data: completedBooking, error: completeErr } = await supabase
+    const updateBookingPayload: any = {
+      status: 'COMPLETED',
+      end_time: completionTimestamp,
+      final_price: invoicePricing.finalPrice,
+      discount_amount: invoicePricing.discountAmount,
+      discount_percentage: invoicePricing.discountPercentage,
+      discount_reason: discount_reason || (rawBooking as any).discount_reason || null,
+    };
+
+    let { data: completedBooking, error: completeErr } = await supabase
       .from('bookings')
-      .update({
-        status: 'COMPLETED',
-        end_time: completionTimestamp,
-        final_price: invoicePricing.finalPrice,
-        discount_amount: invoicePricing.discountAmount,
-        discount_percentage: invoicePricing.discountPercentage,
-      })
+      .update(updateBookingPayload)
       .eq('id', bookingIdNum)
       .select('*')
       .maybeSingle();
+
+    if (completeErr && (completeErr.message?.includes('discount_reason') || completeErr.code === '42703')) {
+      delete updateBookingPayload.discount_reason;
+      const retry = await supabase.from('bookings').update(updateBookingPayload).eq('id', bookingIdNum).select('*').maybeSingle();
+      completedBooking = retry.data;
+      completeErr = retry.error;
+    }
 
     if (completeErr) {
       console.error('[POS Complete Booking Error]:', completeErr);
@@ -647,9 +674,13 @@ export async function POST(request: NextRequest) {
           bookingId: bookingIdNum,
           invoiceId: invoiceResult.id,
           customerPhone: customer?.phone_number || rawBooking.customer_phone || '',
-          plateNumber: vehicle?.plate_number || 'Vehicle',
+          customerName: customer?.name || (rawBooking as any).customer_name,
+          plateNumber: vehicle?.plate_number || (rawBooking as any).plate_number || 'Vehicle',
           packageName: pkg?.name || 'Car Spa Wash',
           amount: invoicePricing.amount,
+          basePrice: invoicePricing.basePrice,
+          discountAmount: invoicePricing.discountAmount,
+          discountReason: discount_reason || (rawBooking as any).discount_reason || undefined,
           paymentMethod: finalPaymentMethod,
         });
       }

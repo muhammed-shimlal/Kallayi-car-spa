@@ -73,6 +73,7 @@ class Booking(models.Model):
     final_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    discount_reason = models.CharField(max_length=255, blank=True, default='')
 
     # Location details
     address = models.TextField(default="123 Main St, City")
@@ -89,6 +90,10 @@ class Booking(models.Model):
 
         b_price = Decimal(str(self.base_price or 0))
         f_price = Decimal(str(self.final_price or 0)) if self.final_price is not None else Decimal('0.00')
+
+        # If discount_amount was provided but final_price was not explicitly set or equals base_price:
+        if self.discount_amount and Decimal(str(self.discount_amount)) > Decimal('0.00') and (f_price <= Decimal('0.00') or f_price == b_price):
+            f_price = max(Decimal('0.00'), b_price - Decimal(str(self.discount_amount)))
 
         if f_price <= Decimal('0.00') and b_price > Decimal('0.00'):
             f_price = b_price

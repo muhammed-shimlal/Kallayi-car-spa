@@ -62,7 +62,7 @@ function useActiveWash() {
     return useQuery<ActiveWash | null>({
         queryKey: ['activeWash'],
         queryFn: async () => {
-            const res = await api.get('/bookings/');
+            const res = await api.get('/bookings');
             const raw = res.data;
             const bookings: any[] = Array.isArray(raw)
                 ? raw
@@ -311,7 +311,7 @@ export function OverviewTab({ setIsBooking, handleLogout, customerName }: Overvi
     const { data: fetchedProfile } = useQuery({
         queryKey: ['customerProfile'],
         queryFn: async () => {
-            const res = await api.get('/core/users/me/');
+            const res = await api.get('/core/users/me');
             return res.data;
         },
         enabled: !customerName,
@@ -333,9 +333,8 @@ export function OverviewTab({ setIsBooking, handleLogout, customerName }: Overvi
             return;
         }
 
-        const WS_BASE = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api')
-            .replace(/^http/, 'ws')
-            .replace('/api', '');
+        const siteUrl = typeof window !== 'undefined' ? window.location.origin : (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000');
+        const WS_BASE = siteUrl.replace(/^http/, 'ws');
 
         let ws: WebSocket;
         try {
@@ -382,11 +381,12 @@ export function OverviewTab({ setIsBooking, handleLogout, customerName }: Overvi
                         </h1>
                     </div>
                     <button
+                        type="button"
                         onClick={handleLogout}
-                        aria-label="Log out of your account"
-                        className="md:hidden flex items-center gap-2 text-gray-500 hover:text-white transition-colors font-bold text-[10px] uppercase tracking-widest mt-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10"
+                        aria-label="Sign out of your account"
+                        className="md:hidden flex items-center gap-2 text-gray-500 hover:text-white transition-colors font-bold text-[10px] uppercase tracking-widest mt-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10 cursor-pointer"
                     >
-                        <LogOut className="w-4 h-4" aria-hidden="true" /> Log Out
+                        <LogOut className="w-4 h-4" aria-hidden="true" /> Sign Out
                     </button>
                 </div>
                 <button

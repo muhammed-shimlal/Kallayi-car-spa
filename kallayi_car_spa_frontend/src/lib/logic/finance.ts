@@ -86,7 +86,7 @@ export function deriveInvoicePricing(input: InvoicePricingInput): InvoicePricing
       }
     }
 
-    if (bk.finalPrice != null && Number(bk.finalPrice) > 0.00) {
+    if (fPrice <= 0.00 && bk.finalPrice != null && Number(bk.finalPrice) > 0.00) {
       fPrice = roundToTwoDecimals(bk.finalPrice);
       amt = fPrice;
     }

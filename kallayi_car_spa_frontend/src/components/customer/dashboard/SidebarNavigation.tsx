@@ -44,8 +44,12 @@ export function SidebarNavigation({ activeTab, setActiveTab, handleLogout }: Sid
                     ))}
                 </ul>
             </div>
-            <button onClick={handleLogout} className="flex items-center gap-3 text-gray-500 hover:text-spa-sky transition-colors font-bold text-xs uppercase tracking-widest mt-8 min-h-[44px] px-2">
-                <LogOut className="w-4 h-4" /> Log Out
+            <button 
+                type="button"
+                onClick={handleLogout} 
+                className="flex items-center gap-3 text-gray-500 hover:text-spa-sky transition-colors font-bold text-xs uppercase tracking-widest mt-8 min-h-[44px] px-2 cursor-pointer"
+            >
+                <LogOut className="w-4 h-4" /> Sign Out
             </button>
         </nav>
     );

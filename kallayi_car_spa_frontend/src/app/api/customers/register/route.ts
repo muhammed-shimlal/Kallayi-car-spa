@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
       const token = `auth_${staffUserId}`;
       const staffTradeRole = (matchedStaff.role || '').toUpperCase();
       const isAdminStaff = staffTradeRole === 'ADMIN' || staffTradeRole === 'MANAGER';
-      const redirectPath = isAdminStaff ? '/admin/dashboard' : '/staff/queue';
+      const redirectPath = isAdminStaff ? '/admin/dashboard' : '/staff/dashboard';
 
       const response = NextResponse.json({
         success: true,

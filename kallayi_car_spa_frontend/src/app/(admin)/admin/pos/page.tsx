@@ -4,15 +4,13 @@ import React, { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, ArrowLeft, Search, User, Phone, Sparkles, AlertCircle, X, Check } from "lucide-react";
+import { Loader2, ArrowLeft, Search, User, Phone, Sparkles, AlertCircle, X, Check, Tag } from "lucide-react";
 import { isValidIndianMobile } from "@/lib/phone";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { ServicePackage, UnifiedSearchResult } from '@/types/admin';
 import api from '@/lib/api';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
 
 export type CategoryKey = "Car" | "Bike" | "Auto Rickshaw" | "Van / Heavy";
 
@@ -101,6 +99,9 @@ export default function AdminExpressPOSPage() {
   const [customModel, setCustomModel] = useState<string>("");
   const [customType, setCustomType] = useState<string>("");
   const [customColor, setCustomColor] = useState<string>("");
+  const [agreedPriceInput, setAgreedPriceInput] = useState<string>("");
+  const [discountReason, setDiscountReason] = useState<string>("");
+  const [showAdvanceDiscount, setShowAdvanceDiscount] = useState<boolean>(false);
 
   const [customerGarage, setCustomerGarage] = useState<any[]>([]);
   const [matchedVehicles, setMatchedVehicles] = useState<any[]>([]);
@@ -180,6 +181,18 @@ export default function AdminExpressPOSPage() {
   };
 
   const activeVehicleType = (selectedType === "Other" ? (customType || category) : (selectedType || category || "HATCHBACK")).toUpperCase();
+
+  const selectedPackage = packages.find((p) => p.id === selectedPackageId);
+  const baseCatalogPrice = selectedPackage ? parseFloat(String((selectedPackage as any).price || (selectedPackage as any).final_price || (selectedPackage as any).base_price || 0)) : 0;
+  const finalAgreedPrice = agreedPriceInput !== "" ? parseFloat(agreedPriceInput) : baseCatalogPrice;
+  const calculatedDiscountAmt = Math.max(0, baseCatalogPrice - (isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice));
+  const calculatedDiscountPct = baseCatalogPrice > 0 ? ((calculatedDiscountAmt / baseCatalogPrice) * 100).toFixed(1) : "0.0";
+
+  useEffect(() => {
+    if (selectedPackage) {
+      setAgreedPriceInput(baseCatalogPrice > 0 ? baseCatalogPrice.toString() : "");
+    }
+  }, [selectedPackageId, baseCatalogPrice]);
 
   const applyVehicleToForm = (data: any) => {
     if (!data) return;
@@ -456,6 +469,10 @@ export default function AdminExpressPOSPage() {
 
       const cleanPhone = (data.phone || "").trim();
       const cleanPlate = (data.plate_number || "").toUpperCase().trim();
+      const finalPriceNumber = showAdvanceDiscount && !isNaN(finalAgreedPrice) && finalAgreedPrice > 0 ? finalAgreedPrice : baseCatalogPrice;
+      const discountAmt = showAdvanceDiscount ? calculatedDiscountAmt : 0;
+      const discountPct = showAdvanceDiscount ? parseFloat(calculatedDiscountPct) : 0;
+      const discountRsn = showAdvanceDiscount && discountReason.trim() ? discountReason.trim() : undefined;
 
       const payload = {
         name: data.customer_name?.trim() || 'Guest Customer',
@@ -470,6 +487,11 @@ export default function AdminExpressPOSPage() {
         vehicle_type: realType,
         color: realColor,
         status: 'WAITING',
+        base_price: baseCatalogPrice,
+        final_price: finalPriceNumber,
+        discount_amount: discountAmt,
+        discount_percentage: discountPct,
+        discount_reason: discountRsn,
       };
 
       const res = await fetch('/api/bookings', {
@@ -498,6 +520,8 @@ export default function AdminExpressPOSPage() {
       setCustomModel("");
       setCustomType("");
       setCustomColor("");
+      setAgreedPriceInput("");
+      setDiscountReason("");
     } catch (error: any) {
       toast.error(error.message || "Error processing walk-in intake.");
       console.error(error);
@@ -915,6 +939,127 @@ export default function AdminExpressPOSPage() {
                 </p>
               )}
             </div>
+
+            {/* Single-Field Negotiated Price & Discount Derivation (Optional Accordion) */}
+            {selectedPackage && (
+              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/10 hover:border-white/20 rounded-2xl sm:rounded-[2rem] p-5 sm:p-6 shadow-xl space-y-5 transition-all">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showAdvanceDiscount}
+                      onChange={(e) => setShowAdvanceDiscount(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#01FFFF] cursor-pointer"
+                    />
+                    <span className="text-xs uppercase tracking-[0.15em] font-bold text-zinc-300 flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-[#01FFFF]" />
+                      Advance Discount / Negotiated Deal (Optional)
+                    </span>
+                  </label>
+                  <span className="text-[11px] font-mono text-zinc-400">
+                    {showAdvanceDiscount ? (
+                      <span className="text-[#01FFFF] font-bold">Negotiation Active</span>
+                    ) : (
+                      <span>Catalog Base: <strong className="text-white">₹{baseCatalogPrice}</strong></span>
+                    )}
+                  </span>
+                </div>
+
+                {showAdvanceDiscount && (
+                  <div className="pt-4 border-t border-white/10 grid grid-cols-1 md:grid-cols-2 gap-6 items-start animate-in fade-in duration-200">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-[11px] text-zinc-300 font-bold uppercase tracking-wider block mb-2">
+                          Agreed Final Payable (₹)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 font-syncopate font-bold text-xl text-[#01FFFF]">₹</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max={baseCatalogPrice}
+                            value={agreedPriceInput}
+                            onChange={(e) => setAgreedPriceInput(e.target.value)}
+                            placeholder={baseCatalogPrice.toString()}
+                            className="w-full bg-black/60 border-2 border-[#01FFFF]/40 focus:border-[#01FFFF] rounded-2xl pl-10 pr-4 py-3.5 text-2xl font-syncopate font-bold text-white outline-none transition-all"
+                          />
+                        </div>
+                        <p className="text-[10px] text-zinc-400 mt-2 flex items-center justify-between">
+                          <span>Catalog Base: <strong className="text-white">₹{baseCatalogPrice}</strong></span>
+                          {calculatedDiscountAmt > 0 && (
+                            <span className="text-emerald-400 font-bold">Saving ₹{calculatedDiscountAmt.toFixed(2)}</span>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Discount Reason Field with Quick Pills */}
+                      <div>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-400 block mb-1.5 flex items-center justify-between">
+                          <span>Discount Reason {calculatedDiscountAmt > 0 ? <strong className="text-amber-400">(Required)</strong> : '(Optional)'}</span>
+                          {discountReason && <span className="text-[10px] text-[#01FFFF] font-mono">"{discountReason}"</span>}
+                        </label>
+                        <input
+                          type="text"
+                          value={discountReason}
+                          onChange={(e) => setDiscountReason(e.target.value)}
+                          placeholder="e.g. Regular customer discount, counter bargain..."
+                          className="w-full bg-black/40 border border-white/10 focus:border-[#01FFFF] rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-zinc-600 outline-none transition-all"
+                        />
+                        {/* Quick Chips */}
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {["Regular Customer", "Fleet Bargain", "Counter Bargain", "Dirtiness Concession", "Festival / Special Offer"].map((chip) => (
+                            <button
+                              type="button"
+                              key={chip}
+                              onClick={() => setDiscountReason(chip)}
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                                discountReason === chip
+                                  ? "bg-[#01FFFF]/20 border-[#01FFFF] text-[#01FFFF]"
+                                  : "bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+                              }`}
+                            >
+                              + {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Real-time Derived Discount Preview Card */}
+                    <div className="bg-black/50 border border-white/10 rounded-2xl p-5 space-y-3.5 h-full flex flex-col justify-between">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-400 font-bold uppercase tracking-wider">Catalog Subtotal:</span>
+                          <span className="font-mono font-bold text-white">₹{baseCatalogPrice.toFixed(2)}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-400 font-bold uppercase tracking-wider">Discount Granted:</span>
+                          <span className={`font-mono font-bold ${calculatedDiscountAmt > 0 ? "text-[#22c55e]" : "text-zinc-500"}`}>
+                            {calculatedDiscountAmt > 0 ? `-₹${calculatedDiscountAmt.toFixed(2)} (${calculatedDiscountPct}% OFF)` : "No Discount"}
+                          </span>
+                        </div>
+
+                        {discountReason && (
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5">
+                            <span className="text-zinc-400 font-bold uppercase tracking-wider">Reason:</span>
+                            <span className="text-[#01FFFF] font-mono truncate max-w-[180px]">{discountReason}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">Final Agreed Total:</span>
+                        <span className="font-syncopate font-bold text-xl text-[#01FFFF]">
+                          ₹{(isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Massive Submit Button */}

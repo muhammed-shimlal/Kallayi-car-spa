@@ -8,6 +8,7 @@ import {
     SprayCan, Sparkles, Clock, LogOut, RefreshCw
 } from 'lucide-react';
 import api from '@/lib/api';
+import { handleSignOut } from '@/lib/authClient';
 
 interface Task {
     id: number;
@@ -33,8 +34,8 @@ export default function StaffTasksPage() {
     const fetchTasks = useCallback(async () => {
         try {
             const [tasksRes, userRes] = await Promise.all([
-                api.get('/bookings/my-tasks/'),
-                api.get('/core/users/me/'),
+                api.get('/bookings/my-tasks'),
+                api.get('/core/users/me'),
             ]);
 
             setTasks(tasksRes.data || []);
@@ -76,7 +77,7 @@ export default function StaffTasksPage() {
         toast.success('Wash started! Timer running ⏱️');
 
         try {
-            await api.patch(`/bookings/task/${bookingId}/start/`);
+            await api.patch(`/bookings/task/${bookingId}/start`);
         } catch (e) {
             setTasks(previousTasks);
             toast.error('Network failed. Please tap again.');
@@ -89,7 +90,7 @@ export default function StaffTasksPage() {
         toast.success('Complete! Customer has been notified ✅');
 
         try {
-            await api.patch(`/bookings/task/${bookingId}/finish/`);
+            await api.patch(`/bookings/task/${bookingId}/finish`);
             setTimeout(() => {
                 setTasks(prev => prev.filter(t => t.id !== bookingId));
                 setSentTasks(prev => {
@@ -104,10 +105,7 @@ export default function StaffTasksPage() {
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('auth_token');
-        router.push('/login');
-    };
+    const handleLogout = handleSignOut;
 
     // Elapsed time helper
     const getElapsedTime = (startIso: string | null) => {
@@ -158,8 +156,11 @@ export default function StaffTasksPage() {
                             <RefreshCw className="w-4 h-4" />
                         </button>
                         <button
-                            onClick={handleLogout}
-                            className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#FF2A6D] hover:border-[#FF2A6D]/30 transition-all active:scale-90"
+                            type="button"
+                            onClick={handleSignOut}
+                            title="Sign Out"
+                            aria-label="Sign Out"
+                            className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8E939B] hover:text-[#FF2A6D] hover:border-[#FF2A6D]/30 transition-all active:scale-90 cursor-pointer"
                         >
                             <LogOut className="w-4 h-4" />
                         </button>

@@ -794,7 +794,7 @@ export default function BankDepositTab() {
                                 {filteredBankTransactions.map((item: any) => {
                                     const isDeposit = item.transaction_type === 'DEPOSIT';
                                     const rawSlip = item.receipt_image;
-                                    const slipUrl = rawSlip ? (rawSlip.startsWith('http') ? rawSlip : `http://127.0.0.1:8001${rawSlip.startsWith('/') ? '' : '/'}${rawSlip}`) : null;
+                                    const slipUrl = rawSlip ? (rawSlip.startsWith('http') || rawSlip.startsWith('data:') ? rawSlip : `${rawSlip.startsWith('/') ? '' : '/'}${rawSlip}`) : null;
                                     const dateFormatted = item.transaction_date 
                                         ? new Date(item.transaction_date).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                                         : (item.date || 'N/A');

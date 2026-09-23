@@ -152,6 +152,8 @@ export async function POST(request: NextRequest) {
       duration_minutes,
       base_price,
       final_price,
+      custom_price,
+      discount_reason,
       status = 'WAITING',
       bay_assignment,
       address,
@@ -289,11 +291,40 @@ export async function POST(request: NextRequest) {
           console.error('[Bookings Customer Insert Error]:', custErr.message);
         }
       }
+    } else if (!customer_id) {
+      // Fallback for walk-in guest without phone number
+      const guestPhone = '+919999999999';
+      const { data: defaultCust } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('phone_number', guestPhone)
+        .maybeSingle();
+
+      if (defaultCust) {
+        customer_id = defaultCust.id;
+      } else {
+        const { data: newWalkinCust } = await supabase
+          .from('customers')
+          .insert({
+            user_id: null,
+            name: resolvedCustName || 'Walk-In Customer',
+            phone_number: guestPhone,
+            address: address || '',
+            loyalty_points: 0,
+            outstanding_balance: 0.00,
+            credit_limit: 5000.00,
+          })
+          .select('*')
+          .maybeSingle();
+        if (newWalkinCust) {
+          customer_id = newWalkinCust.id;
+        }
+      }
     }
 
     // Auto-resolve Vehicle by Plate Number if vehicle_id not supplied
-    if (!vehicle_id && plateNumber) {
-      const cleanPlate = plateNumber;
+    const cleanPlate = plateNumber || ('KL-' + Math.floor(1000 + Math.random() * 9000));
+    if (!vehicle_id && cleanPlate) {
       const { data: existingVehicle } = await supabase
         .from('customer_vehicles')
         .select('*')
@@ -408,13 +439,9 @@ export async function POST(request: NextRequest) {
                   pkgDuration = Number(fallbackTier.estimated_time_minutes);
                 }
               } else {
-                return NextResponse.json(
-                  {
-                    success: false,
-                    error: `Service pricing tier is not configured for vehicle type: ${canonicalVType}. Please configure pricing in Admin or choose an applicable service.`,
-                  },
-                  { status: 400 }
-                );
+                // Graceful fallback to package default price
+                packagePrice = Number(base_price || pkg.price || 0);
+                pkgDuration = duration_minutes ?? pkg.duration_minutes ?? 60;
               }
             }
           }
@@ -447,12 +474,13 @@ export async function POST(request: NextRequest) {
       final_price: pricing.finalPrice,
       discount_amount: pricing.discountAmount,
       discount_percentage: pricing.discountPercentage,
+      discount_reason: discount_reason || null,
       address: address || '123 Main St, City',
       latitude: latitude != null ? Number(latitude) : 0.0,
       longitude: longitude != null ? Number(longitude) : 0.0,
     };
 
-    const { data: newBooking, error: insertError } = await supabase
+    let { data: newBooking, error: insertError } = await supabase
       .from('bookings')
       .insert(insertPayload)
       .select(`
@@ -463,17 +491,85 @@ export async function POST(request: NextRequest) {
       `)
       .single();
 
-    if (insertError) {
+    // Fallback: If PostgREST throws schema cache error for discount_reason, retry cleanly without it
+    if (insertError && (insertError.message?.includes('discount_reason') || insertError.code === '42703' || insertError.code === 'PGRST204')) {
+      console.warn('[Supabase Fallback] discount_reason column missing in bookings table, retrying without it:', insertError.message);
+      const safePayload = { ...insertPayload };
+      delete safePayload.discount_reason;
+      const retryResult = await supabase
+        .from('bookings')
+        .insert(safePayload)
+        .select(`
+          *,
+          customer:customers(*),
+          vehicle:customer_vehicles(*),
+          service_package:service_packages(*)
+        `)
+        .single();
+      newBooking = retryResult.data;
+      insertError = retryResult.error;
+    }
+
+    if (insertError || !newBooking) {
       return NextResponse.json(
-        { success: false, error: insertError.message },
+        { success: false, error: insertError?.message || 'Failed to create booking' },
         { status: 500 }
       );
+    }
+
+    // Auto-generate Invoice and record POS payment splits
+    const rawPaymentMethod = (body.payment_method || 'CASH').toUpperCase();
+    const isPaid = body.is_paid !== undefined ? Boolean(body.is_paid) : true;
+    let splitCash = 0;
+    let splitOnline = 0;
+    let splitKhata = 0;
+
+    if (isPaid) {
+      if (rawPaymentMethod === 'CASH') {
+        splitCash = pricing.finalPrice;
+      } else if (['UPI', 'ONLINE', 'CARD'].includes(rawPaymentMethod)) {
+        splitOnline = pricing.finalPrice;
+      } else if (rawPaymentMethod === 'KHATA') {
+        splitKhata = pricing.finalPrice;
+        const { data: cData } = await supabase.from('customers').select('outstanding_balance').eq('id', customer_id).single();
+        const currentBal = Number(cData?.outstanding_balance || 0);
+        await supabase.from('customers').update({ outstanding_balance: currentBal + splitKhata }).eq('id', customer_id);
+      } else if (rawPaymentMethod === 'SPLIT') {
+        splitCash = Number(body.split_cash || 0);
+        splitOnline = Number(body.split_online || 0);
+        splitKhata = Number(body.split_khata || 0);
+        if (splitKhata > 0) {
+          const { data: cData } = await supabase.from('customers').select('outstanding_balance').eq('id', customer_id).single();
+          const currentBal = Number(cData?.outstanding_balance || 0);
+          await supabase.from('customers').update({ outstanding_balance: currentBal + splitKhata }).eq('id', customer_id);
+        }
+      }
+    }
+
+    try {
+      await supabase.from('invoices').insert({
+        booking_id: newBooking.id,
+        amount: pricing.finalPrice,
+        base_price: pricing.basePrice,
+        final_price: pricing.finalPrice,
+        discount_amount: pricing.discountAmount,
+        discount_percentage: pricing.discountPercentage,
+        payment_method: ['CASH', 'CARD', 'ONLINE', 'SPLIT'].includes(rawPaymentMethod) ? rawPaymentMethod : 'CASH',
+        is_paid: isPaid,
+        split_cash: splitCash,
+        split_online: splitOnline,
+        split_khata: splitKhata,
+      });
+    } catch (invErr) {
+      console.warn('[Bookings Route] Optional invoice creation note:', invErr);
     }
 
     return NextResponse.json(
       {
         success: true,
         message: 'Booking created successfully.',
+        booking_id: newBooking.id,
+        booking: newBooking,
         data: newBooking,
       },
       { status: 201 }

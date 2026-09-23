@@ -206,7 +206,7 @@ export default function FinanceTab() {
                             // Find latest proof photo if not directly attached
                             const proofImg = khata.latest_proof_photo || 
                                 (khataRecentLedgers?.find((l: any) => l.customer_id === khata.id && l.number_plate_image)?.number_plate_image) || null;
-                            const imgUrl = proofImg ? (proofImg.startsWith('http') ? proofImg : `http://127.0.0.1:8001${proofImg.startsWith('/') ? '' : '/'}${proofImg}`) : null;
+                            const imgUrl = proofImg ? (proofImg.startsWith('http') || proofImg.startsWith('data:') ? proofImg : `${proofImg.startsWith('/') ? '' : '/'}${proofImg}`) : null;
 
                             // Extract plates
                             const plates: string[] = Array.isArray(khata.vehicle_plates) && khata.vehicle_plates.length > 0 
@@ -925,7 +925,7 @@ export default function FinanceTab() {
                                         return safeKhataLedger.map((entry: any) => {
                                             const isSettlement = entry.transaction_type === 'SETTLEMENT';
                                             const rawImg = entry.number_plate_image;
-                                            const imgUrl = rawImg ? (rawImg.startsWith('http') ? rawImg : `http://127.0.0.1:8001${rawImg.startsWith('/') ? '' : '/'}${rawImg}`) : null;
+                                            const imgUrl = rawImg ? (rawImg.startsWith('http') || rawImg.startsWith('data:') ? rawImg : `${rawImg.startsWith('/') ? '' : '/'}${rawImg}`) : null;
                                             const plate = entry.booking?.vehicle?.plate_number || entry.plate_number || entry.vehicle_plate || null;
                                             const serviceName = entry.booking?.service_package?.name || entry.description || 'Car Spa Service';
                                             const dateText = entry.created_at ? new Date(entry.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : (entry.date || 'N/A');

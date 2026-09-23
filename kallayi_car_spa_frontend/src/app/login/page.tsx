@@ -100,7 +100,7 @@ export default function LoginPage() {
       if (isAdmin) {
         targetPath = '/admin/dashboard';
       } else if (isStaff) {
-        targetPath = '/staff/queue';
+        targetPath = '/staff/dashboard';
       } else if (redirect && !redirect.startsWith('/staff') && !redirect.startsWith('/admin')) {
         targetPath = redirect;
       }

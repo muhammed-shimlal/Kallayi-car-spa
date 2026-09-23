@@ -184,8 +184,8 @@ class DashboardViewSet(viewsets.ViewSet):
                 invoice__isnull=True
             )
             for b in bookings_today_no_inv:
-                if b.service_package and b.service_package.price:
-                    revenue_today += float(b.service_package.price)
+                val = b.final_price if b.final_price and b.final_price > 0 else (b.base_price if b.base_price and b.base_price > 0 else (b.service_package.price if b.service_package else 0))
+                revenue_today += float(val)
 
             # 2. Pre-booking Advances (Future bookings paid/created today)
             pre_booking_invoices = Invoice.objects.filter(
@@ -200,8 +200,8 @@ class DashboardViewSet(viewsets.ViewSet):
                 invoice__isnull=True
             )
             for b in bookings_future_no_inv:
-                if b.service_package and b.service_package.price:
-                    pre_booking_revenue += float(b.service_package.price)
+                val = b.final_price if b.final_price and b.final_price > 0 else (b.base_price if b.base_price and b.base_price > 0 else (b.service_package.price if b.service_package else 0))
+                pre_booking_revenue += float(val)
 
             # 3. Chemical Cost Today
             chemical_logs = ChemicalUsageLog.objects.filter(timestamp__date=today).select_related('inventory_item')
@@ -295,7 +295,7 @@ class DashboardViewSet(viewsets.ViewSet):
                 created_at__date=current,
                 invoice__isnull=True
             )
-            bk_rev = sum(float(b.service_package.price) for b in day_bookings_no_inv if b.service_package and b.service_package.price)
+            bk_rev = sum(float(b.final_price if b.final_price and b.final_price > 0 else (b.base_price if b.base_price and b.base_price > 0 else (b.service_package.price or 0))) for b in day_bookings_no_inv)
 
             total_rev = inv_rev + bk_rev
 
@@ -842,10 +842,15 @@ def close_register(request):
     # === CALCULATION LOGIC (For both live preview GET and lock POST) ===
 
     # Calculate Gross Revenue (Value of all Complete Bookings)
-    gross_revenue = Booking.objects.filter(
+    # Calculate Gross Revenue (Value of all Complete Bookings based on final collected price)
+    completed_bookings_today = Booking.objects.filter(
         created_at__date=today,
         status='COMPLETED'
-    ).aggregate(total=Sum('service_package__price'))['total'] or Decimal('0.00')
+    )
+    gross_revenue = sum(
+        (b.final_price if b.final_price and b.final_price > 0 else (b.base_price if b.base_price and b.base_price > 0 else (b.service_package.price if b.service_package else Decimal('0.00'))))
+        for b in completed_bookings_today
+    )
 
     # Calculate Total Expenses (Shop expenses)
     total_expenses = GeneralExpense.objects.filter(
@@ -853,12 +858,12 @@ def close_register(request):
     ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
 
     # Calculate Expected Cash In Till
-    # 1. Total Cash Payments Received
-    cash_payments = Invoice.objects.filter(
-        created_at__date=today,
-        is_paid=True,
-        payment_method='CASH'
-    ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    # 1. Total Cash Payments Received (handling full cash & split payments)
+    cash_invoices = Invoice.objects.filter(created_at__date=today, is_paid=True)
+    cash_payments = sum(
+        (inv.split_cash if inv.split_cash and inv.split_cash > Decimal('0.00') else (inv.final_price if inv.payment_method == 'CASH' else (inv.amount if inv.payment_method == 'CASH' else Decimal('0.00'))))
+        for inv in cash_invoices
+    )
 
     # 2. Khata Settlements (Cash received for old debts)
     khata_settlements = KhataLedger.objects.filter(
@@ -946,7 +951,7 @@ def analytics_dashboard(request):
         .values('service_package__name')
         .annotate(
             total_washes=Count('id'),
-            total_revenue=Sum('service_package__price')
+            total_revenue=Sum('final_price')
         )
         .order_by('-total_revenue')
     )

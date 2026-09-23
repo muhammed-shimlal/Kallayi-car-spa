@@ -91,6 +91,9 @@ export function SmartVehicleSelector({
   }, [initialMake, initialModel, initialBodyType]);
 
   const availableModels = getModelsForBrand(selectedBrand);
+  const uniqueModels = availableModels.filter(
+    (item, index, self) => index === self.findIndex((t) => t.model === item.model)
+  );
 
   // Single source of emission effect
   useEffect(() => {
@@ -220,8 +223,8 @@ export function SmartVehicleSelector({
                 <option value="" disabled className="text-zinc-500">
                   {selectedBrand ? "Select Model..." : "Select Brand First"}
                 </option>
-                {availableModels.map((m) => (
-                  <option key={m.model} value={m.model} className="bg-[#141518] text-white">
+                {uniqueModels.map((m, index) => (
+                  <option key={`${m.model}-${index}`} value={m.model} className="bg-[#141518] text-white">
                     {m.model} ({m.category})
                   </option>
                 ))}

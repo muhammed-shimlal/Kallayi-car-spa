@@ -1,85 +1,128 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  ShieldCheck, DollarSign, Car, Calendar, CreditCard, Clock, 
-  UserCheck, Lock, LogOut, CheckCircle2, ChevronRight, Filter, AlertCircle, RefreshCw, Eye
+import {
+  Wallet,
+  Coins,
+  Car,
+  TrendingUp,
+  Phone,
+  Lock,
+  LogOut,
+  RefreshCw,
+  ShoppingBag,
+  Layers,
+  X,
+  Eye,
+  EyeOff,
+  Clock,
+  ShieldCheck,
+  CheckCircle2,
+  AlertTriangle
 } from "lucide-react";
-import api from "@/lib/api";
+import api, {
+  fetchStaffDashboardStats,
+  changeUserPassword,
+  StaffDashboardStatsResponse,
+  CompletedVehicleDossier
+} from "@/lib/api";
 import { toast } from "sonner";
+import { handleSignOut } from "@/lib/authClient";
 
 export default function StaffDashboardPage() {
   const router = useRouter();
-  const [profile, setProfile] = useState<any>(null);
-  const [earnings, setEarnings] = useState<any>(null);
-  const [workPeriod, setWorkPeriod] = useState<string>("today");
-  const [workData, setWorkData] = useState<any>(null);
-  const [balance, setBalance] = useState<any>(null);
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [jobsData, setJobsData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showAllJobs, setShowAllJobs] = useState(false);
 
-  // Password Modal
+  // State
+  const [profile, setProfile] = useState<any>(null);
+  const [stats, setStats] = useState<StaffDashboardStatsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Security prompt banner
+  const [showSecurityBanner, setShowSecurityBanner] = useState(false);
+
+  // Change Password Modal
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState("");
   const [isChangingPass, setIsChangingPass] = useState(false);
 
-  const fetchDashboardData = async () => {
-    setIsLoading(true);
+  // Data Loading
+  const loadDashboardData = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
+    else setIsRefreshing(true);
+
     try {
-      const [profileRes, earningsRes, workRes, balanceRes, txRes, jobsRes] = await Promise.all([
-        api.get("/staff/dashboard/profile/"),
-        api.get("/staff/dashboard/earnings/"),
-        api.get(`/staff/dashboard/work/?period=${workPeriod}`),
-        api.get("/staff/dashboard/balance/"),
-        api.get("/staff/dashboard/transactions/"),
-        api.get("/staff/dashboard/jobs/"),
+      const [userRes, statsData] = await Promise.all([
+        api.get("/auth/me").catch(() => null),
+        fetchStaffDashboardStats().catch(() => null),
       ]);
 
-      setProfile(profileRes.data);
-      setEarnings(earningsRes.data);
-      setWorkData(workRes.data);
-      setBalance(balanceRes.data);
-      setTransactions(txRes.data);
-      setJobsData(jobsRes.data);
+      if (userRes?.data?.user) {
+        const userData = userRes.data.user;
+        setProfile(userData);
+
+        const meta = userData.user_metadata || {};
+        const isDefault =
+          meta.is_default_password === true ||
+          meta.must_change_password === true ||
+          Boolean(meta.default_password) ||
+          !meta.password_changed_at;
+
+        setShowSecurityBanner(isDefault);
+      }
+
+      if (statsData) {
+        setStats(statsData);
+      }
     } catch (err: any) {
-      console.error("Error fetching staff dashboard data:", err);
+      console.error("[StaffDashboard] Error loading data:", err);
       if (err.response?.status === 401) {
         router.push("/login");
       }
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [workPeriod]);
+    loadDashboardData();
 
-  const handleLogout = () => {
-    localStorage.removeItem("auth_token");
-    document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-    router.push("/login");
-  };
+    // Auto-refresh interval (every 30 seconds)
+    const interval = setInterval(() => loadDashboardData(true), 30000);
+    return () => clearInterval(interval);
+  }, [loadDashboardData]);
 
+  // Handle Logout
+  const handleLogout = handleSignOut;
+
+  // Handle Password Change
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordMsg("");
 
-    if (newPassword.length < 6) {
-      const msg = "New password must be at least 6 characters long.";
+    if (newPassword.length < 8) {
+      const msg = "New password must be at least 8 characters long.";
       setPasswordMsg(msg);
       toast.error(msg);
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      const msg = "New passwords do not match.";
+      const msg = "New password and confirmation password do not match.";
+      setPasswordMsg(msg);
+      toast.error(msg);
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      const msg = "New password cannot be identical to your current password.";
       setPasswordMsg(msg);
       toast.error(msg);
       return;
@@ -87,18 +130,21 @@ export default function StaffDashboardPage() {
 
     setIsChangingPass(true);
     try {
-      const res = await api.post("/staff/dashboard/change_password/", {
-        old_password: currentPassword,
+      const res = await changeUserPassword({
+        current_password: currentPassword,
         new_password: newPassword,
+        confirm_password: confirmPassword,
       });
-      const successMsg = res.data?.message || "Password updated successfully!";
-      toast.success(successMsg);
+
+      const successText = res?.message || "Password updated successfully!";
+      toast.success(successText);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
       setShowPasswordModal(false);
+      setShowSecurityBanner(false);
     } catch (err: any) {
-      const errMsg = err.response?.data?.error || err.response?.data?.message || "Failed to change password";
+      const errMsg = err.message || "Failed to update password. Please check your current password.";
       setPasswordMsg(errMsg);
       toast.error(errMsg);
     } finally {
@@ -106,426 +152,567 @@ export default function StaffDashboardPage() {
     }
   };
 
-  // Time-based Greeting
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good Morning";
-    if (hour < 17) return "Good Afternoon";
-    return "Good Evening";
-  };
+  // Profile data derivations
+  const staffDisplayName =
+    profile?.full_name ||
+    profile?.first_name ||
+    profile?.name ||
+    profile?.username ||
+    "Staff Member";
 
-  if (isLoading && !profile) {
+  const staffPhone =
+    profile?.phone_number ||
+    profile?.phone ||
+    profile?.user_metadata?.phone ||
+    "No phone registered";
+
+  const rawRole = (
+    profile?.role ||
+    profile?.user_metadata?.role ||
+    "TECHNICIAN"
+  ).toUpperCase();
+
+  const staffRoleBadge = ["WASHER", "TECHNICIAN", "DETAILER", "DRIVER"].includes(rawRole)
+    ? "Technician"
+    : "Staff";
+
+  const staffInitials =
+    staffDisplayName
+      .split(" ")
+      .map((part: string) => part[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "ST";
+
+  // Completed vehicles list normalization
+  const completedVehicles: CompletedVehicleDossier[] =
+    stats?.completed_vehicles ||
+    (Array.isArray(stats?.cars_washed_today)
+      ? stats.cars_washed_today
+      : stats?.cars_washed_today?.list) ||
+    [];
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // LOADING SKELETON
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (isLoading && !profile && !stats) {
     return (
-      <div className="bg-obsidian min-h-screen flex items-center justify-center p-4">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 border-4 border-cyan border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="font-mono text-xs text-cyan tracking-widest uppercase">Loading Portal...</p>
+      <div className="bg-[#050507] min-h-screen text-white p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-pulse">
+        {/* Header Skeleton */}
+        <div className="bg-[#0B0C0E] border border-white/5 rounded-3xl p-6 h-32 flex items-center justify-between" />
+        
+        {/* Stat Cards Skeleton (2x2 on mobile, 4 in row on desktop) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-[#0B0C0E] border border-white/5 rounded-2xl p-5 h-36" />
+          ))}
         </div>
+
+        {/* Buttons Skeleton */}
+        <div className="flex gap-3 h-14">
+          <div className="flex-1 bg-[#0B0C0E] border border-white/5 rounded-2xl" />
+          <div className="flex-1 bg-[#0B0C0E] border border-white/5 rounded-2xl" />
+          <div className="w-14 bg-[#0B0C0E] border border-white/5 rounded-2xl" />
+        </div>
+
+        {/* Table Skeleton */}
+        <div className="bg-[#0B0C0E] border border-white/5 rounded-3xl p-6 h-64" />
       </div>
     );
   }
 
   return (
-    <div className="bg-obsidian min-h-screen text-white p-4 md:p-8 space-y-8 max-w-7xl mx-auto">
+    <div className="bg-[#050507] min-h-screen text-white p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto font-sans">
       
-      {/* 1. Header & Greeting */}
-      <div className="bg-carbon/60 backdrop-blur-xl border border-white/10 rounded-3xl p-6 md:p-8 shadow-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-cyan/10 border border-cyan/30 rounded-xl flex items-center justify-center">
-              <ShieldCheck className="w-6 h-6 text-cyan" />
+      {/* ─────────────────────────────────────────────────────────────────────────────
+          1. PROFILE HEADER CARD
+      ───────────────────────────────────────────────────────────────────────────── */}
+      <div className="bg-[#0B0C0E]/90 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+        {/* Ambient subtle glow */}
+        <div className="absolute top-0 right-0 w-72 h-72 bg-[#01FFFF]/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+          
+          {/* Left: Avatar, Name, Phone, Role, Status */}
+          <div className="flex items-center gap-4 sm:gap-5">
+            {/* Avatar / Initials */}
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-[#01FFFF]/20 via-[#01FFFF]/10 to-transparent border border-[#01FFFF]/30 flex items-center justify-center font-mono text-lg sm:text-xl font-black text-[#01FFFF] shadow-[0_0_20px_rgba(1,255,255,0.15)] shrink-0">
+              {staffInitials}
             </div>
-            <span className="font-grotesk text-xs uppercase text-cyan tracking-[0.2em] font-semibold">
-              STAFF PORTAL // {profile?.role || "WASHER"}
+
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  {staffDisplayName}
+                </h1>
+                
+                {/* Role Badge */}
+                <span className="font-mono text-[10px] sm:text-[11px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-[#01FFFF]/10 text-[#01FFFF] border border-[#01FFFF]/25">
+                  {staffRoleBadge}
+                </span>
+
+                {/* Status Indicator */}
+                <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-mono text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                  On Duty
+                </span>
+              </div>
+
+              {/* Registered Phone */}
+              <div className="flex items-center gap-2 text-xs font-mono text-neutral-400">
+                <Phone className="w-3.5 h-3.5 text-[#01FFFF]" />
+                <span>{staffPhone}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Quick Action Buttons */}
+          <div className="flex items-center gap-2.5 w-full md:w-auto">
+            {/* Change Password Button */}
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="flex-1 md:flex-initial px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#01FFFF]/40 rounded-xl font-mono text-xs text-neutral-200 transition-all flex items-center justify-center gap-2 active:scale-95"
+            >
+              <Lock className="w-3.5 h-3.5 text-[#01FFFF]" />
+              <span>Change Password</span>
+            </button>
+
+            {/* Sign Out Button */}
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="px-3.5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 hover:border-rose-500/40 rounded-xl font-mono text-xs transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+              title="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────────────────────
+          SECURITY ALERT BANNER (If using default/temporary password)
+      ───────────────────────────────────────────────────────────────────────────── */}
+      {showSecurityBanner && (
+        <div className="bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-transparent border border-amber-500/40 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-[0_0_20px_rgba(245,158,11,0.15)] animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <p className="font-mono text-sm font-bold text-amber-300">
+                Action Recommended: Temporary Password in Use
+              </p>
+              <p className="text-xs text-neutral-300 mt-0.5">
+                Please set a personal, secure password for your account.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="flex-1 sm:flex-initial px-4 py-2 bg-amber-400 hover:bg-amber-300 text-[#050507] rounded-xl font-mono text-xs font-bold uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2"
+            >
+              <Lock className="w-3.5 h-3.5" />
+              Update Now
+            </button>
+            <button
+              onClick={() => setShowSecurityBanner(false)}
+              className="p-2 text-neutral-400 hover:text-white transition-colors"
+              title="Dismiss warning"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────────────
+          2. FINANCIAL & PERFORMANCE STAT CARDS (4-CARD GRID)
+      ───────────────────────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        {/* Card 1: Cash in Hand (Amber Accent - Staff owes shop) */}
+        <div className="bg-gradient-to-br from-[#16130C]/90 via-[#0B0C0E]/90 to-[#050507] border border-amber-500/30 hover:border-amber-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(245,158,11,0.06)] group">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-amber-300/90 font-bold">
+              Cash in Hand
             </span>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
+              <Wallet className="w-4 h-4" />
+            </div>
           </div>
-          <h1 className="font-syncopate text-2xl md:text-3xl font-bold tracking-tight">
-            {getGreeting()}, <span className="text-cyan">{profile?.full_name}</span>
-          </h1>
-          <p className="font-mono text-xs text-tungsten/60">
-            Username: @{profile?.username} • Phone: {profile?.phone_number || "N/A"}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <button
-            onClick={() => setShowPasswordModal(true)}
-            className="flex-1 md:flex-initial px-4 py-2.5 bg-white/5 border border-white/10 hover:border-cyan/50 rounded-xl font-mono text-xs text-tungsten hover:text-white transition-all flex items-center justify-center gap-2"
-          >
-            <Lock className="w-4 h-4 text-cyan" /> Password
-          </button>
-          <button
-            onClick={handleLogout}
-            className="flex-1 md:flex-initial px-4 py-2.5 bg-[#E52323]/20 border border-[#E52323]/40 hover:bg-[#E52323] rounded-xl font-mono text-xs text-white transition-all flex items-center justify-center gap-2"
-          >
-            <LogOut className="w-4 h-4" /> Logout
-          </button>
-        </div>
-      </div>
-
-      {/* 2. Today's Earnings Section */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-syncopate text-lg font-bold text-white flex items-center gap-2">
-            <DollarSign className="w-5 h-5 text-cyan" /> TODAY'S EARNINGS
-          </h2>
-          <span className="font-mono text-xs text-tungsten/60">Auto-calculated from completed jobs</span>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-carbon/40 border border-cyan/30 rounded-2xl p-4 space-y-1 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-16 h-16 bg-cyan/10 rounded-full blur-xl pointer-events-none" />
-            <p className="font-grotesk text-[10px] text-cyan uppercase tracking-widest font-bold">Today</p>
-            <p className="font-mono text-2xl md:text-3xl font-bold text-white">₹{earnings?.today || 0}</p>
-          </div>
-
-          <div className="bg-carbon/40 border border-white/10 rounded-2xl p-4 space-y-1">
-            <p className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest font-bold">This Week</p>
-            <p className="font-mono text-xl md:text-2xl font-bold text-white">₹{earnings?.week || 0}</p>
-          </div>
-
-          <div className="bg-carbon/40 border border-white/10 rounded-2xl p-4 space-y-1">
-            <p className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest font-bold">This Month</p>
-            <p className="font-mono text-xl md:text-2xl font-bold text-white">₹{earnings?.month || 0}</p>
-          </div>
-
-          <div className="bg-carbon/40 border border-white/10 rounded-2xl p-4 space-y-1">
-            <p className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest font-bold">This Year</p>
-            <p className="font-mono text-xl md:text-2xl font-bold text-white">₹{earnings?.year || 0}</p>
-          </div>
-
-          <div className="col-span-2 md:col-span-1 bg-carbon/40 border border-white/10 rounded-2xl p-4 space-y-1">
-            <p className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest font-bold">Lifetime Total</p>
-            <p className="font-mono text-xl md:text-2xl font-bold text-cyan">₹{earnings?.lifetime || 0}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Today's Work (Vehicle Counts ONLY) */}
-      <div className="bg-carbon/60 border border-white/10 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h2 className="font-syncopate text-lg font-bold text-white flex items-center gap-2">
-              <Car className="w-5 h-5 text-cyan" /> TODAY'S WORK
-            </h2>
-            <p className="font-mono text-xs text-tungsten/60 mt-1">Completed vehicles count by category</p>
-          </div>
-
-          {/* Period selector */}
-          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1">
-            {["today", "week", "month", "year"].map((p) => (
-              <button
-                key={p}
-                onClick={() => setWorkPeriod(p)}
-                className={`px-3 py-1.5 rounded-lg font-grotesk text-xs uppercase tracking-wider font-semibold transition-all ${
-                  workPeriod === p ? "bg-cyan text-obsidian font-bold" : "text-tungsten hover:text-white"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
+            <div className="font-mono text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">
+              ₹{(stats?.cash_in_hand ?? stats?.payable_by_staff ?? 0).toLocaleString()}
+            </div>
+            <p className="text-[11px] font-mono text-neutral-400 mt-1">
+              Cash collected to hand over
+            </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center space-y-1">
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Cars</span>
-            <p className="font-mono text-2xl font-bold text-white">{workData?.counts?.Cars || 0}</p>
+        {/* Card 2: Payout Due (Emerald Accent - Owner owes staff) */}
+        <div className="bg-gradient-to-br from-[#0E1512]/90 via-[#0B0C0E]/90 to-[#050507] border border-emerald-500/30 hover:border-emerald-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(34,197,94,0.06)] group">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-emerald-400 font-bold">
+              Payout Due
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+              <Coins className="w-4 h-4" />
+            </div>
           </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center space-y-1">
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Bikes</span>
-            <p className="font-mono text-2xl font-bold text-white">{workData?.counts?.Bikes || 0}</p>
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center space-y-1">
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Auto</span>
-            <p className="font-mono text-2xl font-bold text-white">{workData?.counts?.Auto || 0}</p>
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center space-y-1">
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Van</span>
-            <p className="font-mono text-2xl font-bold text-white">{workData?.counts?.Van || 0}</p>
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center space-y-1">
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Truck</span>
-            <p className="font-mono text-2xl font-bold text-white">{workData?.counts?.Truck || 0}</p>
-          </div>
-
-          <div className="bg-cyan/10 border border-cyan/30 rounded-2xl p-4 text-center space-y-1">
-            <span className="font-grotesk text-[10px] text-cyan uppercase tracking-widest font-bold">Total Vehicles</span>
-            <p className="font-mono text-2xl font-bold text-cyan">{workData?.total_vehicles || 0}</p>
+          <div>
+            <div className="font-mono text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">
+              ₹{(stats?.receivable_by_staff ?? (stats as any)?.unsettled_commission ?? 0).toLocaleString()}
+            </div>
+            <p className="text-[11px] font-mono text-neutral-400 mt-1">
+              Earnings owed by shop
+            </p>
           </div>
         </div>
+
+        {/* Card 3: Cars Washed Today (Blue Accent) */}
+        <div className="bg-gradient-to-br from-[#0C1217]/90 via-[#0B0C0E]/90 to-[#050507] border border-[#01FFFF]/30 hover:border-[#01FFFF]/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(1,255,255,0.06)] group">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-[#01FFFF] font-bold">
+              Cars Washed Today
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-[#01FFFF]/10 border border-[#01FFFF]/20 flex items-center justify-center text-[#01FFFF] group-hover:scale-105 transition-transform">
+              <Car className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-2xl sm:text-3xl font-black text-white tracking-tight">
+              {(Array.isArray(stats?.cars_washed_today)
+                ? stats.cars_washed_today.length
+                : stats?.cars_washed_today?.count) ??
+                stats?.completed_count ??
+                0}
+            </div>
+            <p className="text-[11px] font-mono text-cyan-400/80 mt-1">
+              {stats?.in_progress_count || 0} in progress
+            </p>
+          </div>
+        </div>
+
+        {/* Card 4: Today's Commission (Purple Accent) */}
+        <div className="bg-gradient-to-br from-[#130E1A]/90 via-[#0B0C0E]/90 to-[#050507] border border-purple-500/30 hover:border-purple-400/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-3 transition-all duration-300 shadow-[0_0_20px_rgba(168,85,247,0.06)] group">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-purple-400 font-bold">
+              Today's Commission
+            </span>
+            <div className="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-105 transition-transform">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="font-mono text-2xl sm:text-3xl font-black text-purple-400 tracking-tight">
+              ₹{(stats?.labor_cost_commission || 0).toLocaleString()}
+            </div>
+            <p className="text-[11px] font-mono text-neutral-400 mt-1">
+              Earned today
+            </p>
+          </div>
+        </div>
+
       </div>
 
-      {/* 4. My Balance Card */}
-      <div className="bg-carbon/60 border border-white/10 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
+      {/* ─────────────────────────────────────────────────────────────────────────────
+          3. QUICK ACTION BUTTONS
+      ───────────────────────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        {/* Open POS - Primary Large Button */}
+        <button
+          onClick={() => router.push("/staff/pos")}
+          className="flex-1 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#01FFFF] via-[#00E5FF] to-[#00B4D8] text-[#050507] font-mono text-xs sm:text-sm font-black uppercase tracking-wider shadow-[0_0_25px_rgba(1,255,255,0.35)] hover:shadow-[0_0_35px_rgba(1,255,255,0.5)] transition-all duration-300 flex items-center justify-center gap-2.5 active:scale-[0.98]"
+        >
+          <ShoppingBag className="w-5 h-5 text-[#050507]" />
+          <span>Open POS</span>
+        </button>
+
+        {/* View Live Queue - Secondary Button */}
+        <button
+          onClick={() => router.push("/staff/queue")}
+          className="flex-1 py-3.5 px-6 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#01FFFF]/40 text-white font-mono text-xs sm:text-sm font-bold uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-2.5 active:scale-[0.98]"
+        >
+          <Layers className="w-5 h-5 text-[#01FFFF]" />
+          <span>View Live Queue</span>
+        </button>
+
+        {/* Refresh Data - Icon Button */}
+        <button
+          onClick={() => loadDashboardData(true)}
+          disabled={isRefreshing}
+          className="py-3.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#01FFFF]/40 text-neutral-300 hover:text-[#01FFFF] font-mono text-xs sm:text-sm transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 shrink-0"
+          title="Refresh Data"
+        >
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-[#01FFFF]" : ""}`} />
+          <span className="sm:hidden font-mono text-xs">Refresh Data</span>
+        </button>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────────────────────
+          4. TODAY'S COMPLETED VEHICLES TABLE
+      ───────────────────────────────────────────────────────────────────────────── */}
+      <div className="bg-[#0B0C0E]/90 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 space-y-5 shadow-2xl">
         <div className="flex items-center justify-between">
-          <h2 className="font-syncopate text-lg font-bold text-white flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-cyan" /> MY BALANCE
-          </h2>
-          <span className="font-mono text-xs text-cyan font-semibold">Payable Statement</span>
+          <div className="space-y-1">
+            <h2 className="font-mono text-base font-black uppercase tracking-wider text-white flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              Today's Completed Vehicles
+            </h2>
+            <p className="text-xs text-neutral-400">
+              Summary of all vehicles finished during today's shift
+            </p>
+          </div>
+
+          <span className="font-mono text-xs font-bold text-neutral-400 bg-white/5 border border-white/10 px-3 py-1 rounded-full">
+            {completedVehicles.length} total
+          </span>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-1">
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Total Earned</span>
-            <p className="font-mono text-xl font-bold text-white">₹{balance?.gross_earned || 0}</p>
-          </div>
+        {completedVehicles.length > 0 ? (
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/10 text-[11px] font-mono uppercase tracking-wider text-neutral-400">
+                    <th className="py-3 px-4">Vehicle Plate</th>
+                    <th className="py-3 px-4">Model &amp; Type</th>
+                    <th className="py-3 px-4">Service Package</th>
+                    <th className="py-3 px-4">Completed Time</th>
+                    <th className="py-3 px-4 text-right">Billed Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-xs font-mono">
+                  {completedVehicles.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-white/[0.02] transition-colors group"
+                    >
+                      {/* Plate Number */}
+                      <td className="py-3.5 px-4">
+                        <span className="font-black text-white bg-white/10 border border-white/20 px-2.5 py-1 rounded-lg tracking-wider">
+                          {item.plate_number || item.vehicle_number}
+                        </span>
+                      </td>
 
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-1">
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Advances Taken</span>
-            <p className="font-mono text-xl font-bold text-[#E52323]">₹{balance?.advances || 0}</p>
-          </div>
+                      {/* Model & Type */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-neutral-200 font-bold">
+                            {item.vehicle_model}
+                          </span>
+                          <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-white/5 text-neutral-400 border border-white/10">
+                            {item.vehicle_type}
+                          </span>
+                        </div>
+                      </td>
 
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-1">
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Salary Paid</span>
-            <p className="font-mono text-xl font-bold text-white">₹{balance?.salary_paid || 0}</p>
-          </div>
+                      {/* Package Name */}
+                      <td className="py-3.5 px-4 text-neutral-300">
+                        {item.service_package}
+                      </td>
 
-          <div className="bg-cyan/10 border border-cyan/40 rounded-2xl p-4 space-y-1">
-            <span className="font-grotesk text-[10px] text-cyan uppercase tracking-widest font-bold">Current Payable Balance</span>
-            <p className="font-mono text-2xl font-bold text-cyan">₹{balance?.current_payable || 0}</p>
-          </div>
-        </div>
+                      {/* Time Completed */}
+                      <td className="py-3.5 px-4 text-neutral-400">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-neutral-500" />
+                          <span>{item.time}</span>
+                        </div>
+                      </td>
 
-        {/* Salary Payment History Log */}
-        <div className="space-y-3 pt-4 border-t border-white/5">
-          <h3 className="font-grotesk text-xs text-tungsten uppercase tracking-widest font-bold">Salary Payment History</h3>
-          {balance?.salary_history && balance.salary_history.length > 0 ? (
-            <div className="space-y-2">
-              {balance.salary_history.map((sp: any) => (
-                <div key={sp.id} className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center justify-between text-xs font-mono">
-                  <div>
-                    <span className="text-white font-bold">₹{sp.paid_amount}</span>
-                    <span className="text-tungsten/60 ml-2">via {sp.payment_method}</span>
-                    <span className="text-tungsten/40 ml-2">({sp.payment_date})</span>
+                      {/* Billed Amount */}
+                      <td className="py-3.5 px-4 text-right">
+                        <span className="font-bold text-[#01FFFF] text-sm">
+                          ₹{(item.final_price ?? (item as any).price ?? 0).toLocaleString()}
+                        </span>
+                        {item.commission_earned > 0 && (
+                          <span className="ml-2 text-[10px] text-emerald-400 font-semibold">
+                            (+₹{item.commission_earned})
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card List View */}
+            <div className="md:hidden space-y-3">
+              {completedVehicles.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-mono font-black text-sm text-white bg-white/10 border border-white/20 px-2.5 py-1 rounded-lg tracking-wider">
+                      {item.plate_number || item.vehicle_number}
+                    </span>
+                    <div className="text-right">
+                      <div className="font-mono font-bold text-sm text-[#01FFFF]">
+                        ₹{(item.final_price ?? (item as any).price ?? 0).toLocaleString()}
+                      </div>
+                      {item.commission_earned > 0 && (
+                        <div className="text-[10px] font-mono text-emerald-400 font-semibold">
+                          +₹{item.commission_earned} earned
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">PAID</span>
+
+                  <div className="flex items-center justify-between text-xs text-neutral-300 pt-1 border-t border-white/5">
+                    <div>
+                      <span className="font-semibold text-white">{item.vehicle_model}</span>
+                      <span className="text-neutral-400 text-[11px] ml-1.5">
+                        ({item.vehicle_type})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-neutral-400 font-mono text-[11px]">
+                      <Clock className="w-3 h-3 text-neutral-500" />
+                      <span>{item.time}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] font-mono text-neutral-400">
+                    Service: <span className="text-neutral-200">{item.service_package}</span>
+                  </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="font-mono text-xs text-tungsten/40 italic">No salary payment records found.</p>
-          )}
-        </div>
-      </div>
-
-      {/* 5. My Transactions */}
-      <div className="bg-carbon/60 border border-white/10 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="font-syncopate text-lg font-bold text-white flex items-center gap-2">
-            <Clock className="w-5 h-5 text-cyan" /> MY TRANSACTIONS
-          </h2>
-          <span className="font-mono text-xs text-tungsten/60">Advances, Deductions & Bonuses</span>
-        </div>
-
-        {transactions && transactions.length > 0 ? (
-          <div className="space-y-3">
-            {transactions.map((tx: any) => (
-              <div key={tx.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2.5 py-0.5 rounded-full font-grotesk text-[10px] uppercase font-bold tracking-wider ${
-                      tx.transaction_type === 'ADVANCE' ? 'bg-[#E52323]/20 text-[#E52323]' :
-                      tx.transaction_type === 'BONUS' ? 'bg-emerald-500/20 text-emerald-400' :
-                      'bg-white/10 text-white'
-                    }`}>
-                      {tx.transaction_type || 'TRANSACTION'}
-                    </span>
-                    <span className="font-mono text-xs text-tungsten/60">{tx.date}</span>
-                    <span className="font-mono text-[10px] text-tungsten/40">[{tx.payment_method}]</span>
-                  </div>
-                  <p className="font-mono text-xs text-tungsten">{tx.description || "No reason provided"}</p>
-                </div>
-
-                <div className="text-right flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto">
-                  <p className="font-mono text-lg font-bold text-white">₹{tx.amount}</p>
-                  <span className={`font-mono text-[10px] uppercase font-bold ${
-                    tx.status === 'APPROVED' ? 'text-emerald-400' : 'text-amber-400'
-                  }`}>
-                    {tx.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+          </>
         ) : (
-          <div className="text-center py-8 bg-white/5 border border-dashed border-white/10 rounded-2xl">
-            <p className="font-mono text-xs text-tungsten/60">No transaction records logged.</p>
+          /* Clean Empty State */
+          <div className="text-center py-12 px-4 rounded-2xl border border-dashed border-white/10 bg-white/[0.01] space-y-2">
+            <Car className="w-10 h-10 text-neutral-500 mx-auto" />
+            <p className="font-mono text-sm font-semibold text-neutral-300">
+              No vehicles completed yet today
+            </p>
+            <p className="text-xs text-neutral-500 max-w-sm mx-auto">
+              Vehicles marked as completed from the wash bay or queue will appear here.
+            </p>
           </div>
         )}
       </div>
 
-      {/* 6. Today's Summary & Jobs Log */}
-      <div className="bg-carbon/60 border border-white/10 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="font-syncopate text-lg font-bold text-white flex items-center gap-2">
-            <UserCheck className="w-5 h-5 text-cyan" /> TODAY'S SUMMARY & JOBS
-          </h2>
-          <button
-            onClick={() => setShowAllJobs(true)}
-            className="font-mono text-xs text-cyan hover:underline flex items-center gap-1"
-          >
-            View All Jobs <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Summary Card */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-white/5 border border-white/10 rounded-2xl p-4">
-          <div>
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Completed Jobs</span>
-            <p className="font-mono text-xl font-bold text-white">{jobsData?.summary?.completed_jobs || 0}</p>
-          </div>
-
-          <div>
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Completed Vehicles</span>
-            <p className="font-mono text-xl font-bold text-white">{jobsData?.summary?.completed_vehicles || 0}</p>
-          </div>
-
-          <div>
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Working Hours</span>
-            <p className="font-mono text-xs font-bold text-cyan mt-1">{jobsData?.summary?.working_hours || 'N/A'}</p>
-          </div>
-
-          <div>
-            <span className="font-grotesk text-[10px] text-tungsten/60 uppercase tracking-widest">Last Completed</span>
-            <p className="font-mono text-xs font-bold text-white mt-1">{jobsData?.summary?.last_completed_time || 'None'}</p>
-          </div>
-        </div>
-
-        {/* Jobs list preview */}
-        <div className="space-y-3">
-          {jobsData?.jobs && jobsData.jobs.length > 0 ? (
-            jobsData.jobs.slice(0, 5).map((job: any) => (
-              <div key={job.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-cyan">{job.timestamp}</span>
-                    <span className="font-mono text-xs text-white font-bold">{job.vehicle}</span>
-                  </div>
-                  <p className="font-mono text-xs text-tungsten/60">Customer: {job.customer_name} • Package: {job.service_package}</p>
-                </div>
-                <span className={`px-2.5 py-1 rounded-lg font-grotesk text-[10px] uppercase font-bold tracking-wider ${
-                  job.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-tungsten'
-                }`}>
-                  {job.status}
-                </span>
-              </div>
-            ))
-          ) : (
-            <p className="font-mono text-xs text-tungsten/60 italic text-center py-4">No completed jobs assigned today.</p>
-          )}
-        </div>
-      </div>
-
-      {/* Change Password Modal */}
+      {/* ─────────────────────────────────────────────────────────────────────────────
+          5. CHANGE PASSWORD MODAL (CLEAN ENGLISH)
+      ───────────────────────────────────────────────────────────────────────────── */}
       {showPasswordModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-carbon border border-white/10 rounded-3xl p-8 max-w-md w-full space-y-6 shadow-2xl relative">
-            <h3 className="font-syncopate text-xl font-bold text-white flex items-center gap-2">
-              <Lock className="w-5 h-5 text-cyan" /> CHANGE PASSWORD
-            </h3>
+          <div className="bg-[#0B0C0E] border border-white/15 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <h3 className="font-mono text-lg font-black uppercase text-white flex items-center gap-2.5">
+                <Lock className="w-5 h-5 text-[#01FFFF]" />
+                Change Password
+              </h3>
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="p-1.5 rounded-xl text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
             <form onSubmit={handleChangePassword} className="space-y-4">
-              <div className="space-y-1">
-                <label className="font-grotesk text-xs text-tungsten uppercase tracking-wider">Current Password</label>
-                <input
-                  type="password"
-                  required
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-mono text-sm focus:outline-none focus:border-cyan"
-                  placeholder="Enter current password..."
-                />
+              {/* Current Password */}
+              <div className="space-y-1.5">
+                <label className="font-mono text-xs text-neutral-300 uppercase tracking-wider">
+                  Current Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showCurrentPass ? "text" : "password"}
+                    required
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 pr-10 text-white font-mono text-sm focus:outline-none focus:border-[#01FFFF] transition-colors"
+                    placeholder="Enter current password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPass(!showCurrentPass)}
+                    className="absolute right-3 top-3 text-neutral-400 hover:text-white"
+                  >
+                    {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-grotesk text-xs text-tungsten uppercase tracking-wider">New Password</label>
-                <input
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-mono text-sm focus:outline-none focus:border-cyan"
-                  placeholder="Enter new password (min 6 chars)..."
-                />
+              {/* New Password */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-mono text-xs text-neutral-300 uppercase tracking-wider">
+                    New Password
+                  </label>
+                  <span className="text-[10px] font-mono text-neutral-500">
+                    Minimum 8 characters
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showNewPass ? "text" : "password"}
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 pr-10 text-white font-mono text-sm focus:outline-none focus:border-[#01FFFF] transition-colors"
+                    placeholder="Enter new password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(!showNewPass)}
+                    className="absolute right-3 top-3 text-neutral-400 hover:text-white"
+                  >
+                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-grotesk text-xs text-tungsten uppercase tracking-wider">Confirm New Password</label>
+              {/* Confirm New Password */}
+              <div className="space-y-1.5">
+                <label className="font-mono text-xs text-neutral-300 uppercase tracking-wider">
+                  Confirm New Password
+                </label>
                 <input
                   type="password"
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-mono text-sm focus:outline-none focus:border-cyan"
-                  placeholder="Re-enter new password..."
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-mono text-sm focus:outline-none focus:border-[#01FFFF] transition-colors"
+                  placeholder="Re-enter new password"
                 />
               </div>
 
               {passwordMsg && (
-                <p className={`font-mono text-xs text-center font-semibold ${
-                  passwordMsg.includes("successfully") ? "text-emerald-400" : "text-[#E52323]"
-                }`}>
+                <p className="font-mono text-xs text-center font-bold text-rose-400 pt-1">
                   {passwordMsg}
                 </p>
               )}
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-3">
                 <button
                   type="button"
                   onClick={() => setShowPasswordModal(false)}
-                  className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 py-3 rounded-xl font-grotesk text-xs text-white uppercase tracking-wider font-semibold"
+                  className="flex-1 bg-white/5 border border-white/10 hover:bg-white/10 py-3 rounded-xl font-mono text-xs text-neutral-300 uppercase tracking-wider font-bold transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isChangingPass}
-                  className="flex-1 bg-cyan text-obsidian font-syncopate font-bold py-3 rounded-xl hover:bg-cyan/80 transition-all text-xs uppercase"
+                  className="flex-1 bg-[#01FFFF] hover:bg-[#00C2FF] text-[#050507] font-mono font-black py-3 rounded-xl transition-all text-xs uppercase tracking-wider disabled:opacity-50"
                 >
-                  {isChangingPass ? "Updating..." : "Save Password"}
+                  {isChangingPass ? "Updating..." : "Update Password"}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* View All Jobs Modal */}
-      {showAllJobs && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-carbon border border-white/10 rounded-3xl p-8 max-w-2xl w-full space-y-6 shadow-2xl max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-syncopate text-xl font-bold text-white">ALL TODAY'S JOBS</h3>
-              <button onClick={() => setShowAllJobs(false)} className="text-tungsten hover:text-white font-mono text-sm">Close ✕</button>
-            </div>
-
-            <div className="space-y-3">
-              {jobsData?.jobs && jobsData.jobs.length > 0 ? (
-                jobsData.jobs.map((job: any) => (
-                  <div key={job.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex items-center justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-cyan">{job.timestamp}</span>
-                        <span className="font-mono text-xs text-white font-bold">{job.vehicle}</span>
-                      </div>
-                      <p className="font-mono text-xs text-tungsten/60">Customer: {job.customer_name} • Package: {job.service_package}</p>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-lg font-grotesk text-[10px] uppercase font-bold tracking-wider ${
-                      job.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-tungsten'
-                    }`}>
-                      {job.status}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="font-mono text-xs text-tungsten/60 italic text-center py-4">No jobs found.</p>
-              )}
-            </div>
           </div>
         </div>
       )}

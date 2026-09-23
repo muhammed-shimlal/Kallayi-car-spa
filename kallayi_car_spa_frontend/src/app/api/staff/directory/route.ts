@@ -176,9 +176,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
 
     const {
+      full_name,
       first_name,
       name,
       email,
@@ -194,13 +195,26 @@ export async function POST(request: NextRequest) {
       commission_amount = 0,
       retained_balance = 0,
       joining_date = new Date().toISOString().split('T')[0],
-      is_active = true,
+      is_active,
+      status,
       password,
     } = body;
 
-    const staffName = String(first_name || name || '').trim();
+    const staffName = String(full_name || first_name || name || '').trim();
     const rawPhone = String(phone_number || phone || '').trim();
-    const staffRole = String(role || 'WASHER').toUpperCase() as StaffRole;
+    
+    // Normalize role ensuring compatibility with database constraints
+    const upperRole = String(role || 'WASHER').trim().toUpperCase();
+    let staffRole: StaffRole = 'WASHER';
+    if (['WASHER', 'TECHNICIAN', 'MANAGER', 'DRIVER', 'ADMIN'].includes(upperRole)) {
+      staffRole = upperRole as StaffRole;
+    } else if (upperRole === 'STAFF') {
+      staffRole = 'WASHER'; // Default generic staff to WASHER in DB constraint
+    }
+
+    const isActive = is_active !== undefined 
+      ? Boolean(is_active) 
+      : (status !== undefined ? (status === 'active' || status === true) : true);
 
     if (!staffName || staffName.length < 2) {
       return NextResponse.json(
@@ -257,16 +271,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (!matchedUser) {
-      const { data: allUsers } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-      matchedUser = allUsers?.users?.find((u) => {
-        if (u.email && candidateEmails.includes(u.email.toLowerCase())) return true;
-        const uPhoneDigits = u.phone?.replace(/\D/g, '');
-        const uMetaPhoneDigits = u.user_metadata?.phone?.replace(/\D/g, '');
-        return variants.some((v) => {
-          const vDigits = v.replace(/\D/g, '');
-          return (vDigits && vDigits === uPhoneDigits) || (vDigits && vDigits === uMetaPhoneDigits);
+      try {
+        const { data: allUsers } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        matchedUser = allUsers?.users?.find((u) => {
+          if (u.email && candidateEmails.includes(u.email.toLowerCase())) return true;
+          const uPhoneDigits = u.phone?.replace(/\D/g, '');
+          const uMetaPhoneDigits = u.user_metadata?.phone?.replace(/\D/g, '');
+          return variants.some((v) => {
+            const vDigits = v.replace(/\D/g, '');
+            return (vDigits && vDigits === uPhoneDigits) || (vDigits && vDigits === uMetaPhoneDigits);
+          });
         });
-      });
+      } catch (listErr) {
+        console.warn('Could not list users:', listErr);
+      }
     }
 
     if (matchedUser) {
@@ -341,6 +359,7 @@ export async function POST(request: NextRequest) {
       }
 
       if ((authErr || !authData?.user) && !userId) {
+        console.error('Auth user creation error:', authErr);
         return NextResponse.json(
           { success: false, error: authErr?.message || 'Failed to create auth user for staff.' },
           { status: 500 }
@@ -354,10 +373,13 @@ export async function POST(request: NextRequest) {
 
     // 2. Check if staff profile already exists
     if (variants.length > 0) {
+      const orConditions = variants.map(v => `phone_number.eq.${v}`);
+      if (userId) orConditions.push(`user_id.eq.${userId}`);
+
       const { data: existingStaff } = await supabase
         .from('staff_profiles')
         .select('id, user_id, phone_number')
-        .or(`phone_number.in.(${variants.join(',')}),user_id.eq.${userId}`)
+        .or(orConditions.join(','))
         .limit(1)
         .maybeSingle();
 
@@ -367,6 +389,7 @@ export async function POST(request: NextRequest) {
           user_id: userId,
           role: staffRole,
           phone_number: normalizedPhone,
+          full_name: staffName,
           salary_type: salary_type as SalaryType,
           salary_amount: salaryVal,
           base_salary: salaryVal,
@@ -374,7 +397,7 @@ export async function POST(request: NextRequest) {
           commission_rate: commVal,
           commission_percentage: commVal,
           retained_balance: retainedVal,
-          is_active: is_active ?? true,
+          is_active: isActive,
         };
 
         let { data: updatedStaff, error: updateErr } = await supabase
@@ -385,6 +408,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (updateErr) {
+          delete updatePayload.full_name;
           delete updatePayload.commission_percentage;
           delete updatePayload.retained_balance;
           const retry = await supabase
@@ -400,6 +424,7 @@ export async function POST(request: NextRequest) {
         }
 
         if (updateErr) {
+          console.error('Staff update error:', updateErr);
           return NextResponse.json({ success: false, error: updateErr.message }, { status: 500 });
         }
 
@@ -410,6 +435,7 @@ export async function POST(request: NextRequest) {
             ...updatedStaff,
             name: staffName,
             first_name: staffName,
+            full_name: staffName,
             email: targetEmail,
             default_password: defaultPassword,
             is_new_account: isNewAccount,
@@ -425,6 +451,7 @@ export async function POST(request: NextRequest) {
       user_id: userId,
       role: staffRole,
       phone_number: normalizedPhone,
+      full_name: staffName,
       salary_type: salary_type as SalaryType,
       salary_amount: salaryVal,
       base_salary: salaryVal,
@@ -434,7 +461,7 @@ export async function POST(request: NextRequest) {
       commission_amount: 0,
       retained_balance: retainedVal,
       joining_date: joining_date || new Date().toISOString().split('T')[0],
-      is_active: is_active ?? true,
+      is_active: isActive,
       is_online: true,
     };
 
@@ -445,6 +472,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (staffInsertErr) {
+      // First try removing full_name if column not migrated yet
+      delete insertPayload.full_name;
       delete insertPayload.commission_percentage;
       delete insertPayload.retained_balance;
       const retry = await supabase
@@ -459,8 +488,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (staffInsertErr || !newStaff) {
+      console.error('Staff creation error:', staffInsertErr);
       return NextResponse.json(
-        { success: false, error: `Failed to insert staff profile: ${staffInsertErr?.message}` },
+        { 
+          success: false, 
+          error: staffInsertErr?.message || 'Failed to create staff'
+        },
         { status: 500 }
       );
     }
@@ -473,6 +506,7 @@ export async function POST(request: NextRequest) {
           ...newStaff,
           name: staffName,
           first_name: staffName,
+          full_name: staffName,
           email: targetEmail,
           default_password: defaultPassword,
           is_new_account: isNewAccount,
@@ -483,8 +517,10 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal Server Error';
+    console.error('Staff creation error:', err);
+    const message = err instanceof Error ? err.message : 'Failed to create staff';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
 

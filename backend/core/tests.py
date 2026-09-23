@@ -79,3 +79,84 @@ class OTPPasswordResetTest(TestCase):
 
         self.assertEqual(verify_res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('Invalid or expired OTP', verify_res.data.get('error', ''))
+
+
+class ChangePasswordAPITest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='9207320065', password='OldPassword@123')
+        self.client = APIClient()
+
+    def test_change_password_success(self):
+        self.client.force_authenticate(user=self.user)
+
+        res = self.client.post('/api/v1/core/change-password/', {
+            'current_password': 'OldPassword@123',
+            'new_password': 'SuperNewPass@2026',
+            'confirm_password': 'SuperNewPass@2026',
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data.get('success'))
+        self.assertIn('token', res.data)
+
+        # Check DB reflects updated password
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('SuperNewPass@2026'))
+        self.assertFalse(self.user.check_password('OldPassword@123'))
+
+    def test_change_password_wrong_current(self):
+        self.client.force_authenticate(user=self.user)
+
+        res = self.client.post('/api/v1/core/change-password/', {
+            'current_password': 'WrongPassword@999',
+            'new_password': 'SuperNewPass@2026',
+            'confirm_password': 'SuperNewPass@2026',
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(res.data.get('success', True))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('OldPassword@123'))
+
+    def test_change_password_mismatch(self):
+        self.client.force_authenticate(user=self.user)
+
+        res = self.client.post('/api/v1/core/change-password/', {
+            'current_password': 'OldPassword@123',
+            'new_password': 'SuperNewPass@2026',
+            'confirm_password': 'DifferentPass@2026',
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_change_password_same_as_current(self):
+        self.client.force_authenticate(user=self.user)
+
+        res = self.client.post('/api/v1/core/change-password/', {
+            'current_password': 'OldPassword@123',
+            'new_password': 'OldPassword@123',
+            'confirm_password': 'OldPassword@123',
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_change_password_too_short(self):
+        self.client.force_authenticate(user=self.user)
+
+        res = self.client.post('/api/v1/core/change-password/', {
+            'current_password': 'OldPassword@123',
+            'new_password': 'Short1',
+            'confirm_password': 'Short1',
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_change_password_unauthenticated(self):
+        res = self.client.post('/api/v1/core/change-password/', {
+            'current_password': 'OldPassword@123',
+            'new_password': 'SuperNewPass@2026',
+            'confirm_password': 'SuperNewPass@2026',
+        }, format='json')
+
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+

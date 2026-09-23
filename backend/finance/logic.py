@@ -49,10 +49,11 @@ def calculate_staff_booking_commission(staff_profile, booking_or_package):
     collected_price = Decimal('0.00')
     package = None
 
-    if hasattr(booking_or_package, 'final_price') and booking_or_package.final_price and booking_or_package.final_price > Decimal('0.00'):
+    # Strictly resolve collected final_price for bookings
+    if hasattr(booking_or_package, 'final_price') and booking_or_package.final_price is not None:
         collected_price = Decimal(str(booking_or_package.final_price))
         package = getattr(booking_or_package, 'service_package', None)
-    elif hasattr(booking_or_package, 'price') and booking_or_package.price:
+    elif hasattr(booking_or_package, 'price') and booking_or_package.price is not None:
         collected_price = Decimal(str(booking_or_package.price))
         package = booking_or_package
     elif hasattr(booking_or_package, 'service_package') and booking_or_package.service_package:

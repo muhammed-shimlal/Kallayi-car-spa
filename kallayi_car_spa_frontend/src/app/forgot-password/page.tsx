@@ -44,7 +44,7 @@ export default function ForgotPasswordPage() {
         console.log("🔒 [FORGOT PASSWORD DUAL VERIFICATION] Submitting request:", { email: trimmedEmail, phone_number: trimmedPhone });
 
         try {
-            const res = await api.post("/password-reset/", {
+            const res = await api.post("/password-reset", {
                 email: trimmedEmail,
                 phone_number: trimmedPhone
             });

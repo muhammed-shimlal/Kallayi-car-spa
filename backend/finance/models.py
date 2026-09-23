@@ -182,6 +182,7 @@ class Invoice(models.Model):
     final_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    discount_reason = models.CharField(max_length=255, blank=True, default='')
     revenue_category = models.ForeignKey(RevenueCategory, on_delete=models.SET_NULL, null=True, blank=True)
     is_deferred = models.BooleanField(default=False, help_text="If true, this income is amortized over time (e.g. Subs)")
     is_paid = models.BooleanField(default=False)
@@ -189,6 +190,8 @@ class Invoice(models.Model):
     split_cash = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     split_online = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     split_khata = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    cash_collected_by_staff = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='cash_collections')
+    collector_type = models.CharField(max_length=10, choices=[('ADMIN', 'Admin / Counter'), ('STAFF', 'Staff Member')], default='ADMIN')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):
@@ -211,6 +214,8 @@ class Invoice(models.Model):
                 self.discount_amount = Decimal(str(self.booking.discount_amount))
             if self.booking.discount_percentage:
                 self.discount_percentage = Decimal(str(self.booking.discount_percentage))
+            if not self.discount_reason and getattr(self.booking, 'discount_reason', ''):
+                self.discount_reason = self.booking.discount_reason
 
         if b_price > Decimal('0.00'):
             if f_price <= Decimal('0.00'):

@@ -387,7 +387,7 @@ export async function POST(request: NextRequest) {
         role = 'STAFF';
         isAdmin = false;
         isStaff = true;
-        redirect = '/staff/queue';
+        redirect = '/staff/dashboard';
       }
 
       // Ensure user_metadata.role is strictly synchronized in GoTrue as STAFF
@@ -415,7 +415,7 @@ export async function POST(request: NextRequest) {
         role = 'STAFF';
         isAdmin = false;
         isStaff = true;
-        redirect = '/staff/queue';
+        redirect = '/staff/dashboard';
       } else {
         role = 'CUSTOMER';
         isAdmin = false;

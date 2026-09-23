@@ -118,6 +118,9 @@ export interface DispatchInvoiceParams {
   packageName: string;
   amount: number;
   paymentMethod: string;
+  basePrice?: number;
+  discountAmount?: number;
+  discountReason?: string;
 }
 
 export class WhatsAppService {
@@ -268,6 +271,19 @@ export class WhatsAppService {
     const invoicePreviewUrl = `${frontendUrl}/invoice-preview?id=${params.invoiceId}`;
     const name = params.customerName || 'Customer';
 
+    const hasDiscount = params.discountAmount && params.discountAmount > 0;
+    const baseRate = params.basePrice || (hasDiscount ? params.amount + (params.discountAmount || 0) : params.amount);
+
+    const priceLines = hasDiscount
+      ? [
+          `💵 സർവീസ് നിരക്ക്: *₹${baseRate.toFixed(2)}*`,
+          `🎁 പ്രത്യേക ഡിസ്‌കൗണ്ട്: *-₹${params.discountAmount!.toFixed(2)}*${params.discountReason ? ` (${params.discountReason})` : ''}`,
+          `💰 അടച്ച തുക: *₹${params.amount.toFixed(2)}* (${params.paymentMethod})`,
+        ]
+      : [
+          `💰 അടച്ച തുക: *₹${params.amount.toFixed(2)}* (${params.paymentMethod})`,
+        ];
+
     const message = [
       `🧾 *KALLAYI CAR SPA & AUTO CARE*`,
       `*INVOICE & PAYMENT RECEIPT*`,
@@ -278,7 +294,7 @@ export class WhatsAppService {
       `📄 ഇൻവോയ്സ് നമ്പർ: *#INV-${params.invoiceId}*`,
       `🚗 വാഹനം: *${params.plateNumber}*`,
       `📋 സർവീസ്: *${params.packageName}*`,
-      `💰 അടച്ച തുക: *₹${params.amount.toFixed(2)}* (${params.paymentMethod})`,
+      ...priceLines,
       ``,
       `🔗 ഡിജിറ്റൽ ഇൻവോയ്സ് കാണാൻ:`,
       `${invoicePreviewUrl}`,

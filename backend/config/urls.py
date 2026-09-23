@@ -48,6 +48,9 @@ router.register(r'webhooks', WebhookViewSet, basename='webhooks')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/v1/bookings/', include('bookings.urls')),
+    path('api/v1/staff/', include('staff.urls')),
+    path('api/v1/core/', include('core.urls')),
     path('api/bookings/', include('bookings.urls')),
     path('api/staff/', include('staff.urls')),
     path('api/core/', include('core.urls')),

@@ -11,10 +11,8 @@ export const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
     return '/api';
   }
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-  }
-  return 'http://127.0.0.1:3000/api';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  return `${siteUrl.replace(/\/+$/, '')}/api`;
 };
 
 const api = axios.create({
@@ -29,6 +27,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     config.baseURL = getApiBaseUrl();
+    config.withCredentials = true;
 
     // Extract token from cookies, localStorage, or sessionStorage
     let token = Cookies.get('auth_token') || Cookies.get('access_token');
@@ -40,11 +39,43 @@ api.interceptors.request.use(
         sessionStorage.getItem('auth_token') ||
         sessionStorage.getItem('access_token') ||
         undefined;
+
+      // Fallback: check cached user object
+      if (!token) {
+        try {
+          const rawUser = localStorage.getItem('user');
+          if (rawUser) {
+            const u = JSON.parse(rawUser);
+            token = u?.token || u?.access_token || u?.auth_token;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Fallback: check Supabase session token
+      if (!token) {
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+              const item = JSON.parse(localStorage.getItem(k) || '{}');
+              if (item?.access_token) {
+                token = item.access_token;
+                break;
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
 
     if (token) {
       const cleanToken = String(token).replace(/^Bearer\s+|^Token\s+/i, '').trim();
       if (cleanToken && cleanToken !== 'undefined' && cleanToken !== 'null') {
+        config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${cleanToken}`;
       }
     }
@@ -60,7 +91,10 @@ api.interceptors.response.use(
   (error: AxiosError) => {
     if (error.response?.status === 401) {
       const url = error.config?.url || '';
-      console.warn(`[API Client] 401 Unauthorized encountered on ${url}`);
+      // Quiet warning for 401 instead of breaking console
+      if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        console.warn(`[API Client] Session expired or unauthenticated on: ${url}`);
+      }
     }
     return Promise.reject(error);
   }
@@ -142,11 +176,16 @@ export interface POSCheckoutPayload {
   split_cash?: number;
   split_online?: number;
   split_khata?: number;
-  payment_method?: 'CASH' | 'CARD' | 'ONLINE' | 'SPLIT';
+  payment_method?: 'CASH' | 'CARD' | 'ONLINE' | 'SPLIT' | string;
   base_price?: number;
   final_price?: number;
+  custom_price?: number;
   discount_amount?: number;
+  discount_reason?: string;
   revenue_category_id?: number;
+  cash_collected_by_staff_id?: string | null;
+  collected_by_staff_id?: string | null;
+  collector_type?: 'ADMIN' | 'STAFF' | string;
 }
 
 export interface POSCheckoutResponse {
@@ -604,6 +643,64 @@ export async function deleteCategory(id: number, type: 'revenue' | 'expense') {
     return res.data;
   } catch (err) {
     console.error(`[deleteCategory] Error for #${id}:`, err);
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+export interface CompletedVehicleDossier {
+  id: number;
+  vehicle_number: string;
+  plate_number: string;
+  vehicle_model: string;
+  vehicle_type: string;
+  service_package: string;
+  time: string;
+  final_price: number;
+  commission_earned: number;
+}
+
+export interface StaffDashboardStatsResponse {
+  cars_washed_today: {
+    count: number;
+    list: CompletedVehicleDossier[];
+  };
+  cars_washed_count: number;
+  completed_vehicles: CompletedVehicleDossier[];
+  total_revenue_today: number;
+  labor_cost_commission: number;
+  receivable_by_staff?: number;
+  payable_by_staff?: number;
+  cash_in_hand: number;
+  completed_count: number;
+  in_progress_count: number;
+}
+
+/**
+ * Fetches staff dashboard operational and financial analytics for today
+ */
+export async function fetchStaffDashboardStats(): Promise<StaffDashboardStatsResponse> {
+  try {
+    const res = await api.get('/staff/dashboard-stats');
+    return res.data;
+  } catch (err) {
+    console.error('[fetchStaffDashboardStats] Error:', err);
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+/**
+ * Self-service password change API
+ */
+export async function changeUserPassword(payload: {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}) {
+  try {
+    const res = await api.post('/core/change-password', payload);
+    return res.data;
+  } catch (err) {
+    console.error('[changeUserPassword] Error:', err);
     throw new Error(extractErrorMessage(err));
   }
 }

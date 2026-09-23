@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Cookies from 'js-cookie';
+import { handleSignOut } from '@/lib/authClient';
 import {
     LayoutDashboard, Activity, CreditCard, Menu, X, Wallet, Users,
     Car, Search, FileText, Wrench, BarChart2, Settings, LogOut,
@@ -48,13 +49,7 @@ export default function AdminMobileDrawer({
         onClose();
     };
 
-    const handleLogout = () => {
-        if (typeof window !== 'undefined') {
-            localStorage.removeItem('auth_token');
-        }
-        Cookies.remove('auth_token');
-        router.push('/login');
-    };
+    const handleLogout = handleSignOut;
 
     return (
         <AnimatePresence>
@@ -189,14 +184,15 @@ export default function AdminMobileDrawer({
                             />
                         </div>
 
-                        {/* Disconnect Session / Logout */}
+                        {/* Sign Out */}
                         <div className="pt-3 border-t border-white/10">
                             <button
-                                onClick={handleLogout}
-                                className="w-full min-h-[48px] py-3.5 px-4 rounded-2xl bg-[#141518] hover:bg-red-500/10 text-neutral-400 hover:text-red-400 border border-white/5 font-semibold text-xs uppercase tracking-widest flex items-center justify-center gap-2.5 transition-colors touch-manipulation active:scale-95"
+                                type="button"
+                                onClick={handleSignOut}
+                                className="w-full min-h-[48px] py-3.5 px-4 rounded-2xl bg-[#141518] hover:bg-red-500/10 text-neutral-400 hover:text-red-400 border border-white/5 font-semibold text-xs uppercase tracking-widest flex items-center justify-center gap-2.5 transition-colors touch-manipulation active:scale-95 cursor-pointer"
                             >
                                 <LogOut className="w-4 h-4 text-red-400" />
-                                <span>Disconnect Session</span>
+                                <span>Sign Out</span>
                             </button>
                         </div>
                     </motion.div>

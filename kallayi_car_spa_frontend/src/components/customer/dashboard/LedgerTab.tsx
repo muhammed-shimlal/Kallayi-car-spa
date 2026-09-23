@@ -213,7 +213,7 @@ export function LedgerTab({ transactions, totalCredit, totalSettled, outstanding
                         filteredTransactions.map((txn) => {
                             const isSettlement = txn.transaction_type === 'SETTLEMENT' || txn.status === 'PAID';
                             const rawImg = txn.number_plate_image;
-                            const imgUrl = rawImg ? (rawImg.startsWith('http') ? rawImg : `http://127.0.0.1:8001${rawImg.startsWith('/') ? '' : '/'}${rawImg}`) : null;
+                            const imgUrl = rawImg ? (rawImg.startsWith('http') || rawImg.startsWith('data:') ? rawImg : `${rawImg.startsWith('/') ? '' : '/'}${rawImg}`) : null;
                             const plate = txn.plate_number || 'N/A';
                             const dateText = txn.date ? (txn.date.includes('T') ? txn.date.split('T')[0] : txn.date) : 'N/A';
 

@@ -24,33 +24,61 @@ export default function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
     let isMounted = true;
 
     const checkAuthAndRole = async () => {
-      // 1. Check for token across Cookies, localStorage, and sessionStorage
-      let token =
-        Cookies.get('auth_token') ||
-        Cookies.get('access_token') ||
-        (typeof window !== 'undefined'
-          ? localStorage.getItem('auth_token') ||
+      // 1. Check for token across Cookies, localStorage, sessionStorage, user object, and Supabase keys
+      const findToken = (): string | undefined => {
+        let t = Cookies.get('auth_token') || Cookies.get('access_token');
+        if (!t && typeof window !== 'undefined') {
+          t =
+            localStorage.getItem('auth_token') ||
             localStorage.getItem('access_token') ||
             localStorage.getItem('token') ||
-            sessionStorage.getItem('auth_token')
-          : null);
+            sessionStorage.getItem('auth_token') ||
+            sessionStorage.getItem('access_token') ||
+            undefined;
+
+          if (!t) {
+            try {
+              const rawU = localStorage.getItem('user');
+              if (rawU) {
+                const u = JSON.parse(rawU);
+                t = u?.token || u?.access_token || u?.auth_token;
+              }
+            } catch {}
+          }
+
+          if (!t) {
+            try {
+              for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+                  const item = JSON.parse(localStorage.getItem(k) || '{}');
+                  if (item?.access_token) {
+                    t = item.access_token;
+                    break;
+                  }
+                }
+              }
+            } catch {}
+          }
+        }
+        return t;
+      };
+
+      let token = findToken();
 
       // If token not found immediately, provide a brief 100ms grace period for storage flush
       if (!token && typeof window !== 'undefined') {
         await new Promise((resolve) => setTimeout(resolve, 100));
-        token =
-          Cookies.get('auth_token') ||
-          Cookies.get('access_token') ||
-          localStorage.getItem('auth_token') ||
-          localStorage.getItem('access_token') ||
-          localStorage.getItem('token');
+        token = findToken();
       }
 
       if (!token) {
         if (isMounted) {
           setIsAuthorized(false);
           setIsLoading(false);
-          router.replace('/login');
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            router.replace('/login');
+          }
         }
         return;
       }
@@ -102,7 +130,11 @@ export default function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
 
       // 3. Verify user & role against the backend source of truth (/api/core/users/me)
       try {
-        const res = await api.get('/core/users/me');
+        const res = await api.get('/core/users/me', {
+          headers: {
+            Authorization: `Bearer ${cleanToken}`,
+          },
+        });
         const user = res.data;
 
         if (!user || (!user.id && !user.role)) {
@@ -150,23 +182,24 @@ export default function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
           if (isAdmin) {
             router.replace('/admin/dashboard');
           } else if (isStaff) {
-            router.replace('/staff/queue');
+            router.replace('/staff/dashboard');
           } else {
             router.replace('/customer/dashboard');
           }
         }
       } catch (error: any) {
-        console.error('RoleGuard authentication verification error:', error);
-
-        // If cached user was already verified as authorized, do not immediately bounce back on transient errors
+        // If cached user was already verified as authorized, retain session without bouncing
         if (hasFastPathAuthorized) {
-          console.warn('Retaining authorization based on validated cached session.');
           if (isMounted) setIsLoading(false);
           return;
         }
 
-        // Check if genuine 401 Unauthorized
-        if (error.response?.status === 401) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[RoleGuard] Verification failed or session unauthenticated:', error?.message || error);
+        }
+
+        // Handle genuine 401 Unauthorized gracefully without console breaks or looping
+        if (error.response?.status === 401 || !hasFastPathAuthorized) {
           if (isMounted) {
             Cookies.remove('auth_token', { path: '/' });
             Cookies.remove('access_token', { path: '/' });
@@ -175,8 +208,10 @@ export default function RoleGuard({ children, allowedRoles }: RoleGuardProps) {
               localStorage.removeItem('access_token');
               localStorage.removeItem('token');
               localStorage.removeItem('user');
+              if (window.location.pathname !== '/login') {
+                router.replace('/login');
+              }
             }
-            router.replace('/login');
           }
         }
       } finally {

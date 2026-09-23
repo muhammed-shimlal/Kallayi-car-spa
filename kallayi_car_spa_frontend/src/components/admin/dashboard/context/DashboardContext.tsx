@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 
 import { getApiBaseUrl } from '@/lib/api';
+import { handleSignOut } from '@/lib/authClient';
 
 const getApiBase = (): string => getApiBaseUrl();
 const API_BASE: string = getApiBaseUrl();
@@ -651,34 +652,39 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         setIsStaffModalOpen(true);
     };
 
-    const saveStaff = async (data?: { first_name?: string; name?: string; phone_number?: string; phone?: string; role: string; salary_type?: string; salary_amount?: string; base_salary?: string; commission_rate?: string; password?: string }) => {
+    const saveStaff = async (data?: { first_name?: string; name?: string; full_name?: string; phone_number?: string; phone?: string; role: string; salary_type?: string; salary_amount?: string; base_salary?: string; commission_rate?: string; commission_percentage?: string | number; password?: string }) => {
         const token = localStorage.getItem('auth_token');
         const url = editingStaff
-            ? `${API_BASE}/staff/directory/${editingStaff.id}/`
-            : `${API_BASE}/staff/directory/`;
+            ? `${API_BASE}/staff/directory/${editingStaff.id}`
+            : `${API_BASE}/staff/directory`;
         const method = editingStaff ? 'PATCH' : 'POST';
         const formPayload = data ?? staffForm;
 
-        const firstName = formPayload.first_name || (formPayload as any).name || '';
+        const firstName = formPayload.first_name || (formPayload as any).name || (formPayload as any).full_name || '';
         const phoneNumber = formPayload.phone_number || (formPayload as any).phone || '';
         const salaryVal = parseFloat((formPayload as any).salary_amount || formPayload.base_salary || '0') || 0;
-        const commVal = parseFloat(formPayload.commission_rate || '0') || 0;
+        const commVal = parseFloat(String((formPayload as any).commission_percentage ?? formPayload.commission_rate ?? '0')) || 0;
 
         try {
             const res = await fetch(url, {
                 method,
-                headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+                headers: { 
+                    'Authorization': token ? `Bearer ${token}` : '', 
+                    'Content-Type': 'application/json' 
+                },
                 body: JSON.stringify({ 
                     first_name: firstName,
                     name: firstName,
+                    full_name: firstName,
                     phone_number: phoneNumber,
                     phone: phoneNumber,
-                    role: formPayload.role,
+                    role: formPayload.role || 'WASHER',
                     salary_type: (formPayload as any).salary_type || 'DAILY',
                     salary_amount: salaryVal,
                     base_salary: salaryVal,
                     commission_rate: commVal,
                     commission_percentage: commVal,
+                    is_active: true,
                     password: (formPayload as any).password || (formPayload as any).default_password || undefined,
                 })
             });
@@ -709,9 +715,12 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         if (!confirm(`Are you sure you want to ${actionText} this staff member?`)) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/staff/directory/${id}/toggle_status/`, {
+            const res = await fetch(`${API_BASE}/staff/directory/${id}/toggle_status`, {
                 method: 'POST',
-                headers: { 'Authorization': `Token ${token}` }
+                headers: { 
+                    'Authorization': token ? `Bearer ${token}` : '',
+                    'Content-Type': 'application/json'
+                }
             });
             if (res.ok) {
                 const data = await res.json();
@@ -768,7 +777,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         const token = localStorage.getItem('auth_token');
         if (!token) return;
         try {
-            const res = await fetch(`${API_BASE}/bookings/global-history/?date=${globalHistoryDate}`, {
+            const res = await fetch(`${API_BASE}/bookings/global-history?date=${globalHistoryDate}`, {
                 headers: { 'Authorization': `Token ${token}` },
             });
             if (res.ok) {
@@ -794,7 +803,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         }
         
         const token = localStorage.getItem('auth_token');
-        const url = `${API_BASE}/bookings/${editingLedgerEntry.id || editingLedgerEntry.booking_id}/`;
+        const url = `${API_BASE}/bookings/${editingLedgerEntry.id || editingLedgerEntry.booking_id}`;
 
         try {
             const res = await fetch(url, {
@@ -821,7 +830,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         if (!window.confirm('Are you sure you want to delete this specific ledger entry? This cannot be undone.')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/bookings/${id}/`, {
+            const res = await fetch(`${API_BASE}/bookings/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
@@ -845,7 +854,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         const token = localStorage.getItem('auth_token');
         
         try {
-            const res = await fetch(`${API_BASE}/bookings/vehicle-history/?q=${encodeURIComponent(searchQuery)}`, {
+            const res = await fetch(`${API_BASE}/bookings/vehicle-history?q=${encodeURIComponent(searchQuery)}`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             
@@ -1001,7 +1010,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         if (!window.confirm('Are you sure you want to delete this expense? This action cannot be undone.')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/finance/general-expenses/${id}/`, {
+            const res = await fetch(`${API_BASE}/finance/general-expenses/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
@@ -1034,11 +1043,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const fetchStaffDirectory = () => queryClient.invalidateQueries({ queryKey: ['staff'] });
     const fetchExpenseCategories = () => queryClient.invalidateQueries({ queryKey: ['expenseCategories'] });
 
-    const handleLogout = () => { localStorage.removeItem('auth_token'); router.push('/login'); };
+    const handleLogout = handleSignOut;
 
     const downloadTaxReport = async () => {
         try {
-            const res = await fetch(`${API_BASE}/finance/reports/tax_summary/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            const res = await fetch(`${API_BASE}/finance/reports/tax_summary`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
             if (!res.ok) throw new Error("Failed");
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
@@ -1090,7 +1099,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const approveExpense = async (id: number) => {
         try {
-            await fetch(`${API_BASE}/finance/expenses/${id}/`, {
+            await fetch(`${API_BASE}/finance/expenses/${id}`, {
                 method: 'PATCH',
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ is_approved: true })
@@ -1102,7 +1111,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const settleCredit = async (id: number) => {
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/invoices/${id}/mark_paid/`, {
+            const res = await fetch(`${API_BASE}/invoices/${id}/mark_paid`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Token ${token}`,
@@ -1143,7 +1152,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             return;
         }
         const token = localStorage.getItem('auth_token');
-        const url = editingKhataCustomer ? `${API_BASE}/customers/${editingKhataCustomer.id}/` : `${API_BASE}/customers/`;
+        const url = editingKhataCustomer ? `${API_BASE}/customers/${editingKhataCustomer.id}` : `${API_BASE}/customers`;
         const method = editingKhataCustomer ? 'PATCH' : 'POST';
 
         try {
@@ -1179,7 +1188,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         if (!window.confirm('Delete this Khata customer? This action cannot be undone.')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/customers/${id}/`, {
+            const res = await fetch(`${API_BASE}/customers/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
@@ -1197,7 +1206,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const loadKhataLedger = async (customer: KhataCustomer) => {
         setSelectedKhataCustomer(customer);
         try {
-            const res = await fetch(`${API_BASE}/finance/khata/${customer.id}/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            const res = await fetch(`${API_BASE}/finance/khata/${customer.id}`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
             if (res.ok) {
                 const data = await res.json();
                 const safeList = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : (Array.isArray(data?.data) ? data.data : []));
@@ -1214,7 +1223,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     const khataSettleMutation = useMutation({
         mutationFn: async () => {
             if (!selectedKhataCustomer || !khataPaymentAmount) throw new Error("Missing info");
-            const res = await fetch(`${API_BASE}/finance/khata/settle/`, {
+            const res = await fetch(`${API_BASE}/finance/khata/settle`, {
                 method: 'POST',
                 headers: fetchHeaders,
                 body: JSON.stringify({ customer_id: selectedKhataCustomer.id, amount: khataPaymentAmount, description: "Admin Dashboard Settlement" })
@@ -1239,7 +1248,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
 
     const closeRegisterMutation = useMutation({
         mutationFn: async () => {
-            const res = await fetch(`${API_BASE}/finance/close-register/`, {
+            const res = await fetch(`${API_BASE}/finance/close-register`, {
                 method: 'POST',
                 headers: fetchHeaders
             });
@@ -1501,7 +1510,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
             fetchGlobalHistory, updateLedgerEntry, deleteLedgerEntry, handleCrmSearch
         },
         globalActions: {
-            fetchDashboardData, handleLogout
+            fetchDashboardData, handleLogout, handleSignOut
         },
         queueState: {
             recentBookings,

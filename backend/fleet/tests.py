@@ -6,8 +6,9 @@ from rest_framework import status
 
 class LocationTest(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='driver', password='password')
+        self.user = User.objects.create_user(username='driver', password='password', is_staff=True)
         self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
 
     def test_update_location(self):
         # Create new location

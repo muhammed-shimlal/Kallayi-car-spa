@@ -4,7 +4,12 @@ import React, { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, LogOut, Search, User, Phone, Sparkles, AlertCircle, X, Check } from "lucide-react";
+import { 
+  Loader2, LogOut, Search, User, Phone, Sparkles, AlertCircle, X, Check, 
+  ArrowLeft, Printer, Share2, CheckCircle2, CreditCard, ShieldCheck, Tag, Layers, RefreshCw, IndianRupee,
+  QrCode, MessageCircle, ExternalLink
+} from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { isValidIndianMobile } from "@/lib/phone";
 import { CinematicPhoneInput } from "@/components/ui/phone-input";
 import { useRouter } from "next/navigation";
@@ -102,11 +107,17 @@ export default function ExpressPOSPage() {
   const [customModel, setCustomModel] = useState<string>("");
   const [customType, setCustomType] = useState<string>("");
   const [customColor, setCustomColor] = useState<string>("");
-  const [agreedPriceInput, setAgreedPriceInput] = useState<string>("");
-
   // Track pre-existing selected vehicle and customer IDs for seamless binding
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+
+  // Operational Counter Attributes
+  const [showAdvanceDiscount, setShowAdvanceDiscount] = useState<boolean>(false);
+  const [agreedPriceInput, setAgreedPriceInput] = useState<string>("");
+  const [discountReason, setDiscountReason] = useState<string>("");
+
+  // Post-Intake Confirmation Modal State
+  const [completedReceipt, setCompletedReceipt] = useState<any | null>(null);
 
   // UNIFIED LIVE SEARCH STATE
   const [universalSearchQuery, setUniversalSearchQuery] = useState("");
@@ -152,10 +163,11 @@ export default function ExpressPOSPage() {
     );
   };
 
-  // Selected Package Object & Calculated Discount
+  // Selected Package Object & Catalog Pricing
   const selectedPackage = packages.find((p) => p.id === selectedPackageId);
   const baseCatalogPrice = getPackageActivePrice(selectedPackage, activeVehicleType);
-  const finalAgreedPrice = agreedPriceInput !== "" ? parseFloat(agreedPriceInput) : baseCatalogPrice;
+
+  const finalAgreedPrice = agreedPriceInput ? parseFloat(agreedPriceInput) : baseCatalogPrice;
   const calculatedDiscountAmt = Math.max(0, baseCatalogPrice - (isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice));
   const calculatedDiscountPct = baseCatalogPrice > 0 ? ((calculatedDiscountAmt / baseCatalogPrice) * 100).toFixed(1) : "0.0";
 
@@ -172,18 +184,25 @@ export default function ExpressPOSPage() {
   const applyVehicleToForm = (data: any) => {
     if (!data) return;
 
-    if (data.id) {
-      setSelectedVehicleId(Number(data.id));
+    const rawVehId = data.vehicle_id || data.id;
+    if (rawVehId && !isNaN(Number(rawVehId))) {
+      setSelectedVehicleId(Number(rawVehId));
+    } else {
+      setSelectedVehicleId(null);
     }
-    if (data.customer_id || data.customerId) {
-      setSelectedCustomerId(String(data.customer_id || data.customerId));
+
+    const rawCustId = data.customer_id || data.customerId;
+    if (rawCustId && rawCustId !== "undefined" && rawCustId !== "null" && String(rawCustId).trim().length > 5) {
+      setSelectedCustomerId(String(rawCustId).trim());
+    } else {
+      setSelectedCustomerId(null);
     }
 
     const phoneVal = data.phone_number || data.phone || data.owner_phone;
     if (phoneVal) {
       const rawPhone = String(phoneVal).trim();
-      const isGuestOrInvalid = rawPhone.startsWith("guest_") || rawPhone.includes("guest") || (!rawPhone.startsWith("+") && !/^[0-9]{7,15}$/.test(rawPhone.replace(/[\s-]/g, '')));
-      if (!isGuestOrInvalid) {
+      const isGuestOrInvalid = rawPhone.startsWith("guest_") || rawPhone.includes("guest");
+      if (!isGuestOrInvalid && rawPhone) {
         setValue("phone", rawPhone, { shouldValidate: true });
       }
     }
@@ -204,47 +223,49 @@ export default function ExpressPOSPage() {
     setCategory(targetCategory);
 
     const makesObj = VEHICLE_DATA[targetCategory].makes;
-    if (data.make && makesObj[data.make]) {
-      setValue("make", data.make);
-      const modelsObj = makesObj[data.make] || {};
+    const realMake = data.brand || data.make;
+    if (realMake && makesObj[realMake]) {
+      setValue("make", realMake, { shouldValidate: true });
+      const modelsObj = makesObj[realMake] || {};
       if (data.model && modelsObj[data.model]) {
-        setValue("model", data.model);
+        setValue("model", data.model, { shouldValidate: true });
         const autoType = modelsObj[data.model];
         if (autoType && autoType !== "Other") {
-          setValue("vehicle_type", autoType);
+          setValue("vehicle_type", autoType, { shouldValidate: true });
         }
       } else if (data.model) {
-        setValue("model", "Other");
+        setValue("model", "Other", { shouldValidate: true });
         setCustomModel(data.model);
       }
-    } else if (data.make) {
-      setValue("make", "Other");
-      setCustomMake(data.make);
+    } else if (realMake) {
+      setValue("make", "Other", { shouldValidate: true });
+      setCustomMake(realMake);
       if (data.model) {
+        setValue("model", "Other", { shouldValidate: true });
         setCustomModel(data.model);
       }
     }
 
     if (data.vehicle_type) {
       if (VEHICLE_DATA[targetCategory].types.includes(data.vehicle_type)) {
-        setValue("vehicle_type", data.vehicle_type);
+        setValue("vehicle_type", data.vehicle_type, { shouldValidate: true });
       } else {
-        setValue("vehicle_type", "Other");
+        setValue("vehicle_type", "Other", { shouldValidate: true });
         setCustomType(data.vehicle_type);
       }
     }
 
     if (data.color) {
       if (VEHICLE_COLORS.includes(data.color as any)) {
-        setValue("color", data.color);
+        setValue("color", data.color, { shouldValidate: true });
       } else {
-        setValue("color", "Other");
+        setValue("color", "Other", { shouldValidate: true });
         setCustomColor(data.color);
       }
     }
 
     if (data.customer_name && data.customer_name !== "Guest Customer" && data.customer_name !== "Walk-In Customer") {
-      setValue("customer_name", data.customer_name);
+      setValue("customer_name", data.customer_name, { shouldValidate: true });
     }
   };
 
@@ -260,8 +281,8 @@ export default function ExpressPOSPage() {
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await api.get(`/customer-vehicles/lookup?q=${encodeURIComponent(q)}`);
-        const list = Array.isArray(res.data?.results) ? res.data.results : [];
+        const res = await api.get(`/customers/search?q=${encodeURIComponent(q)}`);
+        const list = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.results) ? res.data.results : []);
         setSearchResults(list);
         setShowSearchDropdown(list.length > 0);
       } catch (err) {
@@ -277,25 +298,6 @@ export default function ExpressPOSPage() {
   }, [universalSearchQuery]);
 
   const handleSelectSearchResult = (item: UnifiedSearchResult) => {
-    if (item.plate_number) {
-      setValue("plate_number", item.plate_number, { shouldValidate: true });
-    }
-    if (item.vehicle_id) {
-      setSelectedVehicleId(Number(item.vehicle_id));
-    }
-    if (item.customer_id) {
-      setSelectedCustomerId(String(item.customer_id));
-    }
-    if (item.phone_number) {
-      const rawPhone = String(item.phone_number).trim();
-      const isGuest = rawPhone.startsWith("guest_") || rawPhone.includes("guest");
-      if (!isGuest && rawPhone) {
-        setValue("phone", rawPhone, { shouldValidate: true });
-      }
-    }
-    if (item.customer_name && item.customer_name !== "Guest Customer" && item.customer_name !== "Walk-In Customer") {
-      setValue("customer_name", item.customer_name);
-    }
     applyVehicleToForm(item);
 
     if (item.outstanding_balance && Number(item.outstanding_balance) > 0) {
@@ -312,7 +314,7 @@ export default function ExpressPOSPage() {
 
     setShowSearchDropdown(false);
     setUniversalSearchQuery("");
-    toast.success(`Vehicle Autofilled: ${item.plate_number || ''} (${item.make || ''} ${item.model || ''})`);
+    toast.success("Customer & vehicle details loaded");
   };
 
   const handleMakeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -339,19 +341,13 @@ export default function ExpressPOSPage() {
     }
   };
 
-  useEffect(() => {
-    if (selectedPackage) {
-      setAgreedPriceInput(baseCatalogPrice > 0 ? baseCatalogPrice.toString() : "");
-    }
-  }, [selectedPackageId, activeVehicleType]);
-
   // --- AUTO-FILL WATCHER ---
   useEffect(() => {
     if (!plateNumber || plateNumber.length < 4) return;
 
     const timer = setTimeout(async () => {
       try {
-        const res = await api.get(`/customer-vehicles/lookup/?plate=${encodeURIComponent(plateNumber)}`);
+        const res = await api.get(`/customer-vehicles/lookup?plate=${encodeURIComponent(plateNumber)}`);
         if (res.data) {
           applyVehicleToForm(res.data);
           toast.success(`Found Vehicle: ${res.data.make || ''} ${res.data.model || ''}`);
@@ -390,6 +386,20 @@ export default function ExpressPOSPage() {
     return pkg.vehicle_type.toUpperCase() === activeVehicleType || activeVehicleType.includes(pkg.vehicle_type.toUpperCase());
   });
 
+  const handleNextVehicle = () => {
+    reset();
+    setSelectedVehicleId(null);
+    setSelectedCustomerId(null);
+    setCustomMake("");
+    setCustomModel("");
+    setCustomType("");
+    setCustomColor("");
+    setShowAdvanceDiscount(false);
+    setAgreedPriceInput("");
+    setDiscountReason("");
+    setCompletedReceipt(null);
+  };
+
   const onSubmit = async (data: POSFormValues) => {
     try {
       const realMake = data.make === "Other" ? (customMake || "Custom Make") : (data.make || "Standard");
@@ -397,43 +407,75 @@ export default function ExpressPOSPage() {
       const realType = data.vehicle_type === "Other" ? (customType || category) : (data.vehicle_type || category);
       const realColor = data.color === "Other" ? (customColor || "Other") : (data.color || "White");
 
-      const cleanPhone = (data.phone || "").trim();
-      const cleanPlate = (data.plate_number || "").toUpperCase().trim();
+      const cleanPhone = (data.phone || (data as any).phoneNumber || (data as any).phone_number || "").trim();
+      const cleanPlate = ((data as any).licensePlate || data.plate_number || (data as any).vehicle_number || "").trim().toUpperCase();
+
+      const finalPriceNumber = showAdvanceDiscount && !isNaN(finalAgreedPrice) && finalAgreedPrice > 0 ? finalAgreedPrice : baseCatalogPrice;
+      const discountAmt = showAdvanceDiscount ? calculatedDiscountAmt : 0;
+      const discountPct = showAdvanceDiscount ? parseFloat(calculatedDiscountPct) : 0;
+      const discountRsn = showAdvanceDiscount && discountReason.trim() ? discountReason.trim() : undefined;
 
       const payload = {
         ...data,
-        customer_id: selectedCustomerId || undefined,
-        vehicle_id: selectedVehicleId || undefined,
+        customer_name: data.customer_name?.trim() || "Walk-In Customer",
+        name: data.customer_name?.trim() || "Walk-In Customer",
+        phone_number: cleanPhone,
         phone: cleanPhone,
+        customer_phone: cleanPhone,
+        license_plate: cleanPlate,
         plate_number: cleanPlate,
-        name: data.customer_name?.trim() || 'Guest Customer',
-        customer_name: data.customer_name?.trim() || 'Guest Customer',
-        category,
+        vehicle_number: cleanPlate,
+        brand: realMake,
         make: realMake,
         model: realModel,
         vehicle_type: realType,
         color: realColor,
-        final_price: isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice,
+        service_package_id: data.package_id || selectedPackage?.id,
+        package_id: data.package_id || selectedPackage?.id,
+        bay_assignment: "AUTO",
+        status: "WAITING",
+        notes: (data as any).notes || "",
+        discount_reason: discountRsn || "",
+        discount_amount: Number(discountAmt) || 0,
+        discount_percentage: discountPct,
+        base_price: baseCatalogPrice,
+        final_price: finalPriceNumber,
+        customer_id: selectedCustomerId && selectedCustomerId !== "undefined" ? selectedCustomerId : undefined,
+        vehicle_id: selectedVehicleId && !isNaN(Number(selectedVehicleId)) ? Number(selectedVehicleId) : undefined,
+        is_paid: false,
       };
 
-      await api.post("/bookings/express-walkin/", payload);
+      const res = await api.post("/bookings/express-walkin", payload);
+      const bookingData = res.data;
+
+      const resolvedBookingId = bookingData?.booking_id || bookingData?.booking?.id || bookingData?.data?.id || "NEW";
+
       toast.success(`Vehicle ${cleanPlate} Added to Queue!`);
       try {
         window.dispatchEvent(new CustomEvent('queue:updated'));
       } catch {
         // Continue
       }
-      reset();
-      setSelectedVehicleId(null);
-      setSelectedCustomerId(null);
-      setCustomMake("");
-      setCustomModel("");
-      setCustomType("");
-      setCustomColor("");
-      setAgreedPriceInput("");
+
+      setCompletedReceipt({
+        booking_id: resolvedBookingId,
+        plate_number: cleanPlate,
+        customer_name: data.customer_name?.trim() || "Walk-In Customer",
+        phone: cleanPhone,
+        vehicle_make_model: `${realMake} ${realModel}`,
+        vehicle_type: realType,
+        service_name: selectedPackage?.name || "Walk-In Wash",
+        base_price: baseCatalogPrice,
+        final_price: finalPriceNumber,
+        discount_amount: discountAmt,
+        discount_percentage: discountPct,
+        discount_reason: discountRsn,
+        bay_assignment: "Bay 1",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      });
     } catch (error: any) {
+      console.error('Validation error:', error.response?.data || error);
       toast.error(error.response?.data?.error || "Error processing walk-in.");
-      console.error(error);
     }
   };
 
@@ -445,21 +487,44 @@ export default function ExpressPOSPage() {
 
       <main className="relative z-10 max-w-4xl mx-auto pt-10 pb-20 px-6 sm:px-12 min-h-screen flex flex-col">
         {/* Header */}
-        <header className="flex items-center justify-between gap-6 mb-12">
-          <div>
-            <h1 className="font-syncopate text-2xl sm:text-3xl font-bold tracking-widest text-white uppercase">
-              Staff <span className="text-[#01FFFF]">POS</span>
-            </h1>
-            <p className="text-xs sm:text-sm tracking-[0.3em] font-bold text-zinc-500 uppercase mt-2">
-              Express Vehicle Intake
-            </p>
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-3.5">
+            <button
+              type="button"
+              onClick={() => router.push('/staff/dashboard')}
+              className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all border border-white/5 hover:border-white/20"
+              title="Return to Staff Dashboard"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="font-syncopate text-2xl sm:text-3xl font-bold tracking-widest text-white uppercase flex items-center gap-2">
+                Staff <span className="text-[#01FFFF]">POS</span>
+                <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  LIVE
+                </span>
+              </h1>
+              <p className="text-[11px] sm:text-xs tracking-[0.25em] font-bold text-zinc-500 uppercase mt-0.5">
+                Express Vehicle Intake & Counter Settlement
+              </p>
+            </div>
           </div>
-          <button
-            onClick={() => router.push('/staff/queue')}
-            className="flex items-center gap-2 text-zinc-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-wider"
-          >
-            Queue Board
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => router.push('/staff/dashboard')}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition-colors text-xs font-bold uppercase tracking-wider border border-white/10"
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/staff/queue')}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#01FFFF]/10 hover:bg-[#01FFFF]/20 text-[#01FFFF] transition-colors text-xs font-bold uppercase tracking-wider border border-[#01FFFF]/30"
+            >
+              Queue Board
+            </button>
+          </div>
         </header>
 
         {/* POS Form */}
@@ -638,7 +703,6 @@ export default function ExpressPOSPage() {
                   if (currentType && currentType !== vData.vehicle_type) {
                     if (selectedPackageId) {
                       setValue("package_id", undefined as any, { shouldValidate: true });
-                      setAgreedPriceInput("");
                       toast.error(`Vehicle body type changed to ${vData.vehicle_type}. Selected service package cleared!`);
                     }
                   }
@@ -761,80 +825,394 @@ export default function ExpressPOSPage() {
               )}
             </div>
 
-            {/* Single-Field Negotiated Price & Discount Derivation */}
+            {/* Advance Discount / Negotiated Deal (Optional Accordion) */}
             {selectedPackage && (
-              <div className="bg-[#141518]/80 backdrop-blur-2xl border border-[#01FFFF]/30 rounded-[2rem] p-6 sm:p-8 shadow-2xl space-y-6">
+              <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/10 hover:border-white/20 rounded-2xl sm:rounded-[2rem] p-5 sm:p-6 shadow-xl space-y-4 transition-all">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] block">
-                    Single-Field Negotiated Price Entry
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showAdvanceDiscount}
+                      onChange={(e) => setShowAdvanceDiscount(e.target.checked)}
+                      className="w-4 h-4 rounded accent-[#01FFFF] cursor-pointer"
+                    />
+                    <span className="text-xs uppercase tracking-[0.15em] font-bold text-zinc-300 flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-[#01FFFF]" />
+                      Advance Discount / Negotiated Deal (മുൻകൂട്ടിയുള്ള ഇളവ് - Optional)
+                    </span>
                   </label>
-                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
-                    Manual Dirtiness / Condition Concession
+                  <span className="text-[11px] font-mono text-zinc-400">
+                    {showAdvanceDiscount ? (
+                      <span className="text-[#01FFFF] font-bold">Negotiation Active</span>
+                    ) : (
+                      <span>Catalog Base: <strong className="text-white">₹{baseCatalogPrice}</strong></span>
+                    )}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                  <div>
-                    <label className="text-[11px] text-zinc-300 font-bold uppercase tracking-wider block mb-2">
-                      Agreed Final Price (₹)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-syncopate font-bold text-xl text-[#01FFFF]">₹</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max={baseCatalogPrice}
-                        value={agreedPriceInput}
-                        onChange={(e) => setAgreedPriceInput(e.target.value)}
-                        placeholder={baseCatalogPrice.toString()}
-                        className="w-full bg-black/60 border-2 border-[#01FFFF]/40 focus:border-[#01FFFF] rounded-2xl pl-10 pr-4 py-4 text-2xl font-syncopate font-bold text-white outline-none transition-all"
-                      />
+                {showAdvanceDiscount && (
+                  <div className="pt-4 border-t border-white/10 grid grid-cols-1 md:grid-cols-2 gap-6 items-start animate-in fade-in duration-200">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-[11px] text-zinc-300 font-bold uppercase tracking-wider block mb-2">
+                          Agreed Final Payable (₹)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 font-syncopate font-bold text-xl text-[#01FFFF]">₹</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max={baseCatalogPrice}
+                            value={agreedPriceInput}
+                            onChange={(e) => setAgreedPriceInput(e.target.value)}
+                            placeholder={baseCatalogPrice.toString()}
+                            className="w-full bg-black/60 border-2 border-[#01FFFF]/40 focus:border-[#01FFFF] rounded-2xl pl-10 pr-4 py-3.5 text-2xl font-syncopate font-bold text-white outline-none transition-all"
+                          />
+                        </div>
+                        <p className="text-[10px] text-zinc-400 mt-2 flex items-center justify-between">
+                          <span>Catalog Base: <strong className="text-white">₹{baseCatalogPrice}</strong></span>
+                          {calculatedDiscountAmt > 0 && (
+                            <span className="text-emerald-400 font-bold">Saving ₹{calculatedDiscountAmt.toFixed(2)}</span>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Discount Reason Field with Quick Pills */}
+                      <div>
+                        <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-400 block mb-1.5 flex items-center justify-between">
+                          <span>Discount Reason {calculatedDiscountAmt > 0 ? <strong className="text-amber-400">(Required)</strong> : '(Optional)'}</span>
+                          {discountReason && <span className="text-[10px] text-[#01FFFF] font-mono">"{discountReason}"</span>}
+                        </label>
+                        <input
+                          type="text"
+                          value={discountReason}
+                          onChange={(e) => setDiscountReason(e.target.value)}
+                          placeholder="e.g. Regular customer discount, counter bargain..."
+                          className="w-full bg-black/40 border border-white/10 focus:border-[#01FFFF] rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-zinc-600 outline-none transition-all"
+                        />
+                        {/* Quick Chips */}
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {["Regular Customer", "Fleet Bargain", "Counter Bargain", "Dirtiness Concession", "Festival Offer"].map((chip) => (
+                            <button
+                              type="button"
+                              key={chip}
+                              onClick={() => setDiscountReason(chip)}
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                                discountReason === chip
+                                  ? "bg-[#01FFFF]/20 border-[#01FFFF] text-[#01FFFF]"
+                                  : "bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10"
+                              }`}
+                            >
+                              + {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-zinc-400 mt-2">
-                      Catalog Price: <span className="font-mono font-bold text-white">₹{baseCatalogPrice}</span>
-                    </p>
+
+                    {/* Real-time Derived Discount Preview Card */}
+                    <div className="bg-black/50 border border-white/10 rounded-2xl p-5 space-y-3.5 h-full flex flex-col justify-between">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-400 font-bold uppercase tracking-wider">Catalog Subtotal:</span>
+                          <span className="font-mono font-bold text-white">₹{baseCatalogPrice.toFixed(2)}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-400 font-bold uppercase tracking-wider">Discount Granted:</span>
+                          <span className={`font-mono font-bold ${calculatedDiscountAmt > 0 ? "text-[#22c55e]" : "text-zinc-500"}`}>
+                            {calculatedDiscountAmt > 0 ? `-₹${calculatedDiscountAmt.toFixed(2)} (${calculatedDiscountPct}% OFF)` : "No Discount"}
+                          </span>
+                        </div>
+
+                        {discountReason && (
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/5">
+                            <span className="text-zinc-400 font-bold uppercase tracking-wider">Reason:</span>
+                            <span className="text-[#01FFFF] font-mono truncate max-w-[180px]">{discountReason}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">Final Expected Total:</span>
+                        <span className="font-syncopate font-bold text-xl text-[#01FFFF]">
+                          ₹{(isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-
-                  {/* Real-time Derived Discount Preview Card */}
-                  <div className="bg-black/50 border border-white/10 rounded-2xl p-5 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400 font-bold uppercase tracking-wider">Catalog Subtotal:</span>
-                      <span className="font-mono font-bold text-white">₹{baseCatalogPrice.toFixed(2)}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-zinc-400 font-bold uppercase tracking-wider">Computed Discount:</span>
-                      <span className={`font-mono font-bold ${calculatedDiscountAmt > 0 ? "text-[#22c55e]" : "text-zinc-500"}`}>
-                        {calculatedDiscountAmt > 0 ? `-₹${calculatedDiscountAmt.toFixed(2)} (${calculatedDiscountPct}% OFF)` : "No Discount"}
-                      </span>
-                    </div>
-
-                    <div className="pt-3 border-t border-white/10 flex items-center justify-between">
-                      <span className="text-xs font-bold text-[#01FFFF] uppercase tracking-widest">Amount Collected:</span>
-                      <span className="font-syncopate font-bold text-2xl text-white">
-                        ₹{(isNaN(finalAgreedPrice) ? baseCatalogPrice : finalAgreedPrice).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Massive Submit Button */}
+          {/* Primary Submit CTA Button */}
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full bg-[#E52323] text-white font-syncopate font-bold text-2xl py-8 rounded-[2rem] hover:bg-red-700 hover:scale-[1.02] shadow-[0_0_30px_rgba(229,35,35,0.4)] hover:shadow-[0_0_50px_rgba(229,35,35,0.6)] transition-all active:scale-[0.98] flex justify-center items-center gap-4 disabled:opacity-70 disabled:hover:scale-100 uppercase tracking-[0.2em] mt-10 border border-[#E52323]/50"
+            className="w-full bg-[#E52323] text-white font-syncopate font-bold text-lg sm:text-xl py-6 rounded-[2rem] hover:bg-red-700 hover:scale-[1.01] shadow-[0_0_30px_rgba(229,35,35,0.4)] hover:shadow-[0_0_50px_rgba(229,35,35,0.6)] transition-all active:scale-[0.99] flex flex-col items-center justify-center gap-1.5 disabled:opacity-70 disabled:hover:scale-100 uppercase tracking-[0.15em] mt-8 border border-[#E52323]/50 cursor-pointer"
           >
             {isSubmitting ? (
-              <Loader2 className="w-8 h-8 animate-spin" />
+              <Loader2 className="w-7 h-7 animate-spin" />
             ) : (
-              "Add to Queue"
+              <>
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-white" />
+                  Confirm & Add to Queue
+                </span>
+                <span className="text-xs font-normal normal-case tracking-normal text-white/80 font-sans">
+                  കൺഫോം ചെയ്ത് ക്യൂവിലേക്ക് ചേർക്കുക
+                </span>
+              </>
             )}
           </button>
         </form>
+
+        {/* INSTANT INTAKE CONFIRMATION MODAL */}
+        {completedReceipt && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+            <div className="bg-[#0d0e12] border border-[#01FFFF]/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-[0_0_80px_rgba(1,255,255,0.2)] space-y-6 relative animate-in fade-in zoom-in duration-200">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-syncopate font-bold text-base text-white uppercase tracking-wider">
+                      Vehicle Added to Queue
+                    </h3>
+                    <p className="text-[11px] font-mono text-[#01FFFF] font-bold">
+                      Booking Token #{completedReceipt.booking_id}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleNextVehicle}
+                  className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* License Plate Banner */}
+              <div className="p-4 rounded-2xl bg-black/80 border-2 border-white/15 text-center shadow-inner">
+                <div className="text-[10px] uppercase font-bold tracking-[0.3em] text-zinc-500 mb-1">
+                  License Plate
+                </div>
+                <div className="font-syncopate font-bold text-3xl sm:text-4xl text-white tracking-widest">
+                  {completedReceipt.plate_number}
+                </div>
+                <div className="text-xs font-bold text-[#01FFFF] mt-1">
+                  {completedReceipt.vehicle_make_model} • {completedReceipt.vehicle_type}
+                </div>
+              </div>
+
+              {/* Customer & Bay Info */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                  <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">Customer</span>
+                  <p className="font-bold text-white truncate">{completedReceipt.customer_name}</p>
+                  <p className="text-zinc-500 font-mono text-[11px]">{completedReceipt.phone || "Walk-In"}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                  <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5">Assigned Bay</span>
+                  <p className="font-bold text-[#01FFFF]">{completedReceipt.bay_assignment || "Auto Queue"}</p>
+                  <p className="text-zinc-500 font-mono text-[11px]">Intake: {completedReceipt.timestamp}</p>
+                </div>
+              </div>
+
+              {/* Service Details & Payment Notice */}
+              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Service Package:</span>
+                  <span className="font-bold text-white">{completedReceipt.service_name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Catalog Estimate:</span>
+                  <span className="font-mono text-zinc-300 font-bold">₹{completedReceipt.base_price.toFixed(2)}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#01FFFF]/5 border border-[#01FFFF]/20 text-[11px] text-cyan-300 flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-[#01FFFF] flex-shrink-0" />
+                  <span>Payment collection and counter bargain discounts will be settled at checkout.</span>
+                </div>
+              </div>
+
+              {/* Customer Live Tracking QR Code */}
+              {(() => {
+                const trackingUrl = typeof window !== 'undefined'
+                  ? `${window.location.origin}/track/${completedReceipt.booking_id}`
+                  : `http://localhost:3000/track/${completedReceipt.booking_id}`;
+
+                const cleanPhoneDigits = (completedReceipt.phone || '').replace(/\D/g, '');
+                const waPhone = cleanPhoneDigits.length === 10 ? `91${cleanPhoneDigits}` : cleanPhoneDigits;
+                const waText = encodeURIComponent(
+                  `Hello ${completedReceipt.customer_name}! 🚗\nYour vehicle *${completedReceipt.plate_number}* is now in queue for *${completedReceipt.service_name}* at Kallayi Car Spa.\n\nTrack real-time wash progress live on your mobile (No login needed):\n${trackingUrl}`
+                );
+                const waUrl = waPhone.length >= 10 ? `https://wa.me/${waPhone}?text=${waText}` : null;
+
+                const handlePrintSlip = () => {
+                  const printWindow = window.open('', '_blank', 'width=380,height=600');
+                  if (!printWindow) {
+                    window.print();
+                    return;
+                  }
+                  printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <title>Job Token #${completedReceipt.booking_id} - Kallayi Car Spa</title>
+                        <style>
+                          @page { size: 80mm auto; margin: 4mm; }
+                          body { font-family: monospace; font-size: 12px; margin: 0; padding: 12px; color: #000; text-align: center; }
+                          .header { font-size: 16px; font-weight: 900; margin-bottom: 2px; text-transform: uppercase; }
+                          .sub { font-size: 9px; color: #555; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+                          .divider { border-top: 1px dashed #000; margin: 8px 0; }
+                          .token { font-size: 13px; font-weight: bold; margin: 4px 0; }
+                          .plate { font-size: 24px; font-weight: 900; letter-spacing: 2px; margin: 6px 0; border: 2px solid #000; padding: 4px 0; }
+                          .row { display: flex; justify-content: space-between; font-size: 11px; margin: 3px 0; }
+                          .qr-box { margin: 12px auto; display: flex; justify-content: center; }
+                          .footer { font-size: 9px; color: #444; margin-top: 8px; }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="header">KALLAYI CAR SPA</div>
+                        <div class="sub">Auto Care & Detail Lounge</div>
+                        <div class="divider"></div>
+                        <div class="token">JOB TOKEN: #${completedReceipt.booking_id}</div>
+                        <div class="plate">${completedReceipt.plate_number}</div>
+                        <div style="font-weight: bold; font-size: 12px;">${completedReceipt.vehicle_make_model} (${completedReceipt.vehicle_type})</div>
+                        <div class="divider"></div>
+                        <div class="row"><span>Service:</span><span><strong>${completedReceipt.service_name}</strong></span></div>
+                        <div class="row"><span>Bay:</span><span><strong>${completedReceipt.bay_assignment || 'Bay 1'}</strong></span></div>
+                        <div class="row"><span>Customer:</span><span>${completedReceipt.customer_name}</span></div>
+                        <div class="row"><span>Time:</span><span>${completedReceipt.timestamp}</span></div>
+                        <div class="divider"></div>
+                        <div style="font-size: 10px; font-weight: bold; margin-bottom: 6px;">SCAN TO TRACK LIVE WASH PROGRESS</div>
+                        <div class="qr-box" id="qrcode"></div>
+                        <div class="footer">No login required • Real-time wash updates</div>
+                        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+                        <script>
+                          new QRCode(document.getElementById("qrcode"), {
+                            text: "${trackingUrl}",
+                            width: 130,
+                            height: 130
+                          });
+                          setTimeout(() => { window.print(); window.close(); }, 500);
+                        </script>
+                      </body>
+                    </html>
+                  `);
+                  printWindow.document.close();
+                };
+
+                return (
+                  <div className="space-y-4">
+                    {/* QR Code Container */}
+                    <div className="p-4 rounded-2xl bg-gradient-to-b from-[#101217] to-[#07080a] border border-[#01FFFF]/40 flex flex-col items-center justify-center text-center space-y-3 shadow-[0_0_30px_rgba(1,255,255,0.15)]">
+                      <div className="text-[10px] uppercase font-bold tracking-[0.2em] text-[#01FFFF] flex items-center gap-1.5">
+                        <QrCode className="w-3.5 h-3.5 text-[#01FFFF]" />
+                        <span>Customer Live Tracking QR Code</span>
+                      </div>
+                      
+                      <div className="p-3 bg-white rounded-2xl shadow-lg border-2 border-white flex items-center justify-center">
+                        <QRCodeSVG
+                          value={trackingUrl}
+                          size={140}
+                          level="M"
+                          includeMargin={false}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="text-xs text-white font-bold tracking-wide">
+                          Customer Scans with Phone Camera
+                        </p>
+                        <p className="text-[11px] text-zinc-400 font-mono">
+                          Track wash progress live on mobile • No login required
+                        </p>
+                        <a 
+                          href={trackingUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] text-[#01FFFF] hover:underline font-mono font-bold mt-1"
+                        >
+                          <span>{trackingUrl}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons: Print Slip & WhatsApp */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={handlePrintSlip}
+                        className="py-3 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-white/10 transition-all cursor-pointer shadow-sm hover:border-white/20 active:scale-98"
+                      >
+                        <Printer className="w-4 h-4 text-[#01FFFF]" />
+                        <span>Print Token Slip</span>
+                      </button>
+
+                      {waUrl ? (
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="py-3 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-emerald-500/30 transition-all cursor-pointer shadow-sm active:scale-98"
+                        >
+                          <MessageCircle className="w-4 h-4 text-emerald-400" />
+                          <span>WhatsApp Link</span>
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          className="py-3 px-3 rounded-xl bg-white/5 text-zinc-600 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-white/5 cursor-not-allowed"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>No Phone for WA</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Navigation Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => router.push('/staff/queue')}
+                  className="w-full sm:w-1/2 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#01FFFF] hover:bg-[#01FFFF]/90 text-black font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(1,255,255,0.4)] cursor-pointer"
+                >
+                  <Layers className="w-4 h-4" />
+                  Go to Live Queue
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextVehicle}
+                  className="w-full sm:w-1/2 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase tracking-wider transition-all border border-white/10 cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4 text-[#01FFFF]" />
+                  Add Another Vehicle
+                </button>
+              </div>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => router.push("/staff/dashboard")}
+                  className="text-xs text-zinc-400 hover:text-white font-bold underline underline-offset-4 transition-colors cursor-pointer"
+                >
+                  View in Staff Dashboard →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

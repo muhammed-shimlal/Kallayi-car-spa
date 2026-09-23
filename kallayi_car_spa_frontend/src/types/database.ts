@@ -287,6 +287,7 @@ export type BookingRow = {
   final_price: number;
   discount_amount: number;
   discount_percentage: number;
+  discount_reason?: string | null;
   address: string;
   latitude: number;
   longitude: number;
@@ -425,6 +426,7 @@ export type InvoiceRow = {
   final_price: number;
   discount_amount: number;
   discount_percentage: number;
+  discount_reason?: string | null;
   revenue_category_id: number | null;
   is_deferred: boolean;
   is_paid: boolean;

@@ -50,7 +50,7 @@ def get_staff_balance_summary(user):
         completed_bookings = Booking.objects.filter(technician=user, status='COMPLETED')
         for b in completed_bookings:
             if staff_profile and b.service_package:
-                gross_earned += float(calculate_staff_booking_commission(staff_profile, b.service_package))
+                gross_earned += float(calculate_staff_booking_commission(staff_profile, b))
     elif salary_type == 'DAILY':
         days_worked = 0
         if staff_profile:

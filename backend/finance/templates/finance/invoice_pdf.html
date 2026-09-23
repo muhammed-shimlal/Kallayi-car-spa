@@ -224,13 +224,13 @@
 
                 {% if booking and booking.discount_amount and booking.discount_amount > 0 %}
                 <tr style="color: #22c55e;">
-                    <td>Vehicle Condition Discount Concession</td>
+                    <td>Special Discount / Bargain Concession{% if booking.discount_reason %} ({{ booking.discount_reason }}){% endif %}</td>
                     <td class="text-right">-Rs.{{ booking.discount_amount }} ({{ booking.discount_percentage }}%)</td>
                     <td class="text-right">Savings Applied</td>
                 </tr>
                 {% elif invoice and invoice.discount_amount and invoice.discount_amount > 0 %}
                 <tr style="color: #22c55e;">
-                    <td>Vehicle Condition Discount Concession</td>
+                    <td>Special Discount / Bargain Concession{% if invoice.discount_reason %} ({{ invoice.discount_reason }}){% endif %}</td>
                     <td class="text-right">-Rs.{{ invoice.discount_amount }} ({{ invoice.discount_percentage }}%)</td>
                     <td class="text-right">Savings Applied</td>
                 </tr>

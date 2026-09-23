@@ -1,5 +1,6 @@
+from decimal import Decimal
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from core.permissions import IsAdmin, IsStaffUser, IsCustomerUser, IsOwnerOrAdmin, get_user_role
@@ -237,6 +238,11 @@ class StaffDashboardViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated, IsStaffUser]
 
     @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """GET /api/staff/dashboard/stats/"""
+        return staff_dashboard_stats(request)
+
+    @action(detail=False, methods=['get'])
     def earnings(self, request):
         """GET /api/staff/dashboard/earnings/"""
         from .services.earning_service import get_staff_earnings
@@ -430,7 +436,7 @@ def daily_settlement_ledger(request):
         else:
             commission_earned = 0.0
             for b in completed_bookings:
-                commission_earned += float(calculate_staff_booking_commission(staff, b.service_package))
+                commission_earned += float(calculate_staff_booking_commission(staff, b))
 
         commission_earned = round(commission_earned, 2)
         status = 'Paid' if (payroll_entry and payroll_entry.is_settled) else 'Pending'
@@ -487,7 +493,7 @@ def settle_daily_pay(request, staff_id):
     from finance.logic import calculate_staff_booking_commission
     commission = 0.0
     for booking in completed_bookings:
-        commission += float(calculate_staff_booking_commission(staff_profile, booking.service_package))
+        commission += float(calculate_staff_booking_commission(staff_profile, booking))
             
     base_wage = float(staff_profile.base_salary or 0.0)
     
@@ -623,7 +629,7 @@ def settle_staff_payroll(request, payroll_id):
             commission = 0.0
             staff_prof = getattr(staff_user, 'staff_profile', None)
             for booking in completed_bookings:
-                commission += float(calculate_staff_booking_commission(staff_prof, booking.service_package))
+                commission += float(calculate_staff_booking_commission(staff_prof, booking))
             
             base_wage = getattr(staff_user.staff_profile, 'base_salary', 0.0)
             payroll_entry = PayrollEntry.objects.create(
@@ -642,3 +648,107 @@ def settle_staff_payroll(request, payroll_id):
     payroll_entry.save()
     
     return Response({'status': 'success', 'message': f'Settled payroll for {payroll_entry.staff_user.username}'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def staff_dashboard_stats(request):
+    """
+    GET /api/v1/staff/dashboard-stats/
+    Returns daily operational & earnings analytics filtered for the authenticated staff member today.
+    """
+    user = request.user
+    today = timezone.localdate()
+    staff_profile = getattr(user, 'staff_profile', None)
+
+    from bookings.models import Booking
+    from finance.models import Invoice
+    from finance.logic import calculate_staff_booking_commission
+
+    # 1. Fetch today's bookings for this staff member (DRY, optimized with select_related)
+    staff_bookings = Booking.objects.filter(
+        technician=user,
+        time_slot__date=today
+    ).select_related('vehicle', 'service_package', 'customer', 'invoice').order_by('-id')
+
+    completed_bookings = [b for b in staff_bookings if b.status == 'COMPLETED']
+    in_progress_bookings = [b for b in staff_bookings if b.status in ['IN_PROGRESS', 'IN_BAY_1', 'IN_BAY_2', 'DETAILING', 'WAITING']]
+
+    completed_count = len(completed_bookings)
+    in_progress_count = len(in_progress_bookings)
+
+    # 2. Build completed vehicles list and calculate revenue & commission
+    completed_list = []
+    total_revenue_today = Decimal('0.00')
+    labor_cost_commission = Decimal('0.00')
+
+    for b in completed_bookings:
+        # Strictly use final_price (the counter negotiated collected amount)
+        f_price = Decimal(str(b.final_price or (b.service_package.price if b.service_package else 0)))
+        total_revenue_today += f_price
+
+        # Commission computed strictly on final_price (the discounted collected amount)
+        comm = calculate_staff_booking_commission(staff_profile, b)
+        labor_cost_commission += comm
+
+        v_plate = 'N/A'
+        v_type = 'HATCHBACK'
+        v_model = 'Vehicle'
+        if b.vehicle:
+            v_plate = b.vehicle.plate_number or b.vehicle.registration_number or 'N/A'
+            v_type = getattr(b.vehicle, 'vehicle_type', 'HATCHBACK')
+            v_model = f"{b.vehicle.make} {b.vehicle.model}".strip() or 'Vehicle'
+
+        pkg_name = b.service_package.name if b.service_package else 'Standard Wash'
+        finish_time = b.end_time.strftime('%I:%M %p') if b.end_time else b.time_slot.strftime('%I:%M %p')
+
+        completed_list.append({
+            'id': b.id,
+            'vehicle_number': v_plate,
+            'plate_number': v_plate,
+            'vehicle_model': v_model,
+            'vehicle_type': v_type,
+            'service_package': pkg_name,
+            'time': finish_time,
+            'final_price': float(f_price),
+            'commission_earned': float(comm)
+        })
+
+    # 3. Compute cash_in_hand:
+    # Exact physical cash collected by this staff member today awaiting register reconciliation
+    # Strictly incremented ONLY when cash was explicitly collected by this staff member.
+    # Cash collected directly at counter/admin NEVER inflates staff cash_in_hand.
+    today_invoices = Invoice.objects.filter(
+        cash_collected_by_staff=user,
+        booking__time_slot__date=today,
+        is_paid=True
+    ).exclude(collector_type='ADMIN').select_related('booking')
+
+    cash_in_hand = Decimal('0.00')
+    for inv in today_invoices:
+        if inv.payment_method == 'CASH':
+            # Strictly use actual final_price collected in cash
+            cash_in_hand += Decimal(str(inv.final_price or inv.amount or 0))
+        elif inv.payment_method == 'SPLIT':
+            cash_in_hand += Decimal(str(inv.split_cash or 0))
+
+    from staff.services.wallet_service import get_staff_balance_summary
+    wallet_summary = get_staff_balance_summary(user)
+    receivable_by_staff = float(wallet_summary.get('current_payable', 0.0))
+    payable_by_staff = round(float(cash_in_hand), 2)
+
+    return Response({
+        'cars_washed_today': {
+            'count': completed_count,
+            'list': completed_list,
+        },
+        'cars_washed_count': completed_count,
+        'completed_vehicles': completed_list,
+        'total_revenue_today': round(float(total_revenue_today), 2),
+        'labor_cost_commission': round(float(labor_cost_commission), 2),
+        'receivable_by_staff': receivable_by_staff,
+        'payable_by_staff': payable_by_staff,
+        'cash_in_hand': payable_by_staff,
+        'completed_count': completed_count,
+        'in_progress_count': in_progress_count,
+    }, status=status.HTTP_200_OK)

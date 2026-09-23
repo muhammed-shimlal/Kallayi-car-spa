@@ -9,8 +9,9 @@ import {
     Loader2, TrendingDown, RefreshCw, Image as ImageIcon,
     X, Pencil, Trash2, CheckCircle2
 } from 'lucide-react';
+import { getApiBaseUrl } from '@/lib/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8001/api';
+const API_BASE = getApiBaseUrl();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ export default function ExpensesPage() {
 
     const fetchCategories = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE}/finance/expense-categories/`, {
+            const res = await fetch(`${API_BASE}/finance/expense-categories`, {
                 headers: { Authorization: `Token ${getToken()}` },
             });
             if (res.ok) setCategories(await res.json());
@@ -98,7 +99,7 @@ export default function ExpensesPage() {
     const fetchExpenses = useCallback(async (silent = false) => {
         if (!silent) setIsLoadingExpenses(true);
         try {
-            const res = await fetch(`${API_BASE}/finance/general-expenses/`, {
+            const res = await fetch(`${API_BASE}/finance/general-expenses`, {
                 headers: { Authorization: `Token ${getToken()}` },
             });
             if (res.ok) {
@@ -164,7 +165,7 @@ export default function ExpensesPage() {
     const handleDelete = async (id: number) => {
         if (!window.confirm('Are you sure you want to delete this expense?')) return;
         try {
-            const res = await fetch(`${API_BASE}/finance/general-expenses/${id}/`, {
+            const res = await fetch(`${API_BASE}/finance/general-expenses/${id}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Token ${getToken()}` },
             });
@@ -204,7 +205,7 @@ export default function ExpensesPage() {
             if (receiptFile) fd.append('receipt_image', receiptFile);
 
             const isEdit = !!editingExpense;
-            const url = isEdit ? `${API_BASE}/finance/general-expenses/${editingExpense.id}/` : `${API_BASE}/finance/general-expenses/`;
+            const url = isEdit ? `${API_BASE}/finance/general-expenses/${editingExpense.id}` : `${API_BASE}/finance/general-expenses`;
             const method = isEdit ? 'PATCH' : 'POST';
 
             const res = await fetch(url, {

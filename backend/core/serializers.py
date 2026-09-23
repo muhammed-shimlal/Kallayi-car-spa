@@ -92,3 +92,45 @@ class PasswordResetOTPVerifySerializer(serializers.Serializer):
         data['new_password'] = password
         return data
 
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True, min_length=8)
+    confirm_password = serializers.CharField(required=True, write_only=True, min_length=8)
+
+    def validate(self, data):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+
+        if not user or not user.is_authenticated:
+            raise serializers.ValidationError({'detail': 'Authentication credentials were not provided.'})
+
+        current_password = data.get('current_password', '')
+        new_password = data.get('new_password', '')
+        confirm_password = data.get('confirm_password', '')
+
+        # 1. Verify current password
+        if not user.check_password(current_password):
+            raise serializers.ValidationError({'current_password': 'The current password you entered is incorrect.'})
+
+        # 2. Confirm matching new passwords
+        if new_password != confirm_password:
+            raise serializers.ValidationError({'confirm_password': 'New password and confirmation password do not match.'})
+
+        # 3. Disallow reusing the current password
+        if new_password == current_password:
+            raise serializers.ValidationError({'new_password': 'New password cannot be the same as your current password.'})
+
+        # 4. Enforce minimum length and complexity
+        if len(new_password) < 8:
+            raise serializers.ValidationError({'new_password': 'New password must be at least 8 characters long.'})
+
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError as err:
+            raise serializers.ValidationError({'new_password': list(err.messages)})
+
+        return data
+

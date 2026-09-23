@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
             });
           }
 
-          const targetUrl = isAdmin ? `${origin}/admin/dashboard` : `${origin}/staff/queue`;
+          const targetUrl = isAdmin ? `${origin}/admin/dashboard` : `${origin}/staff/dashboard`;
           const response = NextResponse.redirect(targetUrl);
           if (data.session?.access_token) {
             response.cookies.set('auth_token', data.session.access_token, {
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
         if (metaRole === 'ADMIN' || metaRole === 'MANAGER') {
           target = `${origin}/admin/dashboard`;
         } else if (metaRole === 'STAFF') {
-          target = `${origin}/staff/queue`;
+          target = `${origin}/staff/dashboard`;
         } else if (redirectParam && !redirectParam.startsWith('/staff') && !redirectParam.startsWith('/admin')) {
           target = `${origin}${redirectParam}`;
         }

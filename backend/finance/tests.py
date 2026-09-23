@@ -142,3 +142,103 @@ class DynamicCommissionAndDiscountTest(TestCase):
         pkg_ids = [p['id'] for p in results]
         self.assertIn(self.suv_package.id, pkg_ids)
         self.assertNotIn(hatchback_pkg.id, pkg_ids)
+
+
+class CustomNegotiatedPriceAndDiscountAuditTest(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(username='admin_boss', password='password', is_staff=True, is_superuser=True)
+        self.washer = User.objects.create_user(username='washer_bob', password='password', is_staff=True)
+        self.staff_profile = StaffProfile.objects.create(
+            user=self.washer,
+            role='WASHER',
+            commission_type='PERCENTAGE',
+            commission_rate=Decimal('40.00')  # 40% commission
+        )
+        self.cust_user = User.objects.create_user(username='cust_vip', password='password', first_name='Regular VIP')
+        self.customer = Customer.objects.create(user=self.cust_user, phone_number='9847012345')
+        self.vehicle = CustomerVehicle.objects.create(
+            customer=self.cust_user,
+            make='Maruti',
+            model='Swift',
+            plate_number='KL-10-AZ-1234',
+            vehicle_type='HATCHBACK'
+        )
+        self.package = ServicePackage.objects.create(
+            name='Express Foam Wash',
+            price=Decimal('400.00'),
+            vehicle_type='HATCHBACK',
+            description='Foam Wash'
+        )
+
+    def test_negotiated_rate_discount_and_commission_audit(self):
+        # 1. Counter cashier negotiates original ₹400 package down to ₹350
+        booking = Booking.objects.create(
+            customer=self.customer,
+            vehicle=self.vehicle,
+            service_package=self.package,
+            technician=self.washer,
+            time_slot=timezone.now(),
+            base_price=Decimal('400.00'),
+            final_price=Decimal('350.00'),
+            discount_reason='Regular customer discount',
+            status='COMPLETED'
+        )
+
+        self.assertEqual(booking.base_price, Decimal('400.00'))
+        self.assertEqual(booking.final_price, Decimal('350.00'))
+        self.assertEqual(booking.discount_amount, Decimal('50.00'))
+        self.assertEqual(booking.discount_percentage, Decimal('12.50'))
+        self.assertEqual(booking.discount_reason, 'Regular customer discount')
+
+        # 2. Invoice syncs discount reason and final price
+        invoice = Invoice.objects.create(
+            booking=booking,
+            payment_method='CASH',
+            is_paid=True
+        )
+        self.assertEqual(invoice.base_price, Decimal('400.00'))
+        self.assertEqual(invoice.final_price, Decimal('350.00'))
+        self.assertEqual(invoice.amount, Decimal('350.00'))
+        self.assertEqual(invoice.discount_amount, Decimal('50.00'))
+        self.assertEqual(invoice.discount_reason, 'Regular customer discount')
+
+        # 3. Staff commission must be strictly 40% of collected ₹350 = ₹140.00 (NOT ₹160.00)
+        commission = calculate_staff_booking_commission(self.staff_profile, booking)
+        self.assertEqual(commission, Decimal('140.00'))
+
+        # Process payroll event
+        process_payroll_event(booking)
+        payroll = PayrollEntry.objects.get(staff_user=self.washer, date=timezone.localdate())
+        self.assertEqual(payroll.commission_earned, Decimal('140.00'))
+
+    def test_express_walkin_and_checkout_negotiated_pricing(self):
+        self.client.force_authenticate(user=self.admin)
+
+        # Intake vehicle with negotiated price
+        walkin_res = self.client.post('/api/bookings/express-walkin/', {
+            'phone': '9847055555',
+            'plate_number': 'KL-10-ZZ-9999',
+            'customer_name': 'Fleet Bargain VIP',
+            'package_id': self.package.id,
+            'base_price': 400.0,
+            'final_price': 350.0,
+            'discount_amount': 50.0,
+            'discount_percentage': 12.5,
+            'discount_reason': 'Fleet Bargain',
+            'payment_method': 'CASH',
+            'is_paid': True
+        }, format='json')
+
+        self.assertEqual(walkin_res.status_code, status.HTTP_200_OK)
+        booking_id = walkin_res.data['booking_id']
+
+        saved_booking = Booking.objects.get(id=booking_id)
+        self.assertEqual(saved_booking.final_price, Decimal('350.00'))
+        self.assertEqual(saved_booking.discount_amount, Decimal('50.00'))
+        self.assertEqual(saved_booking.discount_reason, 'Fleet Bargain')
+
+        saved_invoice = Invoice.objects.get(booking=saved_booking)
+        self.assertEqual(saved_invoice.final_price, Decimal('350.00'))
+        self.assertEqual(saved_invoice.discount_reason, 'Fleet Bargain')
+

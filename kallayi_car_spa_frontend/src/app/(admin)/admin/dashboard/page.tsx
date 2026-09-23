@@ -28,6 +28,7 @@ import {
 } from 'recharts';
 
 import { Skeleton } from '@/components/ui/Skeleton';
+import { handleSignOut } from '@/lib/authClient';
 import { getApiBaseUrl } from '@/lib/api';
 
 const API_BASE = getApiBaseUrl();
@@ -176,16 +177,16 @@ function AdminDashboardContent() {
         try {
             // Fetch all 10 endpoints safely (global-history is fetched separately)
             const [userRes, kpiRes, chartRes, bookRes, expRes, creditRes, payrollRes, khataRes, eodRes, analyticsRes] = await Promise.all([
-                fetch(`${API_BASE}/core/users/me/`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/core/users/me`, { headers: HEADERS }).catch(() => null),
                 fetch(`${API_BASE}/finance/dashboard/kpi_summary`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/finance/dashboard/revenue_chart/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/bookings/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/finance/general-expenses/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/finance/dashboard/outstanding_credit/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/staff/daily-settlement/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/finance/khata/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/finance/close-register/`, { headers: HEADERS }).catch(() => null),
-                fetch(`${API_BASE}/finance/analytics/`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/finance/dashboard/revenue_chart`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/bookings`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/finance/general-expenses`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/finance/dashboard/outstanding_credit`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/staff/daily-settlement`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/finance/khata`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/finance/close-register`, { headers: HEADERS }).catch(() => null),
+                fetch(`${API_BASE}/finance/analytics`, { headers: HEADERS }).catch(() => null),
             ]);
 
             // Map data to state
@@ -419,7 +420,7 @@ function AdminDashboardContent() {
     const fetchStaffDirectory = useCallback(async () => {
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/staff/directory/`, {
+            const res = await fetch(`${API_BASE}/staff/directory`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             if (res.ok) setStaffDirectory(await res.json());
@@ -492,7 +493,7 @@ function AdminDashboardContent() {
                 formData.append('number_plate_image', proofFile);
             }
 
-            const res = await fetch(`${API_BASE}/finance/khata/manual-charge/`, {
+            const res = await fetch(`${API_BASE}/finance/khata/manual-charge`, {
                 method: 'POST',
                 headers: { 'Authorization': `Token ${token}` },
                 body: formData,
@@ -520,7 +521,7 @@ function AdminDashboardContent() {
         setIsSavingCollection(true);
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/finance/collection-bank/deposit/`, {
+            const res = await fetch(`${API_BASE}/finance/collection-bank/deposit`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Token ${token}`,
@@ -549,7 +550,7 @@ function AdminDashboardContent() {
         const token = localStorage.getItem('auth_token');
         if (!token) return;
         try {
-            const res = await fetch(`${API_BASE}/bookings/global-history/?date=${globalHistoryDate}`, {
+            const res = await fetch(`${API_BASE}/bookings/global-history?date=${globalHistoryDate}`, {
                 headers: { 'Authorization': `Token ${token}` },
             });
             if (res.ok) {
@@ -575,7 +576,7 @@ function AdminDashboardContent() {
         }
         
         const token = localStorage.getItem('auth_token');
-        const url = `${API_BASE}/bookings/${editingLedgerEntry.id || editingLedgerEntry.booking_id}/`;
+        const url = `${API_BASE}/bookings/${editingLedgerEntry.id || editingLedgerEntry.booking_id}`;
 
         try {
             const res = await fetch(url, {
@@ -602,7 +603,7 @@ function AdminDashboardContent() {
         if (!window.confirm('Are you sure you want to delete this specific ledger entry? This cannot be undone.')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/bookings/${id}/`, {
+            const res = await fetch(`${API_BASE}/bookings/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
@@ -626,7 +627,7 @@ function AdminDashboardContent() {
         const token = localStorage.getItem('auth_token');
         
         try {
-            const res = await fetch(`${API_BASE}/bookings/vehicle-history/?q=${encodeURIComponent(searchQuery.trim())}`, {
+            const res = await fetch(`${API_BASE}/bookings/vehicle-history?q=${encodeURIComponent(searchQuery.trim())}`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             
@@ -651,7 +652,7 @@ function AdminDashboardContent() {
         const token = localStorage.getItem('auth_token');
         if (!token) return;
         try {
-            const res = await fetch(`${API_BASE}/finance/expense-categories/`, {
+            const res = await fetch(`${API_BASE}/finance/expense-categories`, {
                 headers: { 'Authorization': `Token ${token}` }
             });
             if (res.ok) {
@@ -696,7 +697,7 @@ function AdminDashboardContent() {
             formData.append('description', expenseForm.description);
             if (receiptFile) formData.append('receipt_image', receiptFile);
 
-            const url = editingExpense ? `${API_BASE}/finance/general-expenses/${editingExpense.id}/` : `${API_BASE}/finance/general-expenses/`;
+            const url = editingExpense ? `${API_BASE}/finance/general-expenses/${editingExpense.id}` : `${API_BASE}/finance/general-expenses`;
             const method = editingExpense ? 'PATCH' : 'POST';
 
             const res = await fetch(url, {
@@ -742,7 +743,7 @@ function AdminDashboardContent() {
         if (!window.confirm('Are you sure you want to delete this expense? This action cannot be undone.')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/finance/general-expenses/${id}/`, {
+            const res = await fetch(`${API_BASE}/finance/general-expenses/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
@@ -760,11 +761,11 @@ function AdminDashboardContent() {
     useEffect(() => { fetchDashboardData(); fetchServices(); fetchStaffDirectory(); fetchExpenseCategories(); }, [fetchDashboardData, fetchServices, fetchStaffDirectory, fetchExpenseCategories]);
 
     // --- Actions ---
-    const handleLogout = () => { localStorage.removeItem('auth_token'); router.push('/login'); };
+    const handleLogout = handleSignOut;
 
     const downloadTaxReport = async () => {
         try {
-            const res = await fetch(`${API_BASE}/finance/reports/tax_summary/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            const res = await fetch(`${API_BASE}/finance/reports/tax_summary`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
             if (!res.ok) throw new Error("Failed");
             const blob = await res.blob();
             const url = window.URL.createObjectURL(blob);
@@ -776,7 +777,7 @@ function AdminDashboardContent() {
     // Single consolidated invoice download function (downloadInvoicePDF removed — duplicate)
     const downloadInvoice = useCallback(async (bookingId: number) => {
         try {
-            const res = await fetch(`${API_BASE}/finance/invoice/${bookingId}/pdf/`, {
+            const res = await fetch(`${API_BASE}/finance/invoice/${bookingId}/pdf`, {
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` }
             });
             if (!res.ok) throw new Error('Failed to generate PDF');
@@ -850,7 +851,7 @@ function AdminDashboardContent() {
             return;
         }
         const token = localStorage.getItem('auth_token');
-        const url = editingKhataCustomer ? `${API_BASE}/customers/${editingKhataCustomer.id}/` : `${API_BASE}/customers/`;
+        const url = editingKhataCustomer ? `${API_BASE}/customers/${editingKhataCustomer.id}` : `${API_BASE}/customers`;
         const method = editingKhataCustomer ? 'PATCH' : 'POST';
 
         try {
@@ -886,7 +887,7 @@ function AdminDashboardContent() {
         if (!window.confirm('Delete this Khata customer? This action cannot be undone.')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_BASE}/customers/${id}/`, {
+            const res = await fetch(`${API_BASE}/customers/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Token ${token}` }
             });
@@ -904,7 +905,7 @@ function AdminDashboardContent() {
     const loadKhataLedger = async (customer: any) => {
         setSelectedKhataCustomer(customer);
         try {
-            const res = await fetch(`${API_BASE}/finance/khata/${customer.id}/`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
+            const res = await fetch(`${API_BASE}/finance/khata/${customer.id}`, { headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}` } });
             if (res.ok) {
                 const data = await res.json();
                 const safeList = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : (Array.isArray(data?.data) ? data.data : []));
@@ -921,7 +922,7 @@ function AdminDashboardContent() {
     const handleKhataSettle = async () => {
         if (!selectedKhataCustomer || !khataPaymentAmount) return;
         try {
-            const res = await fetch(`${API_BASE}/finance/khata/settle/`, {
+            const res = await fetch(`${API_BASE}/finance/khata/settle`, {
                 method: 'POST',
                 headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ customer_id: selectedKhataCustomer.id, amount: khataPaymentAmount, description: "Admin Dashboard Settlement" })
@@ -940,9 +941,13 @@ function AdminDashboardContent() {
 
     const handleCloseRegister = async () => {
         try {
-            const res = await fetch(`http://127.0.0.1:8001/api/finance/close-register/`, {
+            const token = localStorage.getItem('auth_token');
+            const res = await fetch(`${API_BASE}/finance/close-register`, {
                 method: 'POST',
-                headers: { 'Authorization': `Token ${localStorage.getItem('auth_token')}`, 'Content-Type': 'application/json' }
+                headers: { 
+                    'Authorization': token ? `Bearer ${token}` : '', 
+                    'Content-Type': 'application/json' 
+                }
             });
             if (res.ok) {
                 toast.success('Register successfully closed and financial data locked.');
@@ -957,7 +962,7 @@ function AdminDashboardContent() {
     const settleWorkerPay = async (id: number) => {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_BASE}/staff/payroll/${id}/settle/`, {
+            const res = await fetch(`${API_BASE}/staff/payroll/${id}/settle`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Token ${token}`,
@@ -981,7 +986,7 @@ function AdminDashboardContent() {
         }
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`${API_BASE}/staff/advance/${advanceForm.staff_id}/`, {
+            const res = await fetch(`${API_BASE}/staff/advance/${advanceForm.staff_id}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1032,7 +1037,7 @@ function AdminDashboardContent() {
             <MobileNavigation />
 
             {/* SIDEBAR NAVIGATION */}
-            <aside className="w-72 bg-[#141518]/60 backdrop-blur-2xl border-r border-white/5 flex-col hidden lg:flex">
+            <aside className="w-72 bg-[#141518]/60 backdrop-blur-2xl border-r border-white/5 flex-col hidden lg:flex h-screen sticky top-0 flex-shrink-0 z-20">
                 <div className="p-8 border-b border-white/5">
                     <div className="flex items-center gap-3 mb-2">
                         <img 
@@ -1044,7 +1049,7 @@ function AdminDashboardContent() {
                     </div>
                     <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#8E939B]">Admin Portal</p>
                 </div>
-                <nav className="flex-1 p-6 space-y-2">
+                <nav className="flex-1 p-6 space-y-2 overflow-y-auto">
                     <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${activeTab === 'overview' ? 'bg-white/5 text-[#01FFFF] border border-[#01FFFF]/20' : 'text-[#8E939B] hover:text-white'}`}>
                         <LayoutDashboard className="w-4 h-4" /> Overview
                     </button>
@@ -1090,8 +1095,12 @@ function AdminDashboardContent() {
                             <p className="text-[10px] text-[#8E939B] uppercase tracking-widest">System Admin</p>
                         </div>
                     </div>
-                    <button onClick={handleLogout} className="w-full flex justify-center items-center gap-2 px-4 py-3 rounded-xl border border-white/10 text-gray-400 hover:text-[#FF2A6D] hover:border-[#FF2A6D]/50 transition-colors text-xs font-bold uppercase tracking-widest">
-                        <LogOut className="w-4 h-4" /> Disconnect
+                    <button 
+                        type="button"
+                        onClick={handleSignOut} 
+                        className="w-full flex justify-center items-center gap-2 px-4 py-3 rounded-xl border border-white/10 text-gray-400 hover:text-[#FF2A6D] hover:border-[#FF2A6D]/50 transition-colors text-xs font-bold uppercase tracking-widest cursor-pointer relative z-30 active:scale-95 touch-manipulation"
+                    >
+                        <LogOut className="w-4 h-4" /> Sign Out
                     </button>
                 </div>
             </aside>
