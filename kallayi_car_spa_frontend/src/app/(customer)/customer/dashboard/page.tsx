@@ -18,6 +18,7 @@ import { BookingWizard } from '@/components/customer/dashboard/BookingWizard';
 import { MobileNavigation } from '@/components/customer/dashboard/MobileNavigation';
 
 import { Vehicle, ActiveWash } from '@/components/customer/dashboard/types';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export default function CustomerDashboard() {
     const router = useRouter();
@@ -46,9 +47,10 @@ export default function CustomerDashboard() {
     }, [router]);
 
     useEffect(() => {
+        let isMounted = true;
         const fetchDashboardData = async () => {
             try {
-                setIsLoading(true);
+                if (isMounted) setIsLoading(true);
 
                 let userOutstandingBalance = 0;
                 // Fetch User Profile for dynamic greeting & outstanding balance
@@ -209,11 +211,17 @@ export default function CustomerDashboard() {
             } catch (error) {
                 console.error("Failed to fetch customer data", error);
             } finally {
-                setIsLoading(false);
+                if (isMounted) {
+                    setIsLoading(false);
+                }
             }
         };
 
         fetchDashboardData();
+
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     const handleLogout = handleSignOut;
@@ -258,34 +266,44 @@ export default function CustomerDashboard() {
             <main className="flex-1 p-6 md:p-12 max-lg:pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-8 overflow-y-auto relative">
                 <AnimatePresence mode="wait">
                     {activeTab === 'overview' && (
-                        <OverviewTab key="overview" setIsBooking={setIsBooking} handleLogout={handleLogout} customerName={customerName} />
+                        <ErrorBoundary name="Overview">
+                            <OverviewTab key="overview" setIsBooking={setIsBooking} handleLogout={handleLogout} customerName={customerName} />
+                        </ErrorBoundary>
                     )}
 
                     {activeTab === 'services' && (
-                        <ServicesMenuTab 
-                            key="services" 
-                            myVehicles={myVehicles} 
-                            onBookService={handleBookService} 
-                            onOpenAddVehicle={() => setActiveTab('garage')} 
-                        />
+                        <ErrorBoundary name="Services Menu">
+                            <ServicesMenuTab 
+                                key="services" 
+                                myVehicles={myVehicles} 
+                                onBookService={handleBookService} 
+                                onOpenAddVehicle={() => setActiveTab('garage')} 
+                            />
+                        </ErrorBoundary>
                     )}
                     
                     {activeTab === 'garage' && (
-                        <GarageTab key="garage" myVehicles={myVehicles} />
+                        <ErrorBoundary name="Garage">
+                            <GarageTab key="garage" myVehicles={myVehicles} />
+                        </ErrorBoundary>
                     )}
 
                     {activeTab === 'ledger' && (
-                        <LedgerTab 
-                            key="ledger" 
-                            transactions={transactions} 
-                            totalCredit={totalCredit}
-                            totalSettled={totalSettled}
-                            outstandingBalance={outstandingBalance}
-                        />
+                        <ErrorBoundary name="Ledger">
+                            <LedgerTab 
+                                key="ledger" 
+                                transactions={transactions} 
+                                totalCredit={totalCredit}
+                                totalSettled={totalSettled}
+                                outstandingBalance={outstandingBalance}
+                            />
+                        </ErrorBoundary>
                     )}
 
                     {activeTab === 'history' && (
-                        <HistoryTab key="history" history={washHistory} />
+                        <ErrorBoundary name="History">
+                            <HistoryTab key="history" history={washHistory} />
+                        </ErrorBoundary>
                     )}
                 </AnimatePresence>
             </main>
@@ -300,18 +318,20 @@ export default function CustomerDashboard() {
 
             {/* Booking Wizard Setup */}
             {isBooking && (
-                <BookingWizard 
-                    setIsBooking={(val) => {
-                        setIsBooking(val);
-                        if (!val) {
-                            setBookingInitialVehicle(null);
-                            setBookingInitialPackage(null);
-                        }
-                    }} 
-                    myVehicles={myVehicles}
-                    initialVehicle={bookingInitialVehicle}
-                    initialPackage={bookingInitialPackage}
-                />
+                <ErrorBoundary name="Booking Wizard" onReset={() => setIsBooking(false)}>
+                    <BookingWizard 
+                        setIsBooking={(val) => {
+                            setIsBooking(val);
+                            if (!val) {
+                                setBookingInitialVehicle(null);
+                                setBookingInitialPackage(null);
+                            }
+                        }} 
+                        myVehicles={myVehicles}
+                        initialVehicle={bookingInitialVehicle}
+                        initialPackage={bookingInitialPackage}
+                    />
+                </ErrorBoundary>
             )}
 
             {/* Tailwind Keyframes injected locally for global effects */}

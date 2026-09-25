@@ -616,23 +616,21 @@ export default function AdminQueueBoard() {
             const destStatus = targetColId.startsWith('IN_BAY') ? 'IN_PROGRESS' : targetColId;
             const bayAssignment = targetColId.startsWith('IN_BAY') ? targetColId.replace('IN_BAY_', 'Bay ') : null;
 
-            const res = await fetch(`/api/bookings/${bookingId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    status: destStatus,
-                    bay_assignment: bayAssignment,
-                }),
+            await api.patch(`/bookings/update-stage/${bookingId}`, {
+                new_status: destStatus,
+                status: destStatus,
+                bay_assignment: bayAssignment,
+                start_time: new Date().toISOString(),
             });
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Failed to move stage');
-            }
+
             const destCol = COLUMNS.find(c => c.id === targetColId);
             toast.success(`Vehicle moved to ${destCol?.title || targetColId}! WhatsApp update dispatched.`);
-            fetchQueue(true);
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('queue:updated'));
+            }, 1000);
         } catch (err: any) {
-            toast.error(err.message || "Failed to move vehicle stage.");
+            console.error('Failed to move stage:', err);
+            toast.error(err.response?.data?.error || err.message || "Failed to move vehicle stage.");
             fetchQueue(true);
         }
     };

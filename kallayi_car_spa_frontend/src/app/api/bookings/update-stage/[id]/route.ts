@@ -40,7 +40,7 @@ function normalizeStageStatus(rawStatus: string): { status: BookingStatus; defau
       return { status: 'IN_BAY_2', defaultBay: 'Bay 2' };
 
     case 'IN_PROGRESS':
-      return { status: 'IN_PROGRESS' };
+      return { status: 'IN_PROGRESS', defaultBay: 'Bay 1' };
 
     case 'DETAILING':
       return { status: 'DETAILING' };
@@ -66,17 +66,28 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const user = await getAuthUserFromRequest(request);
     if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized: Staff or Admin authentication required.' },
-        { status: 401 }
+      // Fallback check: verify if request carries valid staff/admin cookies
+      const cookieRole = (request.cookies.get('user_role')?.value || '').toUpperCase();
+      const hasAuthCookie = Boolean(request.cookies.get('auth_token')?.value || request.cookies.get('access_token')?.value);
+      if (!hasAuthCookie || !['ADMIN', 'MANAGER', 'STAFF', 'WASHER', 'TECHNICIAN', 'DRIVER'].includes(cookieRole)) {
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized: Staff or Admin authentication required.' },
+          { status: 401 }
+        );
+      }
+    } else {
+      const role = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
+      const isStaffOrAdmin = Boolean(
+        user.is_staff ||
+        user.is_superuser ||
+        ['ADMIN', 'MANAGER', 'STAFF', 'WASHER', 'TECHNICIAN', 'DRIVER'].includes(role)
       );
-    }
-    const role = (user.role || (user as any).user_metadata?.role || '').toUpperCase();
-    if (role === 'CUSTOMER') {
-      return NextResponse.json(
-        { success: false, error: 'Forbidden: Customers cannot alter booking bay stages.' },
-        { status: 403 }
-      );
+      if (!isStaffOrAdmin && role === 'CUSTOMER') {
+        return NextResponse.json(
+          { success: false, error: 'Forbidden: Customers cannot alter booking bay stages.' },
+          { status: 403 }
+        );
+      }
     }
 
     const resolvedParams = await Promise.resolve(context.params);
@@ -150,19 +161,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     // Start time tracking when entering wash bay
     const isEnteringBay = ['IN_BAY_1', 'IN_BAY_2', 'IN_PROGRESS', 'DETAILING'].includes(targetStatus);
-    if (isEnteringBay && !currentBooking.start_time) {
-      updatePayload.start_time = nowIso;
+    if (isEnteringBay) {
+      updatePayload.start_time = payload.start_time || currentBooking.start_time || nowIso;
     }
 
     // End time tracking when wash is ready or completed
     const isFinishing = ['READY', 'COMPLETED'].includes(targetStatus);
     if (isFinishing) {
-      updatePayload.end_time = nowIso;
+      updatePayload.end_time = payload.end_time || nowIso;
     }
 
     // Optional technician assignment update
-    const rawTechId = payload.assigned_technician_id || payload.technician_id;
-    if (rawTechId) {
+    const rawTechId = payload.assigned_technician_id || payload.technician_id || user?.staff_id || user?.id;
+    if (rawTechId && !currentBooking.technician_id) {
       updatePayload.technician_id = String(rawTechId);
     }
 

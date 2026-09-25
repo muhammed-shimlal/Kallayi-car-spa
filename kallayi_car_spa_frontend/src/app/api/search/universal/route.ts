@@ -72,15 +72,23 @@ export async function GET(request: NextRequest) {
     // Safe string for PostgREST .or() filter (remove commas, quotes, parens)
     const sanitizedText = rawQuery.replace(/[,()"'%]/g, ' ').trim();
 
+    const isExact = searchParams.get('exact') === 'true' || searchParams.has('exact_plate');
+
     // ─────────────────────────────────────────────────────────────────────────────
     // 2. PARALLEL VEHICLE & CUSTOMER DISCOVERY
     // ─────────────────────────────────────────────────────────────────────────────
     // A. Vehicle Filters: Plate, Registration, Make, Model
-    const vehicleConditions: string[] = [
-      `plate_number.ilike.%${cleanPlate}%`,
-      `registration_number.ilike.%${cleanPlate}%`,
-    ];
-    if (sanitizedText.length >= 2) {
+    const vehicleConditions: string[] = isExact
+      ? [
+          `plate_number.eq.${cleanPlate}`,
+          `registration_number.eq.${cleanPlate}`,
+          `plate_number.eq.${rawQuery.trim().toUpperCase()}`,
+        ]
+      : [
+          `plate_number.ilike.%${cleanPlate}%`,
+          `registration_number.ilike.%${cleanPlate}%`,
+        ];
+    if (!isExact && sanitizedText.length >= 2) {
       vehicleConditions.push(`make.ilike.%${sanitizedText}%`);
       vehicleConditions.push(`model.ilike.%${sanitizedText}%`);
     }

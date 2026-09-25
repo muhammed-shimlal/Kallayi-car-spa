@@ -527,8 +527,13 @@ export async function POST(request: NextRequest) {
       if (custErr && !newCust) {
         const { data: fallbackCust } = await supabase
           .from('customers')
-          .select('*')
+          .update({
+            name: trimmedName,
+            phone_number: e164,
+            updated_at: new Date().toISOString(),
+          })
           .eq('user_id', userId)
+          .select('*')
           .maybeSingle();
 
         customerRecord = fallbackCust;

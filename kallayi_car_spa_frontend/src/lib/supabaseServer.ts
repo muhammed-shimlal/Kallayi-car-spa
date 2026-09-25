@@ -65,6 +65,31 @@ export async function getAuthUserFromRequest(request: {
 
     if (!token) return null;
 
+    // Helper to resolve staff profile by id or user_id
+    const resolveStaffProfile = async (idOrUserId: string, phone?: string | null) => {
+      let query = supabase
+        .from('staff_profiles')
+        .select('id, user_id, role, phone_number, is_active')
+        .or(`id.eq.${idOrUserId},user_id.eq.${idOrUserId}`);
+      
+      const { data: staff } = await query.maybeSingle();
+      if (staff) return staff;
+
+      if (phone) {
+        const cleanPhone = phone.replace(/\D/g, '');
+        if (cleanPhone.length >= 10) {
+          const tenDigit = cleanPhone.slice(-10);
+          const { data: staffByPhone } = await supabase
+            .from('staff_profiles')
+            .select('id, user_id, role, phone_number, is_active')
+            .ilike('phone_number', `%${tenDigit}%`)
+            .maybeSingle();
+          if (staffByPhone) return staffByPhone;
+        }
+      }
+      return null;
+    };
+
     if (token.startsWith('supabase_') || token.startsWith('auth_')) {
       const userId = token.replace(/^supabase_|^auth_/, '').split('_')[0];
       if (!userId) return null;
@@ -74,16 +99,38 @@ export async function getAuthUserFromRequest(request: {
           email: 'admin@kallayicarspa.com',
           phone: '+919876543210',
           role: 'ADMIN',
+          is_staff: true,
+          is_superuser: true,
           user_metadata: { role: 'ADMIN', name: 'Kallayi Admin' },
         } as any;
       }
+
+      // Check staff_profiles first so staff is NEVER falsely treated as CUSTOMER
+      const staff = await resolveStaffProfile(userId);
+      if (staff) {
+        const staffRole = (staff.role || 'STAFF').toUpperCase();
+        return {
+          id: staff.user_id || staff.id,
+          staff_id: staff.id,
+          phone: staff.phone_number || '+919876543210',
+          role: staffRole,
+          is_staff: true,
+          user_metadata: { role: staffRole },
+        } as any;
+      }
+
       try {
         const { data: userRecord } = await supabase.auth.admin.getUserById(userId);
         if (userRecord?.user) {
-          const metaRole = (userRecord.user.user_metadata?.role || (userRecord.user as any).role || 'STAFF').toUpperCase();
+          const userPhone = userRecord.user.phone || userRecord.user.user_metadata?.phone;
+          const staffByPhone = await resolveStaffProfile(userId, userPhone);
+          const metaRole = (staffByPhone?.role || userRecord.user.user_metadata?.role || (userRecord.user as any).role || 'STAFF').toUpperCase();
+          const isStaff = metaRole !== 'CUSTOMER' || Boolean(staffByPhone);
           return {
             ...userRecord.user,
+            id: userRecord.user.id,
             role: metaRole,
+            is_staff: isStaff,
             user_metadata: {
               ...userRecord.user.user_metadata,
               role: metaRole,
@@ -93,20 +140,7 @@ export async function getAuthUserFromRequest(request: {
       } catch {
         // Continue
       }
-      // Check staff_profiles
-      const { data: staff } = await supabase
-        .from('staff_profiles')
-        .select('user_id, role, phone_number')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (staff) {
-        return {
-          id: staff.user_id,
-          phone: staff.phone_number || '+919876543210',
-          role: (staff.role || 'STAFF').toUpperCase(),
-          user_metadata: { role: (staff.role || 'STAFF').toUpperCase() },
-        } as any;
-      }
+
       // Check customers
       const { data: cust } = await supabase
         .from('customers')
@@ -118,17 +152,25 @@ export async function getAuthUserFromRequest(request: {
           id: cust.user_id || cust.id,
           phone: cust.phone_number,
           role: 'CUSTOMER',
+          is_staff: false,
           user_metadata: { name: cust.name, role: 'CUSTOMER' },
         } as any;
       }
-    } else {
+    } else if (token.includes('.')) {
+      // JWT token
       try {
         const { data: userData } = await supabase.auth.getUser(token);
         if (userData?.user) {
-          const metaRole = (userData.user.user_metadata?.role || (userData.user as any).role || 'STAFF').toUpperCase();
+          const userPhone = userData.user.phone || userData.user.user_metadata?.phone;
+          const staff = await resolveStaffProfile(userData.user.id, userPhone);
+          const metaRole = (staff?.role || userData.user.user_metadata?.role || (userData.user as any).role || 'STAFF').toUpperCase();
+          const isStaff = metaRole !== 'CUSTOMER' || Boolean(staff);
           return {
             ...userData.user,
+            id: userData.user.id,
+            staff_id: staff?.id,
             role: metaRole,
+            is_staff: isStaff,
             user_metadata: {
               ...userData.user.user_metadata,
               role: metaRole,
@@ -148,16 +190,36 @@ export async function getAuthUserFromRequest(request: {
           email: 'admin@kallayicarspa.com',
           phone: '+919876543210',
           role: 'ADMIN',
+          is_staff: true,
+          is_superuser: true,
           user_metadata: { role: 'ADMIN', name: 'Kallayi Admin' },
         } as any;
       }
+
+      const staff = await resolveStaffProfile(token);
+      if (staff) {
+        const staffRole = (staff.role || 'STAFF').toUpperCase();
+        return {
+          id: staff.user_id || staff.id,
+          staff_id: staff.id,
+          phone: staff.phone_number || '+919876543210',
+          role: staffRole,
+          is_staff: true,
+          user_metadata: { role: staffRole },
+        } as any;
+      }
+
       try {
         const { data: directUser } = await supabase.auth.admin.getUserById(token);
         if (directUser?.user) {
-          const metaRole = (directUser.user.user_metadata?.role || (directUser.user as any).role || 'STAFF').toUpperCase();
+          const userPhone = directUser.user.phone || directUser.user.user_metadata?.phone;
+          const staffByPhone = await resolveStaffProfile(token, userPhone);
+          const metaRole = (staffByPhone?.role || directUser.user.user_metadata?.role || (directUser.user as any).role || 'STAFF').toUpperCase();
           return {
             ...directUser.user,
+            id: directUser.user.id,
             role: metaRole,
+            is_staff: metaRole !== 'CUSTOMER' || Boolean(staffByPhone),
             user_metadata: {
               ...directUser.user.user_metadata,
               role: metaRole,
@@ -166,19 +228,6 @@ export async function getAuthUserFromRequest(request: {
         }
       } catch {
         // Continue
-      }
-      const { data: staff } = await supabase
-        .from('staff_profiles')
-        .select('user_id, role, phone_number')
-        .eq('user_id', token)
-        .maybeSingle();
-      if (staff) {
-        return {
-          id: staff.user_id,
-          phone: staff.phone_number || '+919876543210',
-          role: staff.role || 'ADMIN',
-          user_metadata: { role: staff.role || 'ADMIN' },
-        } as any;
       }
     }
 

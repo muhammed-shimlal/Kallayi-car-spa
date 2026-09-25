@@ -262,8 +262,9 @@ export async function POST(request: NextRequest) {
 
       if (existingCust) {
         customer_id = existingCust.id;
-        // If an explicit customer name is supplied and existing record had placeholder name, update it
-        if (resolvedCustName && (!existingCust.name || existingCust.name === 'Guest Customer')) {
+        // If an explicit customer name is supplied and existing record had placeholder/phone name, update it
+        const isPlaceholder = !existingCust.name || existingCust.name === 'Guest Customer' || existingCust.name === 'Valued Customer' || existingCust.name === 'Walk-In Customer' || /^[0-9+ \-]+$/.test(existingCust.name);
+        if (resolvedCustName && isPlaceholder) {
           await supabase
             .from('customers')
             .update({ name: resolvedCustName, updated_at: new Date().toISOString() })

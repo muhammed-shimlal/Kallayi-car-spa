@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: true });
 
     if (authUser && authUser.role !== 'ADMIN' && authUser.user_metadata?.role !== 'ADMIN') {
-      query = query.or(`technician_id.eq.${authUser.id},technician_id.is.null`);
+      const staffIdFilter = (authUser as any).staff_id ? `,technician_id.eq.${(authUser as any).staff_id}` : '';
+      query = query.or(`technician_id.eq.${authUser.id}${staffIdFilter},technician_id.is.null`);
     }
 
     const { data: bookings, error } = await query;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { 
@@ -216,7 +216,7 @@ function QueueCardItem({
                                 className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#01FFFF]/20 to-cyan-600/30 hover:from-[#01FFFF]/30 hover:to-cyan-600/40 text-[#01FFFF] border border-[#01FFFF]/40 hover:border-[#01FFFF] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer min-h-[44px]"
                             >
                                 <CheckCircle2 className="w-4 h-4 text-[#01FFFF]" />
-                                <span>Finish Wash (വാഷിംഗ് കഴിഞ്ഞു)</span>
+                                <span>Complete Wash (വാഷിംഗ് കഴിഞ്ഞു)</span>
                             </button>
                         )}
 
@@ -257,6 +257,9 @@ export default function QueueBoard() {
         WASHING: [], 
         READY: [],
     });
+
+    // Guard against race conditions and stale polling overwrites
+    const recentTransitionsRef = useRef<Map<number, { targetCol: string; timestamp: number }>>(new Map());
 
     // Mobile View Tab Switcher: 'ALL' | 'WAITING' | 'WASHING' | 'READY'
     const [activeMobileTab, setActiveMobileTab] = useState<string>('ALL');
@@ -340,16 +343,35 @@ export default function QueueBoard() {
                     return;
                 }
 
-                if (rawStatus === 'WAITING' || rawStatus === 'PENDING' || rawStatus === 'CONFIRMED') {
+                // Check if this card was recently moved to prevent race-condition rollback
+                const recent = recentTransitionsRef.current.get(card.id);
+                if (recent && Date.now() - recent.timestamp < 10000) {
+                    if (newCols[recent.targetCol]) {
+                        newCols[recent.targetCol].push(card);
+                        return;
+                    }
+                } else if (recent && Date.now() - recent.timestamp >= 10000) {
+                    recentTransitionsRef.current.delete(card.id);
+                }
+
+                if (
+                    rawStatus === 'WAITING' || 
+                    rawStatus === 'PENDING' || 
+                    rawStatus === 'CONFIRMED' ||
+                    rawStatus === 'IN_QUEUE' ||
+                    rawStatus === 'QUEUE'
+                ) {
                     newCols.WAITING.push(card);
                 } else if (
                     rawStatus === 'IN_BAY_1' || 
                     rawStatus === 'IN_BAY_2' || 
                     rawStatus === 'IN_PROGRESS' || 
-                    rawStatus === 'DETAILING'
+                    rawStatus === 'DETAILING' ||
+                    rawStatus === 'WASHING' ||
+                    rawStatus === 'WASH'
                 ) {
                     newCols.WASHING.push(card);
-                } else if (rawStatus === 'READY') {
+                } else if (rawStatus === 'READY' || rawStatus === 'READY_FOR_PICKUP') {
                     newCols.READY.push(card);
                 } else {
                     // Default unknown active status to waiting
@@ -371,7 +393,10 @@ export default function QueueBoard() {
     useEffect(() => {
         fetchQueue();
         
-        const handleQueueUpdated = () => fetchQueue(true);
+        const handleQueueUpdated = () => {
+            // Guard: avoid immediately overriding local updates if currently updating
+            fetchQueue(true);
+        };
         window.addEventListener('queue:updated', handleQueueUpdated);
         window.addEventListener('booking:completed', handleQueueUpdated);
 
@@ -389,47 +414,80 @@ export default function QueueBoard() {
     const advanceBookingStage = async (card: BookingCard, targetCol: string) => {
         setIsUpdatingStage(true);
 
-        const currentCol = card.status === 'READY' 
+        const currentCol = card.status === 'READY' || card.status === 'READY_FOR_PICKUP'
             ? 'READY' 
-            : ['IN_BAY_1', 'IN_BAY_2', 'IN_PROGRESS', 'DETAILING'].includes(card.status) 
+            : ['IN_BAY_1', 'IN_BAY_2', 'IN_PROGRESS', 'DETAILING', 'WASHING', 'WASH'].includes(card.status) 
                 ? 'WASHING' 
                 : 'WAITING';
 
         const newStatus = targetCol === 'WASHING' 
-            ? 'IN_BAY_1' 
+            ? 'IN_PROGRESS' 
             : targetCol === 'READY' 
                 ? 'READY' 
                 : 'WAITING';
 
         const bayAssignment = targetCol === 'WASHING' 
-            ? (card.bay_assignment || 'Washing Bay 1') 
+            ? (card.bay_assignment || 'Bay 1') 
             : card.bay_assignment;
 
-        // 1. Optimistic Update
+        const startTimeIso = new Date().toISOString();
+
+        // 1. Optimistic Update & Record Transition Guard
+        recentTransitionsRef.current.set(card.id, { targetCol, timestamp: Date.now() });
+
         setColumns(prev => {
             const nextCols = { ...prev };
             nextCols[currentCol] = nextCols[currentCol].filter(c => c.id !== card.id);
-            const updatedCard = { 
+            const updatedCard: BookingCard = { 
                 ...card, 
                 status: newStatus, 
-                bay_assignment: bayAssignment 
+                bay_assignment: bayAssignment,
+                time_slot: card.time_slot || startTimeIso,
             };
-            nextCols[targetCol] = [updatedCard, ...nextCols[targetCol]];
+            nextCols[targetCol] = [updatedCard, ...nextCols[targetCol].filter(c => c.id !== card.id)];
             return nextCols;
         });
 
         // 2. Persist to Backend
         try {
-            await api.patch(`/bookings/update-stage/${card.id}`, {
+            const res = await api.patch(`/bookings/update-stage/${card.id}`, {
                 new_status: newStatus,
+                status: newStatus,
                 bay_assignment: bayAssignment,
+                start_time: startTimeIso,
+                technician_id: staffProfile?.staff_id || staffProfile?.id || card.technician_name || undefined,
             });
-            toast.success(`Vehicle ${card.plate_number} moved to ${targetCol === 'WASHING' ? 'Washing Bay' : 'Ready for Pickup'}!`);
-            window.dispatchEvent(new CustomEvent('queue:updated'));
+
+            // 3. Sync confirmed record from backend response
+            const serverBooking = res.data?.booking || res.data?.data;
+            if (serverBooking) {
+                const confirmedCard = normalizeCard(serverBooking);
+                setColumns(prev => {
+                    const nextCols = { ...prev };
+                    Object.keys(nextCols).forEach(k => {
+                        nextCols[k] = nextCols[k].filter(c => c.id !== card.id);
+                    });
+                    nextCols[targetCol] = [confirmedCard, ...nextCols[targetCol].filter(c => c.id !== card.id)];
+                    return nextCols;
+                });
+            }
+
+            toast.success(
+                targetCol === 'WASHING'
+                    ? `Wash started for vehicle ${card.plate_number}! (വാഷിംഗ് ആരംഭിച്ചു)`
+                    : `Vehicle ${card.plate_number} marked ready for pickup! (വാഷിംഗ് പൂർത്തിയായി)`
+            );
+
+            // Debounced notify so background sync doesn't race local state
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('queue:updated'));
+            }, 1200);
         } catch (err: any) {
+            recentTransitionsRef.current.delete(card.id);
             console.error('Failed to advance stage:', err);
-            toast.error(err.response?.data?.error || 'Failed to update vehicle stage');
-            fetchQueue(true); // Revert
+            const errMsg = err.response?.data?.error || err.message || 'Failed to update vehicle stage';
+            toast.error(errMsg);
+            fetchQueue(true); // Revert on genuine failure
         } finally {
             setIsUpdatingStage(false);
         }
@@ -446,10 +504,15 @@ export default function QueueBoard() {
         const destCol = destination.droppableId;
 
         const newStatus = destCol === 'WASHING' 
-            ? 'IN_BAY_1' 
+            ? 'IN_PROGRESS' 
             : destCol === 'READY' 
                 ? 'READY' 
                 : 'WAITING';
+
+        const bayAssignment = destCol === 'WASHING' ? 'Bay 1' : null;
+        const startTimeIso = new Date().toISOString();
+
+        recentTransitionsRef.current.set(bookingId, { targetCol: destCol, timestamp: Date.now() });
 
         // 1. OPTIMISTIC UPDATE
         setColumns(prev => {
@@ -458,7 +521,8 @@ export default function QueueBoard() {
             const destCards = sourceCol === destCol ? sourceCards : [...newCols[destCol]];
             
             const [movedCard] = sourceCards.splice(source.index, 1);
-            const updatedCard = { ...movedCard, status: newStatus };
+            if (!movedCard) return prev;
+            const updatedCard = { ...movedCard, status: newStatus, bay_assignment: bayAssignment };
             
             if (sourceCol === destCol) {
                 sourceCards.splice(destination.index, 0, updatedCard);
@@ -473,14 +537,34 @@ export default function QueueBoard() {
 
         // 2. SYNC TO BACKEND
         try {
-            await api.patch(`/bookings/update-stage/${bookingId}`, {
+            const res = await api.patch(`/bookings/update-stage/${bookingId}`, {
                 new_status: newStatus,
-                bay_assignment: destCol === 'WASHING' ? 'Washing Bay 1' : null,
+                status: newStatus,
+                bay_assignment: bayAssignment,
+                start_time: startTimeIso,
             });
-            window.dispatchEvent(new CustomEvent('queue:updated'));
-        } catch (err) {
+
+            const serverBooking = res.data?.booking || res.data?.data;
+            if (serverBooking) {
+                const confirmedCard = normalizeCard(serverBooking);
+                setColumns(prev => {
+                    const nextCols = { ...prev };
+                    Object.keys(nextCols).forEach(k => {
+                        nextCols[k] = nextCols[k].filter(c => c.id !== bookingId);
+                    });
+                    nextCols[destCol] = [confirmedCard, ...nextCols[destCol].filter(c => c.id !== bookingId)];
+                    return nextCols;
+                });
+            }
+
+            toast.success(`Vehicle moved to ${destCol === 'WASHING' ? 'Washing Bay' : destCol === 'READY' ? 'Ready for Pickup' : 'Waiting Queue'}`);
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('queue:updated'));
+            }, 1200);
+        } catch (err: any) {
+            recentTransitionsRef.current.delete(bookingId);
             console.error('Sync failed, reverting', err);
-            toast.error('Sync failed, reverting to previous stage');
+            toast.error(err.response?.data?.error || err.message || 'Sync failed, reverting to previous stage');
             fetchQueue(true);
         }
     };

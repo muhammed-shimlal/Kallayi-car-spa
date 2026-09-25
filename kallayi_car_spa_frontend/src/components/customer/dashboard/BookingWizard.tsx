@@ -180,6 +180,12 @@ export function BookingWizard({ setIsBooking, myVehicles, initialVehicle, initia
 
     // 1. Dynamic Service Packages Fetching by Vehicle Body Type (Zero Hardcoded Fallbacks)
     useEffect(() => {
+        let isMounted = true;
+        const abortController = new AbortController();
+        const timeoutId = setTimeout(() => {
+            abortController.abort();
+        }, 10000);
+
         const fetchPackages = async () => {
             setIsLoadingPackages(true);
             try {
@@ -187,50 +193,65 @@ export function BookingWizard({ setIsBooking, myVehicles, initialVehicle, initia
                 const vType = rawVType ? normalizeVehicleType(rawVType) : '';
                 const endpoint = vType ? `/services?vehicle_type=${encodeURIComponent(vType)}` : '/services';
                 const res = await api.get(endpoint, { 
+                    signal: abortController.signal,
                     headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
                 });
+                clearTimeout(timeoutId);
                 const raw = res.data;
 
                 const pkgs = Array.isArray(raw?.data)
-                    ? raw.data
+                    ? raw.data.filter(Boolean)
                     : (Array.isArray(raw)
-                        ? raw
-                        : (Array.isArray(raw?.results) ? raw.results : []));
+                        ? raw.filter(Boolean)
+                        : (Array.isArray(raw?.results) ? raw.results.filter(Boolean) : []));
 
-                setServicePackages(pkgs);
+                if (isMounted) {
+                    setServicePackages(pkgs);
 
-                // Auto-sync and update selectedPackage price based on newly selected vehicle's vehicle_type without breaking selection
-                setSelectedPackage((prevSelected: any) => {
-                    if (!prevSelected) return null;
-                    const matched = pkgs.find((p: any) => p.id === prevSelected.id);
-                    if (matched) {
+                    // Auto-sync and update selectedPackage price based on newly selected vehicle's vehicle_type without breaking selection
+                    setSelectedPackage((prevSelected: any) => {
+                        if (!prevSelected) return null;
+                        const matched = pkgs.find((p: any) => p && p.id === prevSelected.id);
+                        if (matched) {
+                            return {
+                                ...matched,
+                                price: matched.resolved_price ?? matched.price,
+                                final_price: matched.resolved_price ?? matched.price,
+                            };
+                        }
+                        const dynamicPrice = resolvePackagePriceForVehicle(
+                            prevSelected.price || prevSelected.base_price || 0,
+                            prevSelected.tiered_prices || prevSelected.service_package_prices,
+                            vType
+                        );
                         return {
-                            ...matched,
-                            price: matched.resolved_price ?? matched.price,
-                            final_price: matched.resolved_price ?? matched.price,
+                            ...prevSelected,
+                            price: dynamicPrice,
+                            final_price: dynamicPrice,
                         };
-                    }
-                    const dynamicPrice = resolvePackagePriceForVehicle(
-                        prevSelected.price || prevSelected.base_price,
-                        prevSelected.tiered_prices || prevSelected.service_package_prices,
-                        vType
-                    );
-                    return {
-                        ...prevSelected,
-                        price: dynamicPrice,
-                        final_price: dynamicPrice,
-                    };
-                });
-            } catch (error) {
+                    });
+                }
+            } catch (error: any) {
+                if (!isMounted) return;
                 console.error("Failed to fetch packages from Supabase", error);
                 setServicePackages([]);
-                toast.error("Failed to load service packages from database.");
+                if (error?.name !== 'AbortError') {
+                    toast.error("Failed to load service packages from database.");
+                }
             } finally {
-                setIsLoadingPackages(false);
+                if (isMounted) {
+                    setIsLoadingPackages(false);
+                }
             }
         };
 
         fetchPackages();
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timeoutId);
+            abortController.abort();
+        };
     }, [selectedVehicle]);
 
     // 2. Dynamic Available Slots Fetching & Strict Time Validation
@@ -550,11 +571,12 @@ export function BookingWizard({ setIsBooking, myVehicles, initialVehicle, initia
                                         </div>
                                     ) : (
                                         servicePackages.map(pkg => {
-                                            const effectivePrice = pkg.resolved_price ?? resolvePackagePriceForVehicle(
-                                                pkg.price,
+                                            if (!pkg) return null;
+                                            const effectivePrice = Number(pkg.resolved_price ?? resolvePackagePriceForVehicle(
+                                                pkg.price || pkg.base_price || 0,
                                                 pkg.tiered_prices || pkg.service_package_prices,
                                                 selectedVehicle?.vehicle_type
-                                            );
+                                            ) ?? 0);
                                             const isSelected = selectedPackage?.id === pkg.id;
 
                                             return (
@@ -572,7 +594,7 @@ export function BookingWizard({ setIsBooking, myVehicles, initialVehicle, initia
                                                     }`}
                                                 >
                                                     <div>
-                                                        <span className="font-bold block text-sm sm:text-base text-white">{pkg.name}</span>
+                                                        <span className="font-bold block text-sm sm:text-base text-white">{pkg.name || 'Service Package'}</span>
                                                         <div className="flex items-center gap-2 mt-0.5">
                                                             <span className="text-xs text-spa-sky font-bold">₹{effectivePrice.toLocaleString()}</span>
                                                             {pkg.duration_minutes && (
@@ -745,14 +767,16 @@ export function BookingWizard({ setIsBooking, myVehicles, initialVehicle, initia
                                         <span className="font-bold tracking-widest uppercase text-white">Total Due On Site</span>
                                         <span className="font-bold text-xl text-spa-mint">
                                             ₹{selectedPackage ? (
-                                                selectedPackage.resolved_price ??
-                                                selectedPackage.final_price ??
-                                                resolvePackagePriceForVehicle(
-                                                    selectedPackage.price,
-                                                    selectedPackage.tiered_prices || selectedPackage.service_package_prices,
-                                                    selectedVehicle?.vehicle_type
-                                                )
-                                            ).toLocaleString() : 0}
+                                                Number(
+                                                    selectedPackage.resolved_price ??
+                                                    selectedPackage.final_price ??
+                                                    resolvePackagePriceForVehicle(
+                                                        selectedPackage.price || selectedPackage.base_price || 0,
+                                                        selectedPackage.tiered_prices || selectedPackage.service_package_prices,
+                                                        selectedVehicle?.vehicle_type
+                                                    ) ?? 0
+                                                ).toLocaleString()
+                                            ) : 0}
                                         </span>
                                     </div>
 

@@ -115,6 +115,7 @@ export default function AdminExpressPOSPage() {
   const [searchResults, setSearchResults] = useState<UnifiedSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [isPlateSearching, setIsPlateSearching] = useState(false);
 
   const {
     control,
@@ -269,8 +270,10 @@ export default function AdminExpressPOSPage() {
       }
     }
 
-    if (data.customer_name && data.customer_name !== "Guest Customer") {
-      setValue("customer_name", data.customer_name);
+    const rawCustName = data.customer?.full_name || data.customer?.name || data.customer_name || data.full_name || data.name || "";
+    const cleanCustName = String(rawCustName).trim();
+    if (cleanCustName && cleanCustName !== "Guest Customer" && cleanCustName !== "Walk-In Customer" && !/^[0-9+ \-]+$/.test(cleanCustName)) {
+      setValue("customer_name", cleanCustName, { shouldValidate: true });
     }
 
     toast.success(`Vehicle Autofilled: ${data.plate_number || ''} (${data.make || ''} ${data.model || ''})`);
@@ -330,8 +333,9 @@ export default function AdminExpressPOSPage() {
         setValue("phone", rawPhone, { shouldValidate: true });
       }
     }
-    if (item.customer_name && item.customer_name !== "Guest Customer" && item.customer_name !== "Walk-In Customer") {
-      setValue("customer_name", item.customer_name);
+    const searchCustName = (item as any).full_name || item.customer_name || (item as any).name || "";
+    if (searchCustName && searchCustName !== "Guest Customer" && searchCustName !== "Walk-In Customer" && !/^[0-9+ \-]+$/.test(searchCustName.trim())) {
+      setValue("customer_name", searchCustName.trim());
     }
     applyVehicleToForm(item);
 
@@ -351,38 +355,71 @@ export default function AdminExpressPOSPage() {
     setUniversalSearchQuery("");
   };
 
-  // STEP 1: License Plate Entry & Phone Lookup (Debounced 1500ms, min 4 chars)
-  useEffect(() => {
-    const cleanPlate = (plateNumber || "").replace(/[\s-]/g, "").trim();
-    if (cleanPlate.length < 4) return;
+  // EXPLICIT VEHICLE PLATE LOOKUP (Exact Match, Triggered via Button or Enter Key)
+  const handlePlateSearch = async () => {
+    const raw = watch("plate_number") || "";
+    // 1. Sanitize the input string: trim() and toUpperCase()
+    const formattedPlate = raw.trim().toUpperCase();
 
-    const timer = setTimeout(async () => {
-      try {
-        const token = localStorage.getItem("auth_token");
-        const res = await fetch(`/api/search/universal?plate=${encodeURIComponent(plateNumber.trim())}`, {
-          headers: token ? { Authorization: `Token ${token}` } : {},
+    if (!formattedPlate) {
+      toast.error("Please enter a vehicle license plate number first.");
+      return;
+    }
+
+    setIsPlateSearching(true);
+    try {
+      // Check customerGarage first if already loaded (e.g. phone entered first)
+      if (customerGarage && customerGarage.length > 0) {
+        const cleanTarget = formattedPlate.replace(/[\s-]/g, "");
+        const localMatch = customerGarage.find((v: any) => {
+          if (!v.plate_number) return false;
+          const cleanV = v.plate_number.replace(/[\s-]/g, "").toUpperCase().trim();
+          return cleanV === cleanTarget || v.plate_number.toUpperCase().trim() === formattedPlate;
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          // Auto-fill associated owner phone number
-          const phoneVal = data.owner_phone || data.phone;
-          if (phoneVal) {
-            const rawPhone = String(phoneVal).trim();
-            const isGuestOrInvalid = rawPhone.startsWith("guest_") || rawPhone.includes("guest") || (!rawPhone.startsWith("+") && !/^[0-9]{7,15}$/.test(rawPhone.replace(/[\s-]/g, '')));
-            if (!isGuestOrInvalid) {
-              setValue("phone", rawPhone, { shouldValidate: true });
-            }
-          }
-          applyVehicleToForm(data);
+        if (localMatch) {
+          applyVehicleToForm(localMatch);
+          setIsPlateSearching(false);
+          return;
         }
-      } catch (err) {
-        console.error("Step 1 Plate search error:", err);
       }
-    }, 1500);
 
-    return () => clearTimeout(timer);
-  }, [plateNumber]);
+      const token = typeof window !== 'undefined' ? localStorage.getItem("auth_token") : null;
+      const res = await fetch(`/api/customer-vehicles/lookup?plate=${encodeURIComponent(formattedPlate)}&exact=true`, {
+        headers: token ? { Authorization: `Token ${token}` } : {},
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.found && (data.vehicle || data.id)) {
+          applyVehicleToForm(data.vehicle || data);
+        } else {
+          // No record found:
+          // Do not clear the entered plate number.
+          // Display informative toast and keep form ready for clean manual entry.
+          toast("No existing record found for this plate. You can proceed with manual entry.", {
+            icon: "ℹ️",
+            duration: 4000,
+          });
+        }
+      } else {
+        const errData = await res.json().catch(() => null);
+        if (res.status === 404 || errData?.found === false) {
+          toast("No existing record found for this plate. You can proceed with manual entry.", {
+            icon: "ℹ️",
+            duration: 4000,
+          });
+        } else {
+          toast.error(errData?.error || "Error checking license plate. You can proceed with manual entry.");
+        }
+      }
+    } catch (err: any) {
+      console.error("Plate search error:", err);
+      toast.error("Network error while searching vehicle plate. You can proceed with manual entry.");
+    } finally {
+      setIsPlateSearching(false);
+    }
+  };
 
   // STEP 2: Phone Number Entry & Garage Lookup (Debounced 1500ms, min 10 digits)
   useEffect(() => {
@@ -418,24 +455,6 @@ export default function AdminExpressPOSPage() {
 
     return () => clearTimeout(timer);
   }, [phone]);
-
-  // STEP 3: Garage Matching & Final Auto-fill
-  useEffect(() => {
-    if (!customerGarage || customerGarage.length === 0) return;
-
-    const currentCleanPlate = (plateNumber || "").replace(/[\s-]/g, "").toUpperCase().trim();
-    if (!currentCleanPlate) return;
-
-    const exactMatchedVehicle = customerGarage.find((v: any) => {
-      if (!v.plate_number) return false;
-      const vCleanPlate = v.plate_number.replace(/[\s-]/g, "").toUpperCase().trim();
-      return vCleanPlate === currentCleanPlate;
-    });
-
-    if (exactMatchedVehicle) {
-      applyVehicleToForm(exactMatchedVehicle);
-    }
-  }, [customerGarage, plateNumber]);
 
   // STEP 4: Reactive Dynamic Package Fetching Driven by Active Vehicle Type
   useEffect(() => {
@@ -661,19 +680,57 @@ export default function AdminExpressPOSPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {/* Plate Number */}
               <div className="bg-[#141518]/60 backdrop-blur-2xl border border-white/5 rounded-[2rem] p-6 sm:p-8 shadow-2xl flex flex-col justify-center">
-                <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] mb-4 text-center block">
-                  License Plate
-                </label>
-                <input
-                  {...register("plate_number")}
-                  className={`w-full bg-transparent border-b-2 text-center text-2xl sm:text-4xl md:text-6xl font-syncopate font-bold uppercase transition-all pb-3 sm:pb-4 outline-none placeholder:text-zinc-800 ${
-                    errors.plate_number ? "border-[#E52323] text-[#E52323]" : "border-white/10 text-white focus:border-[#01FFFF]"
-                  }`}
-                  placeholder="KL-11-AA"
-                  autoComplete="off"
-                />
+                <div className="flex items-center justify-between mb-4">
+                  <label className="text-xs uppercase tracking-[0.2em] font-bold text-[#01FFFF] block">
+                    License Plate
+                  </label>
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500">
+                    Exact Match Lookup
+                  </span>
+                </div>
+
+                <div className="relative flex items-center justify-center">
+                  <input
+                    {...register("plate_number")}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handlePlateSearch();
+                      }
+                    }}
+                    className={`w-full bg-transparent border-b-2 text-center text-2xl sm:text-4xl md:text-6xl font-syncopate font-bold uppercase transition-all pb-3 sm:pb-4 pl-12 sm:pl-14 pr-12 sm:pr-14 outline-none placeholder:text-zinc-800 ${
+                      errors.plate_number ? "border-[#E52323] text-[#E52323]" : "border-white/10 text-white focus:border-[#01FFFF]"
+                    }`}
+                    placeholder="KL-11-AA"
+                    autoComplete="off"
+                  />
+
+                  {/* Explicit Search / Checkmark Action Trigger */}
+                  <button
+                    type="button"
+                    onClick={handlePlateSearch}
+                    disabled={isPlateSearching}
+                    title="Lookup vehicle by plate (Press Enter)"
+                    aria-label="Search license plate"
+                    className="absolute right-0 bottom-2.5 sm:bottom-3.5 w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-[#01FFFF]/10 hover:bg-[#01FFFF]/20 border border-[#01FFFF]/30 hover:border-[#01FFFF] text-[#01FFFF] transition-all flex items-center justify-center shadow-[0_0_15px_rgba(1,255,255,0.15)] disabled:opacity-50 disabled:cursor-not-allowed group active:scale-95"
+                  >
+                    {isPlateSearching ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-[#01FFFF]" />
+                    ) : (
+                      <Check className="w-5 h-5 font-bold transition-transform group-hover:scale-110" />
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between mt-3 px-1 text-[11px] text-zinc-500 font-mono">
+                  <span>Press <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-zinc-300 font-semibold text-[10px]">Enter ↵</kbd> or click <span className="text-[#01FFFF] font-bold">✓</span> to search</span>
+                  {plateNumber && (
+                    <span className="text-zinc-400 font-bold uppercase">{plateNumber.trim()}</span>
+                  )}
+                </div>
+
                 {errors.plate_number && (
-                  <p className="text-[#E52323] text-[10px] font-bold tracking-widest uppercase mt-4 text-center">
+                  <p className="text-[#E52323] text-[10px] font-bold tracking-widest uppercase mt-3 text-center">
                     {errors.plate_number.message}
                   </p>
                 )}

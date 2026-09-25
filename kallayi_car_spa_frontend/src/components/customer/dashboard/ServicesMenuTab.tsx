@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
@@ -12,7 +12,9 @@ import {
   Layers,
   ArrowRight,
   CheckCircle2,
-  ChevronDown
+  ChevronDown,
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 import api from '@/lib/api';
 import { Vehicle } from './types';
@@ -20,74 +22,143 @@ import { VehicleType } from '@/types/database';
 import { normalizeVehicleType, getVehicleTypeLabel, BODY_TYPE_OPTIONS } from '@/lib/vehicleCatalog';
 
 interface ServicesMenuTabProps {
-  myVehicles: Vehicle[];
+  myVehicles?: Vehicle[];
   onBookService: (servicePkg: any, vehicle: Vehicle | null) => void;
   onOpenAddVehicle?: () => void;
 }
 
 export function ServicesMenuTab({
-  myVehicles,
+  myVehicles = [],
   onBookService,
   onOpenAddVehicle,
 }: ServicesMenuTabProps) {
-  // 1. Vehicle Selection State
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(
-    myVehicles.length > 0 ? myVehicles[0] : null
-  );
+  // 1. Safe vehicle list memoization (protects against undefined/null & stabilizes reference)
+  const safeVehicles: Vehicle[] = useMemo(() => {
+    return Array.isArray(myVehicles)
+      ? myVehicles.filter((v): v is Vehicle => Boolean(v && typeof v === 'object' && (v.id || v.plate)))
+      : [];
+  }, [myVehicles]);
+
+  // Vehicle Selection State
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(() => {
+    return safeVehicles.length > 0 ? safeVehicles[0] : null;
+  });
 
   // Fallback body type if customer has no saved vehicle selected
   const [previewBodyType, setPreviewBodyType] = useState<VehicleType>('HATCHBACK');
   const [isVehicleDropdownOpen, setIsVehicleDropdownOpen] = useState(false);
 
-  // 2. Services Data State
+  // 2. Services Data State & 4-State Async Machine
   const [services, setServices] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reloadTrigger, setReloadTrigger] = useState<number>(0);
 
-  // Sync default vehicle when myVehicles loads
+  // Sync default vehicle when safeVehicles loads without infinite loops
   useEffect(() => {
-    if (myVehicles.length > 0 && !selectedVehicle) {
-      setSelectedVehicle(myVehicles[0]);
+    if (safeVehicles.length > 0) {
+      setSelectedVehicle((prev) => {
+        if (prev && safeVehicles.some((v) => String(v.id) === String(prev.id))) {
+          return prev;
+        }
+        return safeVehicles[0] || null;
+      });
     }
-  }, [myVehicles, selectedVehicle]);
+  }, [safeVehicles]);
 
   // Determine active effective vehicle body type
-  const effectiveVehicleType: VehicleType = selectedVehicle
+  const effectiveVehicleType: VehicleType = selectedVehicle?.vehicle_type
     ? normalizeVehicleType(selectedVehicle.vehicle_type)
     : previewBodyType;
 
-  const vehicleMetadata = getVehicleTypeLabel(effectiveVehicleType);
+  const vehicleMetadata = getVehicleTypeLabel(effectiveVehicleType) || {
+    label: 'Hatchback',
+    icon: '🚗',
+    category: 'Hatchback',
+  };
 
-  // 3. Fetch Dynamic Catalog for current body type
+  // 3. Fetch Dynamic Catalog with AbortController, Timeout & Error Boundary Guard
   useEffect(() => {
     let isMounted = true;
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+    }, 10000); // 10s client timeout
+
     const fetchDynamicMenu = async () => {
       setIsLoading(true);
+      setErrorMessage(null);
       try {
         const res = await api.get('/services', {
           params: { vehicle_type: effectiveVehicleType },
+          signal: abortController.signal,
+          headers: { 'Cache-Control': 'no-cache' },
         });
-        const list = Array.isArray(res.data?.data)
-          ? res.data.data
-          : (Array.isArray(res.data) ? res.data : []);
+
+        clearTimeout(timeoutId);
+
+        const rawList = res.data?.data ?? res.data?.results ?? res.data ?? [];
+        const list = Array.isArray(rawList)
+          ? rawList.filter((item): item is any => Boolean(item && typeof item === 'object'))
+          : [];
+
         if (isMounted) {
           setServices(list);
+          setErrorMessage(null);
         }
-      } catch (err) {
-        console.error('Failed to load dynamic service menu:', err);
+      } catch (err: any) {
+        if (!isMounted) return;
+        console.error('[ServicesMenuTab] Failed to load dynamic service menu:', err);
+        const isTimeout =
+          err?.code === 'ECONNABORTED' ||
+          err?.name === 'AbortError' ||
+          err?.message?.includes('timed out') ||
+          err?.message?.includes('aborted');
+
+        const message = isTimeout
+          ? 'Network request timed out while loading services. Please check your connection and tap retry.'
+          : (err?.response?.data?.error || err?.message || 'Unable to load treatments at this time.');
+        setErrorMessage(message);
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchDynamicMenu();
+
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
+      abortController.abort();
     };
-  }, [effectiveVehicleType]);
+  }, [effectiveVehicleType, reloadTrigger]);
 
   const activeVehicleTitle = selectedVehicle
-    ? `${selectedVehicle.make} ${selectedVehicle.model}`
+    ? `${selectedVehicle?.make ?? ''} ${selectedVehicle?.model ?? ''}`.trim() || 'Vehicle'
     : `General ${vehicleMetadata.label}`;
+
+  // Safe feature extraction
+  const getFeaturesList = useCallback((svc: any): string[] => {
+    if (Array.isArray(svc?.features) && svc.features.length > 0) {
+      return svc.features
+        .map((f: any) => (typeof f === 'string' ? f : f?.name || f?.title || String(f || '')))
+        .filter(Boolean);
+    }
+    if (Array.isArray(svc?.chemical_recipe?.features) && svc.chemical_recipe.features.length > 0) {
+      return svc.chemical_recipe.features
+        .map((f: any) => (typeof f === 'string' ? f : String(f || '')))
+        .filter(Boolean);
+    }
+    return [
+      'High-pressure touchless pre-wash',
+      'pH-neutral snow foam & gloss rinse',
+      'Hand dried with plush microfiber towels',
+    ];
+  }, []);
+
+  const servicesList = services ?? [];
 
   return (
     <div className="space-y-8">
@@ -126,7 +197,7 @@ export function ServicesMenuTab({
               )}
             </div>
 
-            {myVehicles.length > 0 ? (
+            {safeVehicles.length > 0 ? (
               <div className="relative">
                 <button
                   type="button"
@@ -137,10 +208,10 @@ export function ServicesMenuTab({
                     <span className="text-2xl">{vehicleMetadata.icon}</span>
                     <div>
                       <span className="text-sm font-bold text-white block group-hover:text-[#01FFFF] transition truncate max-w-[180px]">
-                        {selectedVehicle?.make} {selectedVehicle?.model}
+                        {selectedVehicle?.make ?? ''} {selectedVehicle?.model ?? ''}
                       </span>
                       <span className="text-[11px] font-mono text-neutral-400 block">
-                        {selectedVehicle?.plate} • {vehicleMetadata.label}
+                        {selectedVehicle?.plate || 'No Plate'} • {vehicleMetadata.label}
                       </span>
                     </div>
                   </div>
@@ -154,14 +225,15 @@ export function ServicesMenuTab({
                       initial={{ opacity: 0, y: 8, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                      className="absolute left-0 right-0 top-full mt-2 z-30 bg-[#16171d] border border-white/15 rounded-2xl shadow-2xl p-2 space-y-1"
+                      className="absolute left-0 right-0 top-full mt-2 z-30 bg-[#16171d] border border-white/15 rounded-2xl shadow-2xl p-2 space-y-1 max-h-60 overflow-y-auto"
                     >
-                      {myVehicles.map((v) => {
+                      {safeVehicles.map((v) => {
+                        if (!v) return null;
                         const isSelected = selectedVehicle?.id === v.id;
                         const vMeta = getVehicleTypeLabel(v.vehicle_type);
                         return (
                           <button
-                            key={v.id}
+                            key={v.id || v.plate}
                             type="button"
                             onClick={() => {
                               setSelectedVehicle(v);
@@ -176,8 +248,8 @@ export function ServicesMenuTab({
                             <div className="flex items-center gap-2.5">
                               <span>{vMeta.icon}</span>
                               <div>
-                                <span className="text-xs font-semibold block text-white">{v.make} {v.model}</span>
-                                <span className="text-[10px] text-neutral-400 block font-mono">{v.plate} • {vMeta.label}</span>
+                                <span className="text-xs font-semibold block text-white">{v.make ?? ''} {v.model ?? ''}</span>
+                                <span className="text-[10px] text-neutral-400 block font-mono">{v.plate || 'No Plate'} • {vMeta.label}</span>
                               </div>
                             </div>
                             {isSelected && <CheckCircle2 className="w-4 h-4 text-[#01FFFF]" />}
@@ -191,7 +263,7 @@ export function ServicesMenuTab({
             ) : (
               /* No saved vehicle: interactive body type preview switcher */
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {BODY_TYPE_OPTIONS.filter((bt) => bt.value !== 'TRUCK').map((bt) => {
+                {(BODY_TYPE_OPTIONS ?? []).filter((bt) => bt.value !== 'TRUCK').map((bt) => {
                   const isSelected = previewBodyType === bt.value;
                   return (
                     <button
@@ -205,7 +277,7 @@ export function ServicesMenuTab({
                       }`}
                     >
                       <span>{bt.icon}</span>
-                      <span>{bt.label.split('/')[0].trim()}</span>
+                      <span>{(bt.label || '').split('/')[0].trim()}</span>
                     </button>
                   );
                 })}
@@ -216,7 +288,7 @@ export function ServicesMenuTab({
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. DYNAMIC SERVICE CARDS GRID */}
+      {/* 2. DYNAMIC SERVICE CARDS GRID WITH 4-STATE HANDLING */}
       {/* ========================================================================= */}
       <div>
         <div className="flex items-center justify-between mb-6">
@@ -225,33 +297,123 @@ export function ServicesMenuTab({
             <h2 className="text-lg font-bold font-syncopate text-white uppercase tracking-wider">
               {vehicleMetadata.label} Treatments
             </h2>
-            <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-neutral-400">
-              {services.length} Available
-            </span>
+            {!isLoading && !errorMessage && (
+              <span className="text-xs font-mono px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-neutral-400">
+                {servicesList.length} Available
+              </span>
+            )}
           </div>
+
+          {/* Quick Refresh Trigger */}
+          {!isLoading && (
+            <button
+              type="button"
+              onClick={() => setReloadTrigger((r) => r + 1)}
+              className="text-neutral-400 hover:text-[#01FFFF] p-2 rounded-xl hover:bg-white/5 transition flex items-center gap-1.5 text-xs font-mono cursor-pointer"
+              title="Refresh treatments"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          )}
         </div>
 
-        {isLoading ? (
+        {/* STATE 1: LOADING STATE (Skeleton Grid) */}
+        {isLoading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-80 rounded-3xl bg-neutral-900/40 border border-white/5 animate-pulse" />
+              <div
+                key={i}
+                className="h-84 rounded-3xl bg-[#0b0c10]/80 border border-white/5 p-6 flex flex-col justify-between animate-pulse"
+              >
+                <div className="space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-2">
+                      <div className="h-3 w-20 bg-white/10 rounded-full" />
+                      <div className="h-6 w-36 bg-white/10 rounded-xl" />
+                    </div>
+                    <div className="w-9 h-9 rounded-2xl bg-white/10" />
+                  </div>
+                  <div className="h-9 w-full bg-white/5 rounded-xl" />
+                  <div className="space-y-2 pt-2">
+                    <div className="h-3.5 w-4/5 bg-white/5 rounded" />
+                    <div className="h-3.5 w-3/4 bg-white/5 rounded" />
+                    <div className="h-3.5 w-2/3 bg-white/5 rounded" />
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-white/5 space-y-3">
+                  <div className="flex justify-between items-end">
+                    <div className="h-7 w-24 bg-white/10 rounded-xl" />
+                    <div className="h-5 w-16 bg-white/5 rounded-lg" />
+                  </div>
+                  <div className="h-11 w-full bg-white/10 rounded-2xl" />
+                </div>
+              </div>
             ))}
           </div>
-        ) : services.length === 0 ? (
-          <div className="p-12 text-center bg-[#0c0d12] border border-white/10 rounded-3xl space-y-3">
-            <Car className="w-12 h-12 text-neutral-600 mx-auto" />
-            <h3 className="text-base font-bold text-white">No services registered for this vehicle tier</h3>
-            <p className="text-xs text-neutral-400">Please check back soon or select a different vehicle body type.</p>
+        )}
+
+        {/* STATE 2: ERROR STATE (Recovery Card with Retry Button) */}
+        {!isLoading && errorMessage && (
+          <div className="p-8 sm:p-12 text-center bg-[#0c0d12]/90 border border-red-500/20 rounded-3xl space-y-4 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/5 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-1.5 max-w-md mx-auto">
+              <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                Unable to Load Treatments
+              </h3>
+              <p className="text-xs text-neutral-400 leading-relaxed">
+                {errorMessage}
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setReloadTrigger((r) => r + 1)}
+                className="px-6 py-3 rounded-2xl bg-[#01FFFF] hover:bg-[#00e6e6] text-black font-extrabold text-xs uppercase tracking-wider transition-all inline-flex items-center gap-2 shadow-[0_0_20px_rgba(1,255,255,0.3)] hover:shadow-[0_0_25px_rgba(1,255,255,0.4)] cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Retry Catalog</span>
+              </button>
+            </div>
           </div>
-        ) : (
+        )}
+
+        {/* STATE 3: EMPTY STATE (Friendly Notification) */}
+        {!isLoading && !errorMessage && servicesList.length === 0 && (
+          <div className="p-12 text-center bg-[#0c0d12] border border-white/10 rounded-3xl space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 text-neutral-400 flex items-center justify-center mx-auto">
+              <Car className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-white">No services registered for this vehicle tier</h3>
+              <p className="text-xs text-neutral-400 max-w-sm mx-auto">
+                No active treatments configured for {vehicleMetadata.label}. Please select another vehicle or body type.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* STATE 4: SUCCESS STATE (Render Safe Dynamic Service Cards) */}
+        {!isLoading && !errorMessage && servicesList.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {services.map((svc) => {
-              const effectivePrice = svc.resolved_price ?? svc.price ?? svc.final_price ?? 0;
-              const duration = svc.duration_minutes || svc.estimated_time_minutes || 45;
+            {servicesList.map((svc, idx) => {
+              if (!svc) return null;
+              const svcId = svc.id ?? `service-${idx}`;
+              const svcName = svc.name ?? 'Spa Treatment';
+              const effectivePrice = Number(svc.resolved_price ?? svc.price ?? svc.final_price ?? svc.base_price ?? 0);
+              const duration = Number(svc.duration_minutes || svc.estimated_time_minutes || svc.estimated_duration || 45);
+              const description = svc.description || 'Full exterior pressure rinse, foam bath, wheel cleaning, and microfiber dry.';
+              const features = getFeaturesList(svc);
 
               return (
                 <motion.div
-                  key={svc.id}
+                  key={svcId}
                   whileHover={{ y: -4 }}
                   transition={{ duration: 0.2 }}
                   className="bg-[#0b0c10] border border-white/10 hover:border-[#01FFFF]/40 rounded-3xl p-6 flex flex-col justify-between shadow-xl transition-all group relative overflow-hidden"
@@ -265,7 +427,7 @@ export function ServicesMenuTab({
                           <span>{vehicleMetadata.label} TIER</span>
                         </div>
                         <h3 className="font-syncopate font-bold text-lg text-white group-hover:text-[#01FFFF] transition">
-                          {svc.name}
+                          {svcName}
                         </h3>
                       </div>
                       <div className="p-2.5 rounded-2xl bg-white/5 border border-white/10 text-neutral-400 group-hover:text-[#01FFFF] group-hover:border-[#01FFFF]/30 transition shrink-0">
@@ -274,23 +436,17 @@ export function ServicesMenuTab({
                     </div>
 
                     <p className="text-xs text-neutral-400 leading-relaxed line-clamp-2 mb-6">
-                      {svc.description || 'Full exterior pressure rinse, foam bath, wheel cleaning, and microfiber dry.'}
+                      {description}
                     </p>
 
-                    {/* Features Bullet Points */}
+                    {/* Features Bullet Points (Defensively Rendered) */}
                     <div className="space-y-2 mb-6 border-t border-white/5 pt-4">
-                      <div className="flex items-center gap-2 text-xs text-neutral-300">
-                        <ShieldCheck className="w-3.5 h-3.5 text-[#01FFFF] shrink-0" />
-                        <span>High-pressure touchless pre-wash</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-neutral-300">
-                        <ShieldCheck className="w-3.5 h-3.5 text-[#01FFFF] shrink-0" />
-                        <span>pH-neutral snow foam & gloss rinse</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-neutral-300">
-                        <ShieldCheck className="w-3.5 h-3.5 text-[#01FFFF] shrink-0" />
-                        <span>Hand dried with plush microfiber towels</span>
-                      </div>
+                      {features.map((featureText, fIdx) => (
+                        <div key={fIdx} className="flex items-center gap-2 text-xs text-neutral-300">
+                          <ShieldCheck className="w-3.5 h-3.5 text-[#01FFFF] shrink-0" />
+                          <span className="line-clamp-1">{featureText}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
@@ -303,7 +459,7 @@ export function ServicesMenuTab({
                         </span>
                         <div className="flex items-baseline gap-1">
                           <span className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                            ₹{Number(effectivePrice).toLocaleString()}
+                            ₹{effectivePrice.toLocaleString()}
                           </span>
                           <span className="text-xs text-neutral-500 font-mono">incl. GST</span>
                         </div>
@@ -322,8 +478,8 @@ export function ServicesMenuTab({
                       onClick={() => onBookService(svc, selectedVehicle)}
                       className="w-full py-3 px-4 rounded-2xl bg-[#01FFFF] hover:bg-[#00e6e6] text-black font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(1,255,255,0.25)] hover:shadow-[0_0_25px_rgba(1,255,255,0.4)] cursor-pointer group/btn"
                     >
-                      <span>Book for {activeVehicleTitle}</span>
-                      <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                      <span className="truncate max-w-[200px] sm:max-w-none">Book for {activeVehicleTitle}</span>
+                      <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform shrink-0" />
                     </button>
                   </div>
                 </motion.div>

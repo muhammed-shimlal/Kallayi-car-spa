@@ -28,6 +28,23 @@ const STANDARD_TIERS: VehicleType[] = [
   'TRUCK',
 ];
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  errorMessage = 'Database query timed out'
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, ms);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
@@ -40,37 +57,58 @@ export async function GET(request: NextRequest) {
       ? (normalizeVehicleType(vehicleTypeParam) as VehicleType)
       : ('' as VehicleType | '');
 
-    // 1. Fetch active service packages with linked tiered prices from Supabase
+    // 1. Fetch active service packages with linked tiered prices from Supabase (with 8s timeout)
     let packages: any[] | null = null;
-    const { data: joinedData, error: joinErr } = await supabase
-      .from('service_packages')
-      .select(`
-        *,
-        tiered_prices:service_package_prices(*)
-      `)
-      .order('id', { ascending: true });
+    try {
+      const { data: joinedData, error: joinErr } = await withTimeout<{ data: any[] | null; error: any }>(
+        supabase
+          .from('service_packages')
+          .select(`
+            *,
+            tiered_prices:service_package_prices(*)
+          `)
+          .order('id', { ascending: true }) as any,
+        8000,
+        'Supabase query timed out while fetching service packages'
+      );
 
-    if (!joinErr && joinedData) {
-      packages = joinedData;
-    } else {
-      // Fallback: Fetch packages and tiered prices independently
-      const [pkgRes, tierRes] = await Promise.all([
-        supabase.from('service_packages').select('*').order('id', { ascending: true }),
-        supabase.from('service_package_prices').select('*'),
-      ]);
-
-      if (pkgRes.error) {
-        return NextResponse.json(
-          { success: false, error: pkgRes.error.message, data: [] },
-          { status: 500 }
+      if (!joinErr && joinedData) {
+        packages = joinedData;
+      } else {
+        // Fallback: Fetch packages and tiered prices independently
+        const [pkgRes, tierRes] = await withTimeout<[{ data: any[] | null; error: any }, { data: any[] | null; error: any }]>(
+          Promise.all([
+            supabase.from('service_packages').select('*').order('id', { ascending: true }),
+            supabase.from('service_package_prices').select('*'),
+          ]) as any,
+          8000,
+          'Supabase fallback query timed out'
         );
-      }
 
-      const allTierPrices = tierRes.data || [];
-      packages = (pkgRes.data || []).map((p: any) => ({
-        ...p,
-        tiered_prices: allTierPrices.filter((t: any) => Number(t.package_id) === Number(p.id)),
-      }));
+        if (pkgRes.error) {
+          return NextResponse.json(
+            { success: false, error: pkgRes.error.message, data: [] },
+            { status: 500 }
+          );
+        }
+
+        const allTierPrices = tierRes.data || [];
+        packages = (pkgRes.data || []).map((p: any) => ({
+          ...p,
+          tiered_prices: allTierPrices.filter((t: any) => Number(t.package_id) === Number(p.id)),
+        }));
+      }
+    } catch (dbErr: any) {
+      console.error('[Services API] Database fetch error/timeout:', dbErr);
+      return NextResponse.json(
+        {
+          success: false,
+          error: dbErr?.message || 'Database query timed out. Please try again.',
+          data: [],
+          results: [],
+        },
+        { status: 503 }
+      );
     }
 
     if (!packages || packages.length === 0) {
@@ -84,8 +122,9 @@ export async function GET(request: NextRequest) {
 
     // Filter out inactive services unless explicitly requested (for admin)
     const filteredByActive = includeInactive
-      ? packages
-      : packages.filter((p) => {
+      ? (packages || []).filter(Boolean)
+      : (packages || []).filter((p) => {
+          if (!p) return false;
           if (p.is_active !== undefined) return Boolean(p.is_active);
           if (p.chemical_recipe && typeof p.chemical_recipe === 'object' && p.chemical_recipe.is_active !== undefined) {
             return Boolean(p.chemical_recipe.is_active);
